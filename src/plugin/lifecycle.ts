@@ -15,6 +15,7 @@ export class SerializedConnectionLifecycle<Input, Connection extends AsyncClosab
   readonly #open: (input: Input) => Promise<Connection>;
   readonly #closing = new WeakMap<Connection, Promise<void>>();
   #active: Connection | undefined;
+  #cleanupFailure: { error: unknown } | undefined;
   #revision = 0;
   #tail: Promise<void> = Promise.resolve();
 
@@ -33,12 +34,13 @@ export class SerializedConnectionLifecycle<Input, Connection extends AsyncClosab
     const previousClose = previous === undefined ? undefined : this.#closeNow(previous);
 
     const operation = this.#tail.then(async (): Promise<ConnectionStartResult<Connection>> => {
-      await previousClose;
+      this.#assertCleanupConfirmed();
+      await this.#waitForClose(previousClose);
       if (revision !== this.#revision) return { state: "superseded" };
 
       const candidate = await this.#open(input);
       if (revision !== this.#revision) {
-        await this.#closeNow(candidate);
+        await this.#waitForClose(this.#closeNow(candidate));
         return { state: "superseded" };
       }
 
@@ -58,7 +60,8 @@ export class SerializedConnectionLifecycle<Input, Connection extends AsyncClosab
     this.#active = undefined;
     const close = active === undefined ? undefined : this.#closeNow(active);
     const operation = this.#tail.then(async () => {
-      await close;
+      this.#assertCleanupConfirmed();
+      await this.#waitForClose(close);
     });
     this.#tail = operation.then(
       () => undefined,
@@ -93,6 +96,19 @@ export class SerializedConnectionLifecycle<Input, Connection extends AsyncClosab
     }
     this.#closing.set(connection, close);
     return close;
+  }
+
+  async #waitForClose(close: Promise<void> | undefined): Promise<void> {
+    try {
+      await close;
+    } catch (error) {
+      this.#cleanupFailure ??= { error };
+      throw error;
+    }
+  }
+
+  #assertCleanupConfirmed(): void {
+    if (this.#cleanupFailure !== undefined) throw this.#cleanupFailure.error;
   }
 }
 
@@ -148,5 +164,66 @@ export class OwnedStartupLifecycle<Owner, Resource extends StartableResource & o
     if (this.#stopped.has(resource)) return;
     this.#stopped.add(resource);
     resource.stop();
+  }
+}
+
+export interface PluginTeardownOptions {
+  stopConnection(): Promise<void>;
+  stopPreview(): void;
+  shutdownSettings(): Promise<void>;
+  reportError(error: unknown): void;
+}
+
+type CleanupResult =
+  | { state: "fulfilled" }
+  | { state: "rejected"; error: unknown };
+
+function observeCleanup(cleanup: Promise<void>): Promise<CleanupResult> {
+  return cleanup.then<CleanupResult, CleanupResult>(
+    () => ({ state: "fulfilled" }),
+    error => ({ state: "rejected", error }),
+  );
+}
+
+/** Revokes native authority first, then attempts every optional cleanup. */
+export async function teardownPluginResources(options: PluginTeardownOptions): Promise<void> {
+  const errors: unknown[] = [];
+  const record = (error: unknown): void => {
+    if (!errors.some(existing => Object.is(existing, error))) errors.push(error);
+    try {
+      options.reportError(error);
+    } catch (reportingError) {
+      if (!errors.some(existing => Object.is(existing, reportingError))) {
+        errors.push(reportingError);
+      }
+    }
+  };
+
+  let connectionStop: Promise<CleanupResult>;
+  try {
+    // Calling this before UI cleanup synchronously closes the live access gate.
+    connectionStop = observeCleanup(options.stopConnection());
+  } catch (error) {
+    connectionStop = Promise.resolve({ state: "rejected", error });
+  }
+
+  try {
+    options.stopPreview();
+  } catch (error) {
+    record(error);
+  }
+
+  try {
+    await options.shutdownSettings();
+  } catch (error) {
+    record(error);
+  }
+
+  const connectionResult = await connectionStop;
+  if (connectionResult.state === "rejected") record(connectionResult.error);
+
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) {
+    throw new AggregateError(errors, "Research Companion cleanup failed");
   }
 }

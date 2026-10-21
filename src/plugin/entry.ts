@@ -5,7 +5,11 @@ import {
   ResearchCompanionSettings, createZoteroSettingsHost,
   type ZoteroSettingsEnvironment, type SettingsConnectionStatus,
 } from "../adapters/settings/index.js";
-import { OwnedStartupLifecycle, SerializedConnectionLifecycle } from "./lifecycle.js";
+import {
+  OwnedStartupLifecycle,
+  SerializedConnectionLifecycle,
+  teardownPluginResources,
+} from "./lifecycle.js";
 
 type ChromeWindow = Window & typeof globalThis;
 type ProductionConnection = Awaited<ReturnType<typeof openProductionConnection>>;
@@ -92,11 +96,12 @@ async function statusAfterSupersededStart(): Promise<SettingsConnectionStatus> {
 }
 
 async function startConnection(directory: string): Promise<SettingsConnectionStatus> {
+  if (!running) throw new Error("Research Companion is stopped");
   const revision = ++statusRevision;
   status = { state: "connecting", directory };
   try {
     const result = await connectionLifecycle.start(directory);
-    if (revision !== statusRevision || result.state === "superseded") {
+    if (!running || revision !== statusRevision || result.state === "superseded") {
       return statusAfterSupersededStart();
     }
     status = readyStatus(directory, result.connection);
@@ -140,12 +145,12 @@ export function onMainWindowUnload(window: ChromeWindow): void {
 
 export async function stop(): Promise<void> {
   running = false;
-  previewLifecycle.stop();
   const activeSettings = settings;
   settings = undefined;
-  try { await activeSettings?.shutdown(); }
-  finally {
-    await stopConnection();
-    previewLifecycle.stop();
-  }
+  await teardownPluginResources({
+    stopConnection,
+    stopPreview: () => previewLifecycle.stop(),
+    shutdownSettings: () => activeSettings?.shutdown() ?? Promise.resolve(),
+    reportError,
+  });
 }

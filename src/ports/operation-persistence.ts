@@ -12,6 +12,8 @@ export type OperationClaim =
 export interface OperationPersistencePort {
   claim(initial: OperationRecord): Promise<OperationClaim>;
   load(operationId: string): Promise<OperationRecord | undefined>;
+  /** Returns durable queued/running records for startup recovery. */
+  listPending(): Promise<OperationRecord[]>;
   transition(
     operationId: string,
     expectedState: OperationState,

@@ -3,6 +3,7 @@ import type { NativeRectangle, ResolvedAnchor } from "../../protocol/types.js";
 import type { WebCryptoLike } from "../operation-store/web-crypto-digest.js";
 import type { NativePageChar, NativeRectTuple } from "../anchors/text-layer.js";
 import {
+  isSafeNativeNoteContent,
   OPERATION_RELATION_PREDICATE,
 } from "./record-utils.js";
 import type {
@@ -12,6 +13,7 @@ import type {
   NativeInspectedRegionEvidence,
   NativeMutationRecord,
   NativeNoteCreate,
+  NativeNoteContentPolicy,
   NativeNoteRecord,
   NativeNoteUpdate,
   NativePaperRecord,
@@ -195,6 +197,7 @@ export interface ZoteroNativeEnvironment {
   IOUtils: { read(path: string): Promise<Uint8Array | ArrayBuffer> };
   crypto: WebCryptoLike;
   cloneInto<T>(value: T, target: object): T;
+  noteContent: NativeNoteContentPolicy;
   accessGate?: ZoteroAccessGate;
 }
 
@@ -533,6 +536,7 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
   readonly #io: ZoteroNativeEnvironment["IOUtils"];
   readonly #crypto: WebCryptoLike;
   readonly #cloneInto: ZoteroNativeEnvironment["cloneInto"];
+  readonly #noteContent: NativeNoteContentPolicy;
   readonly #accessGate: ZoteroAccessGate | undefined;
 
   constructor(environment: ZoteroNativeEnvironment) {
@@ -540,6 +544,7 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     this.#io = environment.IOUtils;
     this.#crypto = environment.crypto;
     this.#cloneInto = environment.cloneInto;
+    this.#noteContent = environment.noteContent;
     this.#accessGate = environment.accessGate;
   }
 
@@ -884,9 +889,9 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     if (!item.isEditable()) {
       throw new CoreOperationError("permission_denied", "The annotation is not editable");
     }
+    this.#assertMutationEnabled();
     item.annotationComment = input.comment;
     item.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
-    this.#assertMutationEnabled();
     await item.saveTx({ skipSelect: true });
     const record = await this.getAnnotation(
       input.expected.libraryId,
@@ -932,6 +937,12 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
   }
 
   async createNote(input: NativeNoteCreate): Promise<NativeNoteRecord> {
+    if (!isSafeNativeNoteContent(input.content, this.#noteContent)) {
+      throw new CoreOperationError(
+        "invalid_request",
+        "Child-note content is not canonical safe native HTML",
+      );
+    }
     const parent = await this.#fresh(input.libraryId, input.itemKey);
     if (parent === undefined || !parent.isRegularItem() || parent.deleted === true) {
       throw new CoreOperationError("not_found", "The parent library item was not found");
@@ -956,6 +967,12 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
   }
 
   async updateNote(input: NativeNoteUpdate): Promise<NativeNoteRecord> {
+    if (!isSafeNativeNoteContent(input.content, this.#noteContent)) {
+      throw new CoreOperationError(
+        "invalid_request",
+        "Child-note content is not canonical safe native HTML",
+      );
+    }
     const parent = await this.#fresh(input.expected.libraryId, input.expected.itemKey);
     const note = await this.#fresh(input.expected.libraryId, input.expected.noteKey);
     if (
@@ -977,9 +994,9 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     if (!note.isEditable()) {
       throw new CoreOperationError("permission_denied", "The child note is not editable");
     }
+    this.#assertMutationEnabled();
     note.setNote?.(input.content);
     note.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
-    this.#assertMutationEnabled();
     await note.saveTx({ skipSelect: true });
     const record = await this.getNote(
       input.expected.libraryId,

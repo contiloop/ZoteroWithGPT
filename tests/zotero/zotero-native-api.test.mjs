@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
 import test from "node:test";
+import { JSDOM } from "jsdom";
 
 import { CoreOperationError } from "../../dist/core/index.js";
 import {
   MutableZoteroAccessGate,
+  DomPurifyNativeNoteContentPolicy,
   OPERATION_RELATION_PREDICATE,
   createZoteroNativeApi,
 } from "../../dist/adapters/zotero/index.js";
@@ -66,6 +68,7 @@ class FakeItem {
   }
 
   async loadAllData() {
+    await this.host.onLoadAllData?.(this);
     if (this.isNote() && typeof this.note === "string") {
       const match = this.note.match(/^<div class="zotero-note znv[0-9]+">([\s\S]*)<\/div>$/u);
       if (match) this.note = match[1];
@@ -97,7 +100,11 @@ class FakeItem {
     if (!values.includes(value)) values.push(value);
     this.relations.set(predicate, values);
   }
-  setNote(content) { this.note = content; }
+  setNote(content) {
+    this.note = content
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, "")
+      .trim();
+  }
   getNote() { return this.note; }
   getNoteTitle() { return "Fixture note"; }
   async saveTx() {
@@ -125,6 +132,7 @@ function fixtureEnvironment() {
     readerBytes: new Uint8Array([1, 2, 3, 4]),
     requireClonedAnnotationMeta: false,
     annotationMetaClones: 0,
+    onLoadAllData: undefined,
   };
   const paper = new FakeItem(host, "journalArticle", {
     id: 1,
@@ -254,6 +262,7 @@ function fixtureEnvironment() {
     host,
     env: {
       Zotero,
+      noteContent: new DomPurifyNativeNoteContentPolicy({ window: new JSDOM("").window }),
       IOUtils: { async read() { return Uint8Array.from(host.diskBytes); } },
       crypto: webcrypto,
       cloneInto(value, target) {
@@ -439,6 +448,80 @@ test("a disabled live gate stops a dispatched mutation before native save", asyn
     (error) => error instanceof CoreOperationError && error.code === "permission_denied",
   );
   assert.equal(host.savedSnapshots.length, 0);
+});
+
+test("disable during annotation refresh leaves the shared cached item unchanged", async () => {
+  const { env, host } = fixtureEnvironment();
+  const gate = new MutableZoteroAccessGate(true);
+  const native = createZoteroNativeApi({ ...env, accessGate: gate });
+  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+  const created = await native.createAnnotation({
+    anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
+    type: "highlight",
+    comment: "Human annotation text",
+    color: "#ffd400",
+    operationMarker: "urn:annotation-before-disable",
+  });
+  const item = [...host.items.values()].find(
+    (candidate) => candidate.key === created.annotationKey,
+  );
+  const savedCount = host.savedSnapshots.length;
+  host.onLoadAllData = async (candidate) => {
+    if (candidate !== item) return;
+    host.onLoadAllData = undefined;
+    gate.setEnabled(false);
+  };
+
+  await assert.rejects(
+    () =>
+      native.updateAnnotation({
+        expected: created,
+        comment: "Rejected companion text",
+        operationMarker: "urn:annotation-after-disable",
+      }),
+    (error) => error instanceof CoreOperationError && error.code === "permission_denied",
+  );
+  assert.equal(item.annotationComment, "Human annotation text");
+  assert.deepEqual(
+    item.getRelationsByPredicate(OPERATION_RELATION_PREDICATE),
+    ["urn:annotation-before-disable"],
+  );
+  assert.equal(host.savedSnapshots.length, savedCount);
+});
+
+test("disable during note refresh leaves the shared cached item unchanged", async () => {
+  const { env, host } = fixtureEnvironment();
+  const gate = new MutableZoteroAccessGate(true);
+  const native = createZoteroNativeApi({ ...env, accessGate: gate });
+  const created = await native.createNote({
+    libraryId: "1",
+    itemKey: "ITEM0001",
+    content: "<p>Human note text</p>",
+    operationMarker: "urn:note-before-disable",
+  });
+  const item = [...host.items.values()].find((candidate) => candidate.key === created.noteKey);
+  const savedCount = host.savedSnapshots.length;
+  host.onLoadAllData = async (candidate) => {
+    if (candidate !== item) return;
+    host.onLoadAllData = undefined;
+    gate.setEnabled(false);
+  };
+
+  await assert.rejects(
+    () =>
+      native.updateNote({
+        expected: created,
+        content: "<p>Rejected companion note</p>",
+        operationMarker: "urn:note-after-disable",
+      }),
+    (error) => error instanceof CoreOperationError && error.code === "permission_denied",
+  );
+  assert.equal(item.getNote(), "<p>Human note text</p>");
+  assert.deepEqual(
+    item.getRelationsByPredicate(OPERATION_RELATION_PREDICATE),
+    ["urn:note-before-disable"],
+  );
+  assert.equal(host.savedSnapshots.length, savedCount);
 });
 
 test("annotation model state alone is not reported as rendered viewer evidence", async () => {
@@ -724,14 +807,14 @@ test("native child-note updates use fresh content and preserve a concurrent manu
   const created = await native.createNote({
     libraryId: "1",
     itemKey: "ITEM0001",
-    content: '<div class="zotero-note znv1"><p>Initial fixture note</p></div>',
+    content: "<p>Initial fixture note</p>",
     operationMarker: "urn:note-create",
   });
   assert.deepEqual(created.operationMarkers, ["urn:note-create"]);
 
   const updated = await native.updateNote({
     expected: created,
-    content: '<div class="zotero-note znv1"><p>Updated fixture note</p></div>',
+    content: "<p>Updated fixture note</p>",
     operationMarker: "urn:note-update",
   });
   assert.match(updated.content, /Updated fixture note/);
@@ -743,10 +826,37 @@ test("native child-note updates use fresh content and preserve a concurrent manu
     () =>
       native.updateNote({
         expected: updated,
-        content: '<div class="zotero-note znv1"><p>Must not replace manual edit</p></div>',
+        content: "<p>Must not replace manual edit</p>",
         operationMarker: "urn:note-stale",
       }),
     (error) => error instanceof CoreOperationError && error.code === "conflict",
   );
   assert.match(item.note, /Manual edit/);
+});
+
+test("native child-note writes reject noncanonical active content before save", async () => {
+  const { env, host } = fixtureEnvironment();
+  const native = createZoteroNativeApi(env);
+  const cases = [
+    '<p>Native safety words</p><img src="https://example.invalid/native.png" alt="native diagram">',
+    '<p><a href="https://references.example/safe" href="javascript:alert(1)">duplicate</a></p>',
+    '<p><a href="https://references.example/unterminated>malformed</a></p>',
+    '<p><a href="zotero://debug/log">unsupported Zotero action</a></p>',
+  ];
+  for (const [index, content] of cases.entries()) {
+    await assert.rejects(
+      () =>
+        native.createNote({
+          libraryId: "1",
+          itemKey: "ITEM0001",
+          content,
+          operationMarker: `urn:native-unsafe-note-${index}`,
+        }),
+      (error) => error instanceof CoreOperationError && error.code === "invalid_request",
+    );
+  }
+  assert.equal(
+    [...host.items.values()].filter((candidate) => candidate.isNote()).length,
+    0,
+  );
 });

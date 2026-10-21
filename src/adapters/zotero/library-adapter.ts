@@ -43,17 +43,28 @@ import {
   annotationDeepLink,
   annotationRevision,
   appendNoteContent,
-  nativeNoteContent,
+  isSafeNativeNoteContent,
   noteDeepLink,
   noteRevision,
   operationIdentityMarker,
+  safeNativeNoteContent,
 } from "./record-utils.js";
 
 const DEFAULT_LIMIT = 25;
 const DEFAULT_ANNOTATION_COLOR: NativeAnnotationColor = "#ffd400";
+const textEncoder = new TextEncoder();
 
 function notFound(message: string): never {
   throw new CoreOperationError("not_found", message);
+}
+
+function assertTextWithinLimit(content: string, description: string): void {
+  if (textEncoder.encode(content).byteLength > MAX_TEXT_BYTES) {
+    throw new CoreOperationError(
+      "too_large",
+      `${description} exceeds ${MAX_TEXT_BYTES} UTF-8 bytes`,
+    );
+  }
 }
 
 function exactRectangles(left: readonly object[], right: readonly object[]): boolean {
@@ -101,6 +112,7 @@ export class ZoteroLibraryAdapter
     AnchorPageSource
 {
   readonly #native: ZoteroNativeApi;
+  readonly #noteContent: ZoteroLibraryAdapterOptions["noteContent"];
   readonly #digest: PayloadDigestPort;
   readonly #profileId: string;
   readonly #pluginVersion: string;
@@ -110,6 +122,7 @@ export class ZoteroLibraryAdapter
 
   constructor(options: ZoteroLibraryAdapterOptions) {
     this.#native = options.native;
+    this.#noteContent = options.noteContent;
     this.#digest = options.digest;
     this.#profileId = options.profileId;
     this.#pluginVersion = options.pluginVersion;
@@ -396,6 +409,7 @@ export class ZoteroLibraryAdapter
       request.payload.mode === "append"
         ? `${current.comment}\n\n${request.payload.comment}`
         : request.payload.comment;
+    assertTextWithinLimit(comment, "The complete annotation comment");
     const marker = operationIdentityMarker(identity);
     this.#assertProfile(request.profileId);
     await this.#native.updateAnnotation({ expected: current, comment, operationMarker: marker });
@@ -421,7 +435,8 @@ export class ZoteroLibraryAdapter
   ): Promise<CreateNoteResult> {
     this.#assertProfile(request.profileId);
     const marker = operationIdentityMarker(identity);
-    const content = nativeNoteContent(request.payload.content);
+    const content = safeNativeNoteContent(request.payload.content, this.#noteContent);
+    assertTextWithinLimit(content, "The complete child note");
     this.#assertProfile(request.profileId);
     const record = await this.#native.createNote({
       libraryId: request.payload.libraryId,
@@ -452,10 +467,20 @@ export class ZoteroLibraryAdapter
     );
     if (current === undefined) notFound("The child note was not found under that item");
     assertExpectedRevision(request.payload.expectedRevision, await noteRevision(current, this.#digest));
+    if (
+      request.payload.mode === "append" &&
+      !isSafeNativeNoteContent(current.content, this.#noteContent)
+    ) {
+      throw new CoreOperationError(
+        "unsupported_capability",
+        "The existing child note contains active or unsupported native HTML; replace it explicitly with reviewed safe content before appending",
+      );
+    }
     const content =
       request.payload.mode === "append"
-        ? appendNoteContent(current.content, request.payload.content)
-        : nativeNoteContent(request.payload.content);
+        ? appendNoteContent(current.content, request.payload.content, this.#noteContent)
+        : safeNativeNoteContent(request.payload.content, this.#noteContent);
+    assertTextWithinLimit(content, "The complete child note");
     const marker = operationIdentityMarker(identity);
     this.#assertProfile(request.profileId);
     await this.#native.updateNote({ expected: current, content, operationMarker: marker });

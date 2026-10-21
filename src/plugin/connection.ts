@@ -1,8 +1,10 @@
 import { OperationCoordinator } from "../core/index.js";
 import { NativeOperationExecutor } from "./execute.js";
 import {
-  createZoteroNativeApi, ZoteroLibraryAdapter, ZoteroOperationRecovery,
+  createZoteroNativeApi, DomPurifyNativeNoteContentPolicy,
+  ZoteroLibraryAdapter, ZoteroOperationRecovery,
   MutableZoteroAccessGate, type ZoteroNativeEnvironment,
+  type DomPurifyNativeNoteContentPolicyOptions,
 } from "../adapters/zotero/index.js";
 import { ZoteroAnchorResolver } from "../adapters/anchors/index.js";
 import {
@@ -26,6 +28,7 @@ export interface ProductionConnectionEnvironment extends GeckoFileBridgeGlobals 
   PathUtils: GeckoFileBridgeGlobals["PathUtils"] & PathUtilsApi;
   crypto: ZoteroNativeEnvironment["crypto"] & { randomUUID(): string };
   cloneInto: ZoteroNativeEnvironment["cloneInto"];
+  noteWindow: DomPurifyNativeNoteContentPolicyOptions["window"];
   reportError(error: unknown): void;
 }
 
@@ -97,7 +100,8 @@ export async function openProductionConnection(
   previews: FormattedPreviewVerificationPort,
 ): Promise<{ profileId: string; subscription: FileBridgeSubscription; close(): Promise<void> }> {
   const gate = new MutableZoteroAccessGate(true);
-  const native = createZoteroNativeApi({ ...environment, accessGate: gate });
+  const noteContent = new DomPurifyNativeNoteContentPolicy({ window: environment.noteWindow });
+  const native = createZoteroNativeApi({ ...environment, noteContent, accessGate: gate });
   const digest = new WebCryptoPayloadDigest(environment.crypto);
   const store = new DurableOperationStore(
     new IOUtilsAtomicTextFile(environment.IOUtils, environment.PathUtils,
@@ -110,7 +114,7 @@ export async function openProductionConnection(
     connectedProfileId: profileId, onError: environment.reportError,
   });
   const library = new ZoteroLibraryAdapter({
-    native, digest, profileId, pluginVersion: version, enabled: true,
+    native, noteContent, digest, profileId, pluginVersion: version, enabled: true,
     accessGate: gate, transport: bridge.describe(),
   });
   const viewer = createViewerVerificationPort({

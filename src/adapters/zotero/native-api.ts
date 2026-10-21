@@ -105,6 +105,15 @@ export interface NativeNoteUpdate {
 }
 
 /**
+ * Sanitizes newly authorized note content and validates an exact native body
+ * before a write. Validation never rewrites existing human-authored bytes.
+ */
+export interface NativeNoteContentPolicy {
+  sanitize(content: string): string;
+  accepts(content: string): boolean;
+}
+
+/**
  * Narrow boundary around privileged Zotero globals. The library adapter owns
  * protocol policy; a host implementation owns native item and reader calls.
  */
@@ -154,6 +163,7 @@ export interface ZoteroNativeApi {
 
 export interface ZoteroLibraryAdapterOptions {
   native: ZoteroNativeApi;
+  noteContent: NativeNoteContentPolicy;
   digest: import("../../ports/digest.js").PayloadDigestPort;
   profileId: string;
   pluginVersion: string;

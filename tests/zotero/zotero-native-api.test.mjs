@@ -167,6 +167,7 @@ function fixtureEnvironment() {
     },
   };
 
+  host.reader = reader;
   return {
     host,
     env: {
@@ -281,6 +282,64 @@ test("annotation model state alone is not reported as rendered viewer evidence",
   });
 
   assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
+});
+
+test("missing and hidden reader DOM never count as viewer evidence", async () => {
+  const { env, host } = fixtureEnvironment();
+  const native = createZoteroNativeApi(env);
+  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+  const created = await native.createAnnotation({
+    anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
+    type: "highlight",
+    comment: "",
+    color: "#ffd400",
+    operationMarker: "urn:hidden-dom",
+  });
+
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
+  host.reader._internalReader._primaryView._iframeWindow.document = {
+    querySelector() {
+      return {
+        isConnected: true,
+        getClientRects() { return { length: 0 }; },
+      };
+    },
+  };
+  host.reader._iframeWindow = {
+    document: {
+      querySelector() {
+        return {
+          isConnected: true,
+          getClientRects() { return { length: 0 }; },
+        };
+      },
+    },
+  };
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
+});
+
+test("a connected laid-out annotation node is rendered viewer evidence", async () => {
+  const { env, host } = fixtureEnvironment();
+  const native = createZoteroNativeApi(env);
+  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+  const created = await native.createAnnotation({
+    anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
+    type: "highlight",
+    comment: "",
+    color: "#ffd400",
+    operationMarker: "urn:visible-dom",
+  });
+  host.reader._internalReader._primaryView._iframeWindow.document = {
+    querySelector(selector) {
+      if (!selector.includes(created.annotationKey)) return null;
+      return {
+        isConnected: true,
+        getClientRects() { return { length: 1 }; },
+      };
+    },
+  };
+
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), true);
 });
 
 test("native child-note updates use fresh content and preserve a concurrent manual edit", async () => {

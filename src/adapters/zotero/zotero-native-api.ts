@@ -191,6 +191,8 @@ export interface ZoteroNativeEnvironment {
 
 interface QueryNodeLike {
   textContent?: string | null;
+  isConnected?: boolean;
+  getClientRects?(): { length: number };
   querySelector?(selector: string): QueryNodeLike | null;
 }
 
@@ -316,6 +318,14 @@ function noteMaterial(record: NativeNoteRecord): string {
     dateModified: record.dateModified,
     operationMarkers: [...record.operationMarkers].sort(),
   });
+}
+
+function isRenderedNode(node: QueryNodeLike | null | undefined): node is QueryNodeLike {
+  return (
+    node?.isConnected === true &&
+    node.getClientRects !== undefined &&
+    node.getClientRects().length > 0
+  );
 }
 
 function mapPageChars(value: unknown): NativePageChar[] {
@@ -798,9 +808,10 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
           `[data-sidebar-annotation-id="${annotationKey}"]`,
         );
         const commentMatches = (node: QueryNodeLike | null | undefined): boolean => {
-          if (record.comment.length === 0) return node !== null && node !== undefined;
-          const rendered = node?.querySelector?.(".comment .content")?.textContent ?? "";
-          return rendered.trim() === record.comment.trim();
+          if (!isRenderedNode(node)) return false;
+          if (record.comment.length === 0) return true;
+          const content = node.querySelector?.(".comment .content");
+          return isRenderedNode(content) && content.textContent?.trim() === record.comment.trim();
         };
         if (commentMatches(sidebar)) return true;
 
@@ -814,10 +825,10 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
         }
 
         if (record.comment.length > 0) return false;
-        return (
+        return isRenderedNode(
           view._iframeWindow?.document?.querySelector(
             `[data-annotation-id="${annotationKey}"]`,
-          ) !== null
+          ),
         );
       })) ?? false
     );

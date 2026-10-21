@@ -73,6 +73,7 @@ class FakeItem {
 }
 
 function fixtureEnvironment() {
+  const readerRealmRequest = Symbol("readerRealmRequest");
   const host = {
     items: new Map(),
     nextId: 10,
@@ -116,7 +117,14 @@ function fixtureEnvironment() {
               numPages: 1,
               async getData() { return Uint8Array.from(host.readerBytes); },
               async getPageLabels2() { return ["1"]; },
-              async getPageData() { return structuredClone(pageData); },
+              async getPageData(input) {
+                if (input?.[readerRealmRequest] !== true) {
+                  const error = new Error("The object could not be cloned.");
+                  error.name = "DataCloneError";
+                  throw error;
+                }
+                return structuredClone(pageData);
+              },
             },
           },
         },
@@ -186,6 +194,14 @@ function fixtureEnvironment() {
       Zotero,
       IOUtils: { async read() { return Uint8Array.from(host.diskBytes); } },
       crypto: webcrypto,
+      cloneInto(value, target) {
+        assert.equal(
+          target,
+          reader._internalReader._primaryView._iframeWindow,
+          "worker-bound data must be cloned into the PDF frame realm",
+        );
+        return { ...structuredClone(value), [readerRealmRequest]: true };
+      },
     },
   };
 }
@@ -248,7 +264,7 @@ test("native update re-reads the item and rejects a concurrent manual edit", asy
   assert.equal(item.annotationComment, "Manual edit");
 });
 
-test("page extraction uses the initialized native reader document", async () => {
+test("page extraction clones its worker request into the native PDF frame realm", async () => {
   const { env } = fixtureEnvironment();
   const native = createZoteroNativeApi(env);
   const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");

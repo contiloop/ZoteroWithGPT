@@ -187,6 +187,7 @@ export interface ZoteroNativeEnvironment {
   Zotero: ZoteroHostGlobal;
   IOUtils: { read(path: string): Promise<Uint8Array | ArrayBuffer> };
   crypto: WebCryptoLike;
+  cloneInto<T>(value: T, target: object): T;
   accessGate?: ZoteroAccessGate;
 }
 
@@ -442,12 +443,14 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
   readonly #zotero: ZoteroHostGlobal;
   readonly #io: ZoteroNativeEnvironment["IOUtils"];
   readonly #crypto: WebCryptoLike;
+  readonly #cloneInto: ZoteroNativeEnvironment["cloneInto"];
   readonly #accessGate: ZoteroAccessGate | undefined;
 
   constructor(environment: ZoteroNativeEnvironment) {
     this.#zotero = environment.Zotero;
     this.#io = environment.IOUtils;
     this.#crypto = environment.crypto;
+    this.#cloneInto = environment.cloneInto;
     this.#accessGate = environment.accessGate;
   }
 
@@ -587,7 +590,9 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
       requiredNumber(item.id, "attachment ID"),
       true,
       async (_reader, view) => {
-        const document = view._iframeWindow?.PDFViewerApplication?.pdfDocument;
+        const frame = view._iframeWindow;
+        if (frame === undefined) throw new Error("The Zotero reader PDF frame is unavailable");
+        const document = frame.PDFViewerApplication?.pdfDocument;
         if (document === undefined) throw new Error("The Zotero reader PDF document is unavailable");
         if ((await this.#readerFingerprint(document)) !== attachment.fingerprint) {
           throw new CoreOperationError(
@@ -595,7 +600,7 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
             "The open Zotero reader is displaying different PDF bytes; reload the reader and retry",
           );
         }
-        const data = await document.getPageData({ pageIndex });
+        const data = await document.getPageData(this.#cloneInto({ pageIndex }, frame));
         const viewBox = tuple(data.viewBox);
         if (viewBox === undefined) throw new Error("The Zotero reader returned an invalid PDF view box");
         const labelsValue = await document.getPageLabels2?.();

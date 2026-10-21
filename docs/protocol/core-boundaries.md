@@ -17,7 +17,7 @@ The TypeScript contract uses ports so the core has no dependency on Zotero globa
 | `UntrustedContentRenderingPort` | Render paper, annotation, and note content without executing embedded instructions, scripts, or links. |
 | `ProtocolTransportPort` | Carry bytes and describe the transport; parsing and validation remain outside it. |
 
-`OperationCoordinator` implements the pure ordering rules around these ports. It validates connected profile scope, pairs an operation ID with a canonical request digest, returns existing records without executing again, serializes mutations, applies lifecycle transitions, and interprets verification evidence. It does not implement a database or claim crash-safe persistence by itself.
+`OperationCoordinator` implements the pure ordering rules around these ports. On entry, it synchronously clones and deeply freezes the accepted request before the first asynchronous digest call; the digest, durable identity, authorization check, and executor therefore use one immutable snapshot. It validates connected profile scope, returns existing records without executing again, serializes mutations, applies lifecycle transitions, and interprets verification evidence. It does not implement a database or claim crash-safe persistence by itself.
 
 The native execution layer must keep the following sequence inside the per-profile serialized section for a mutation:
 
@@ -27,6 +27,6 @@ The native execution layer must keep the following sequence inside the per-profi
 4. Read the saved native object back from storage and compare its exact location and complete content with the requested write.
 5. Return storage verification. Viewer verification may then inspect the actual reader, but a viewer failure does not repeat a storage-confirmed write.
 
-Append behavior belongs in the native adapter because it must read and preserve the current native value. An append must use the request's `expectedRevision`; it must not reconstruct content from an earlier client copy. Conflict handling stops the write and requires a fresh read and new approval.
+Append behavior belongs in the native adapter because it must read and preserve the current native value. An append must use the request's `expectedRevision`; it must not reconstruct content from an earlier client copy. The pure `assertExpectedRevision` policy maps unequal opaque tokens to `conflict`. Conflict handling stops the write and requires a fresh read, the newly observed revision, a new operation ID, and renewed approval.
 
 Recovery uses `OperationRecoveryPort.reconcile` only for a durable record left in `running`. It searches by historical operation identity and returns observed evidence. It does not pass through `ZoteroWritePort`, and it never recreates a missing object for a historical operation.

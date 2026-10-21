@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   CoreOperationError,
   OperationCoordinator,
+  assertExpectedRevision,
   assertMutationAuthorizedForProfile,
   revalidateAnnotationAnchor,
   transitionOperationState,
@@ -60,6 +61,63 @@ class InlineMutationSerializer {
   async runExclusive(profileId, work) {
     this.calls.push(profileId);
     return work();
+  }
+}
+
+class RevisionedNotePortDouble {
+  note = {
+    parentItemKey: "ITEM1234",
+    noteKey: "NOTE1234",
+    revision: "rev:1",
+    content: "Human-authored summary.",
+    deepLink: "zotero://select/library/items/NOTE1234",
+  };
+  revisionNumber = 1;
+  updateAttempts = 0;
+  successfulWrites = 0;
+
+  async readNote(request) {
+    assert.equal(request.payload.noteKey, this.note.noteKey);
+    return structuredClone(this.note);
+  }
+
+  manualAppend(content) {
+    this.revisionNumber += 1;
+    this.note = {
+      ...this.note,
+      revision: `rev:${this.revisionNumber}`,
+      content: `${this.note.content}\n\n${content}`,
+    };
+  }
+
+  async updateNote(request) {
+    this.updateAttempts += 1;
+    assertExpectedRevision(request.payload.expectedRevision, this.note.revision);
+    const content =
+      request.payload.mode === "append"
+        ? `${this.note.content}\n\n${request.payload.content}`
+        : request.payload.content;
+    this.revisionNumber += 1;
+    this.successfulWrites += 1;
+    this.note = {
+      ...this.note,
+      revision: `rev:${this.revisionNumber}`,
+      content,
+    };
+    return {
+      noteKey: this.note.noteKey,
+      revision: this.note.revision,
+      content: this.note.content,
+      deepLink: this.note.deepLink,
+    };
+  }
+
+  async confirmNote(target) {
+    return {
+      confirmed:
+        target.noteKey === this.note.noteKey && target.expectedRevision === this.note.revision,
+      description: "In-memory readback of the revisioned note test double.",
+    };
   }
 }
 
@@ -188,6 +246,44 @@ test("same operation ID and payload is replayed without executing twice", async 
   assert.deepEqual(replay, first);
   assert.equal(executions, 1);
   assert.deepEqual(serializer.calls, ["profile-A"]);
+});
+
+test("submit snapshots request content before the digest await", async () => {
+  const store = new MemoryOperationStore();
+  const coordinator = new OperationCoordinator({
+    store,
+    digest: new StableDigest(),
+    serializer: new InlineMutationSerializer(),
+  });
+  const mutableRequest = annotationRequest();
+  let executorComment;
+  let executorRequestFrozen;
+
+  const pending = coordinator.submit(mutableRequest, "profile-A", async (acceptedRequest) => {
+    executorComment = acceptedRequest.payload.comment;
+    executorRequestFrozen = Object.isFrozen(acceptedRequest.payload);
+    return {
+      kind: "completed",
+      data: {
+        annotationKey: "ANN00001",
+        revision: "rev:1",
+        deepLink: "zotero://saved-snapshot",
+        saved: { comment: acceptedRequest.payload.comment },
+      },
+      verification: { storage: "confirmed", viewer: "not_checked" },
+    };
+  });
+
+  mutableRequest.payload.comment = "Content changed while digesting";
+  const first = await pending;
+  const replay = await coordinator.submit(annotationRequest(), "profile-A", async () => {
+    throw new Error("canonical replay must not execute again");
+  });
+
+  assert.equal(executorComment, "Proof");
+  assert.equal(executorRequestFrozen, true);
+  assert.equal(first.data.saved.comment, "Proof");
+  assert.deepEqual(replay, first);
 });
 
 test("same operation ID with a different canonical request is rejected", async () => {
@@ -341,4 +437,138 @@ test("crash-left running mutations reconcile by identity without invoking a writ
   });
   assert.equal(replay.state, "succeeded");
   assert.equal(writerCalls, 0);
+});
+
+test("note conflict preserves human content and requires re-read, revision, and new approval", async () => {
+  const notePort = new RevisionedNotePortDouble();
+  const coordinator = new OperationCoordinator({
+    store: new MemoryOperationStore(),
+    digest: new StableDigest(),
+    serializer: new InlineMutationSerializer(),
+  });
+  const readRequest = (operationId) =>
+    validateProtocolRequest({
+      protocolVersion: 1,
+      operationId,
+      operation: "read_note",
+      profileId: "profile-A",
+      payload: { libraryId: "1", itemKey: "ITEM1234", noteKey: "NOTE1234" },
+    });
+  const executeRead = async (request) => ({
+    kind: "completed",
+    data: await notePort.readNote(request),
+    verification: { storage: "not_applicable", viewer: "not_applicable" },
+  });
+  const executeUpdate = async (request, identity) => {
+    try {
+      const data = await notePort.updateNote(request, identity);
+      const readback = await notePort.confirmNote({
+        libraryId: request.payload.libraryId,
+        itemKey: request.payload.itemKey,
+        noteKey: data.noteKey,
+        expectedRevision: data.revision,
+      });
+      return {
+        kind: "completed",
+        data,
+        verification: {
+          storage: readback.confirmed ? "confirmed" : "failed",
+          viewer: "not_applicable",
+        },
+      };
+    } catch (error) {
+      if (!(error instanceof CoreOperationError)) throw error;
+      return {
+        kind: "failed",
+        error: error.toProtocolError(),
+        verification: { storage: "not_checked", viewer: "not_applicable" },
+      };
+    }
+  };
+
+  const initialRead = await coordinator.submit(
+    readRequest("op.note-initial-read"),
+    "profile-A",
+    executeRead,
+  );
+  assert.equal(initialRead.state, "succeeded");
+  assert.equal(initialRead.data.revision, "rev:1");
+  assert.equal(initialRead.data.content, "Human-authored summary.");
+
+  const staleAuthorization = {
+    kind: "explicit_request",
+    scope: "Append the study question to NOTE1234 as read at rev:1.",
+  };
+  const staleUpdate = validateProtocolRequest({
+    protocolVersion: 1,
+    operationId: "op.note-stale-update",
+    operation: "update_note",
+    profileId: "profile-A",
+    authorization: staleAuthorization,
+    payload: {
+      libraryId: "1",
+      itemKey: "ITEM1234",
+      noteKey: "NOTE1234",
+      expectedRevision: initialRead.data.revision,
+      mode: "append",
+      content: "Question: Does the result survive a heavy-tailed prior?",
+    },
+  });
+
+  notePort.manualAppend("Manual correction added by the researcher.");
+  const contentAfterManualEdit = notePort.note.content;
+  const conflict = await coordinator.submit(staleUpdate, "profile-A", executeUpdate);
+  assert.equal(conflict.state, "failed");
+  assert.equal(conflict.error.code, "conflict");
+  assert.equal(notePort.note.content, contentAfterManualEdit);
+  assert.equal(notePort.successfulWrites, 0);
+
+  const conflictReplay = await coordinator.submit(staleUpdate, "profile-A", executeUpdate);
+  assert.deepEqual(conflictReplay, conflict);
+  assert.equal(notePort.updateAttempts, 1);
+
+  const freshRead = await coordinator.submit(
+    readRequest("op.note-read-after-conflict"),
+    "profile-A",
+    executeRead,
+  );
+  assert.equal(freshRead.data.revision, "rev:2");
+  assert.equal(freshRead.data.content, contentAfterManualEdit);
+
+  const renewedAuthorization = {
+    kind: "explicit_request",
+    scope:
+      "After re-reading NOTE1234 at rev:2, preserve its manual correction and append the approved study question.",
+  };
+  assert.notEqual(renewedAuthorization.scope, staleAuthorization.scope);
+  const approvedQuestion = "Question: Does the result survive a heavy-tailed prior?";
+  const freshUpdate = validateProtocolRequest({
+    protocolVersion: 1,
+    operationId: "op.note-approved-update",
+    operation: "update_note",
+    profileId: "profile-A",
+    authorization: renewedAuthorization,
+    payload: {
+      libraryId: "1",
+      itemKey: "ITEM1234",
+      noteKey: "NOTE1234",
+      expectedRevision: freshRead.data.revision,
+      mode: "append",
+      content: approvedQuestion,
+    },
+  });
+  const updated = await coordinator.submit(freshUpdate, "profile-A", executeUpdate);
+  assert.equal(updated.state, "succeeded");
+  assert.equal(updated.verification.storage, "confirmed");
+  assert.equal(updated.data.revision, "rev:3");
+  assert.equal(updated.data.content, `${contentAfterManualEdit}\n\n${approvedQuestion}`);
+  assert.equal(notePort.successfulWrites, 1);
+
+  const finalRead = await coordinator.submit(
+    readRequest("op.note-final-read"),
+    "profile-A",
+    executeRead,
+  );
+  assert.equal(finalRead.data.revision, "rev:3");
+  assert.equal(finalRead.data.content, updated.data.content);
 });

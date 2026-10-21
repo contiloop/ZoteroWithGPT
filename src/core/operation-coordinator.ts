@@ -22,6 +22,7 @@ import { assertRequestAuthorizedForProfile } from "./authorization.js";
 import { CoreOperationError } from "./errors.js";
 import { transitionOperationState } from "./lifecycle.js";
 import type { OperationRecord } from "./operation-record.js";
+import { snapshotProtocolRequest } from "./request-snapshot.js";
 
 export interface OperationCoordinatorDependencies {
   store: OperationPersistencePort;
@@ -84,18 +85,19 @@ export class OperationCoordinator {
     connectedProfileId: string | undefined,
     execute: ExecuteOperation,
   ): Promise<ProtocolResponse> {
-    const requestDigest = await this.#digest.digest(canonicalRequestBytes(request));
+    const acceptedRequest = snapshotProtocolRequest(request);
+    const requestDigest = await this.#digest.digest(canonicalRequestBytes(acceptedRequest));
     if (requestDigest.trim().length === 0) {
       throw new Error("PayloadDigestPort returned an empty digest");
     }
-    const mutation = isMutationOperation(request.operation);
-    const initialResponse = response(request.operationId, "queued", null, null);
+    const mutation = isMutationOperation(acceptedRequest.operation);
+    const initialResponse = response(acceptedRequest.operationId, "queued", null, null);
     const initial: OperationRecord = {
       protocolVersion: PROTOCOL_VERSION,
-      operationId: request.operationId,
+      operationId: acceptedRequest.operationId,
       requestDigest,
-      operation: request.operation,
-      profileId: request.profileId ?? null,
+      operation: acceptedRequest.operation,
+      profileId: acceptedRequest.profileId ?? null,
       mutation,
       state: "queued",
       response: initialResponse,
@@ -105,7 +107,7 @@ export class OperationCoordinator {
     if (claim.kind === "existing") {
       if (claim.record.requestDigest !== requestDigest) {
         return coreErrorResponse(
-          request.operationId,
+          acceptedRequest.operationId,
           "rejected",
           new CoreOperationError(
             "duplicate_id_mismatch",
@@ -118,22 +120,25 @@ export class OperationCoordinator {
 
     let queued = claim.record;
     try {
-      assertRequestAuthorizedForProfile(request, connectedProfileId);
+      assertRequestAuthorizedForProfile(acceptedRequest, connectedProfileId);
     } catch (error) {
       if (!(error instanceof CoreOperationError)) throw error;
-      const rejected = coreErrorResponse(request.operationId, "rejected", error);
+      const rejected = coreErrorResponse(acceptedRequest.operationId, "rejected", error);
       return (await this.#move(queued, "rejected", rejected)).response;
     }
 
-    const runningResponse = response(request.operationId, "running", null, null);
+    const runningResponse = response(acceptedRequest.operationId, "running", null, null);
     const running = await this.#move(queued, "running", runningResponse);
-    const identity: OperationIdentity = { operationId: request.operationId, requestDigest };
+    const identity: OperationIdentity = {
+      operationId: acceptedRequest.operationId,
+      requestDigest,
+    };
 
     let outcome: OperationExecutionOutcome;
     try {
-      const work = () => execute(request, identity);
+      const work = () => execute(acceptedRequest, identity);
       if (mutation) {
-        const profileId = request.profileId;
+        const profileId = acceptedRequest.profileId;
         if (profileId === undefined) {
           throw new CoreOperationError("invalid_request", "Mutation profileId is missing");
         }

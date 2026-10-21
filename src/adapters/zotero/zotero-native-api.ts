@@ -467,6 +467,10 @@ function visibleDocument(document: QueryDocumentLike | undefined): document is Q
   );
 }
 
+function hasOwnerVisibilityApis(document: QueryDocumentLike | undefined): document is QueryDocumentLike {
+  return typeof document?.defaultView?.getComputedStyle === "function";
+}
+
 function owningReaderVisible(reader: ReaderLike, document: QueryDocumentLike): boolean {
   if (!visibleDocument(document)) return false;
   if (
@@ -487,7 +491,7 @@ function owningReaderVisible(reader: ReaderLike, document: QueryDocumentLike): b
   if (
     frame === undefined ||
     frame === null ||
-    ownerDocument === undefined ||
+    !hasOwnerVisibilityApis(ownerDocument) ||
     !isRenderedNode(frame, ownerDocument)
   ) {
     return false;
@@ -496,7 +500,7 @@ function owningReaderVisible(reader: ReaderLike, document: QueryDocumentLike): b
   if (tabContainer === undefined) return true;
   const tabDocument = tabContainer.ownerDocument;
   return (
-    tabDocument !== undefined &&
+    hasOwnerVisibilityApis(tabDocument) &&
     isRenderedNode(tabContainer, tabDocument)
   );
 }

@@ -642,6 +642,42 @@ test("a background reader tab is not viewer evidence even with an active documen
   assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
 });
 
+test("a reader frame owner without computed-style access fails closed", async () => {
+  const { env, host } = fixtureEnvironment();
+  const native = createZoteroNativeApi(env);
+  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+  const created = await native.createAnnotation({
+    anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
+    type: "highlight",
+    comment: "Unverifiable frame owner fixture",
+    color: "#ffd400",
+    operationMarker: "urn:frame-owner-without-style-api",
+  });
+  showAnnotationInReader(host.reader, created);
+  delete host.reader._iframe.ownerDocument.defaultView.getComputedStyle;
+
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
+});
+
+test("a tab-container owner without a default view fails closed", async () => {
+  const { env, host } = fixtureEnvironment();
+  const native = createZoteroNativeApi(env);
+  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+  const created = await native.createAnnotation({
+    anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
+    type: "highlight",
+    comment: "Unverifiable tab owner fixture",
+    color: "#ffd400",
+    operationMarker: "urn:tab-owner-without-default-view",
+  });
+  showAnnotationInReader(host.reader, created);
+  const tabOwner = visibleDocument();
+  delete tabOwner.defaultView;
+  host.reader._tabContainer.ownerDocument = tabOwner;
+
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
+});
+
 test("a visible selected duplicate reader can confirm when an earlier duplicate is hidden", async () => {
   const { env, host } = fixtureEnvironment();
   const native = createZoteroNativeApi(env);

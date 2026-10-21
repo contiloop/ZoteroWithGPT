@@ -194,10 +194,35 @@ interface QueryNodeLike {
   textContent?: string | null;
   isConnected?: boolean;
   getClientRects?(): { length: number };
+  getBoundingClientRect?(): QueryRectLike;
+  parentElement?: QueryNodeLike | null;
   querySelector?(selector: string): QueryNodeLike | null;
 }
 
+interface QueryRectLike {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+interface QueryStyleLike {
+  display?: string;
+  visibility?: string;
+  opacity?: string;
+  contentVisibility?: string;
+  overflow?: string;
+  overflowX?: string;
+  overflowY?: string;
+}
+
 interface QueryDocumentLike {
+  defaultView?: {
+    innerWidth?: number;
+    innerHeight?: number;
+    getComputedStyle?(node: QueryNodeLike): QueryStyleLike;
+  };
+  documentElement?: { clientWidth?: number; clientHeight?: number };
   querySelector(selector: string): QueryNodeLike | null;
 }
 
@@ -321,12 +346,73 @@ function noteMaterial(record: NativeNoteRecord): string {
   });
 }
 
-function isRenderedNode(node: QueryNodeLike | null | undefined): node is QueryNodeLike {
-  return (
-    node?.isConnected === true &&
-    node.getClientRects !== undefined &&
-    node.getClientRects().length > 0
-  );
+function clipsOverflow(value: string | undefined): boolean {
+  return value === "auto" || value === "clip" || value === "hidden" || value === "scroll";
+}
+
+function isRenderedNode(
+  node: QueryNodeLike | null | undefined,
+  document: QueryDocumentLike | undefined,
+): node is QueryNodeLike {
+  if (
+    node?.isConnected !== true ||
+    node.getClientRects === undefined ||
+    node.getClientRects().length === 0 ||
+    node.getBoundingClientRect === undefined ||
+    document === undefined
+  ) {
+    return false;
+  }
+  const width = document.defaultView?.innerWidth ?? document.documentElement?.clientWidth;
+  const height = document.defaultView?.innerHeight ?? document.documentElement?.clientHeight;
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    (width ?? 0) <= 0 ||
+    (height ?? 0) <= 0
+  ) {
+    return false;
+  }
+  const rect = node.getBoundingClientRect();
+  if (![rect.left, rect.right, rect.top, rect.bottom].every(Number.isFinite)) return false;
+  let left = Math.max(0, rect.left);
+  let right = Math.min(width as number, rect.right);
+  let top = Math.max(0, rect.top);
+  let bottom = Math.min(height as number, rect.bottom);
+  if (right <= left || bottom <= top) return false;
+
+  for (
+    let current: QueryNodeLike | null | undefined = node;
+    current;
+    current = current.parentElement
+  ) {
+    const style = document.defaultView?.getComputedStyle?.(current);
+    if (
+      style?.display === "none" ||
+      style?.visibility === "hidden" ||
+      style?.visibility === "collapse" ||
+      style?.contentVisibility === "hidden" ||
+      (style?.opacity !== undefined && Number(style.opacity) === 0)
+    ) {
+      return false;
+    }
+    if (current === node || style === undefined) continue;
+    const clipX = clipsOverflow(style.overflowX || style.overflow);
+    const clipY = clipsOverflow(style.overflowY || style.overflow);
+    if (!clipX && !clipY) continue;
+    const ancestor = current.getBoundingClientRect?.();
+    if (ancestor === undefined) return false;
+    if (clipX) {
+      left = Math.max(left, ancestor.left);
+      right = Math.min(right, ancestor.right);
+    }
+    if (clipY) {
+      top = Math.max(top, ancestor.top);
+      bottom = Math.min(bottom, ancestor.bottom);
+    }
+    if (right <= left || bottom <= top) return false;
+  }
+  return true;
 }
 
 function mapPageChars(value: unknown): NativePageChar[] {
@@ -825,28 +911,40 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
         const sidebar = readerDocument?.querySelector(
           `[data-sidebar-annotation-id="${annotationKey}"]`,
         );
-        const commentMatches = (node: QueryNodeLike | null | undefined): boolean => {
-          if (!isRenderedNode(node)) return false;
+        const commentMatches = (
+          node: QueryNodeLike | null | undefined,
+          document: QueryDocumentLike | undefined,
+        ): boolean => {
+          if (!isRenderedNode(node, document)) return false;
           if (record.comment.length === 0) return true;
           const content = node.querySelector?.(".comment .content");
-          return isRenderedNode(content) && content.textContent?.trim() === record.comment.trim();
+          return (
+            isRenderedNode(content, document) &&
+            content.textContent?.trim() === record.comment.trim()
+          );
         };
-        if (commentMatches(sidebar)) return true;
+        if (
+          internal?._state?.sidebarOpen === true &&
+          internal._state.sidebarView === "annotations" &&
+          commentMatches(sidebar, readerDocument)
+        ) {
+          return true;
+        }
 
         const selected = internal?._state?.selectedAnnotationIDs;
         if (
           Array.isArray(selected) &&
           selected.includes(annotationKey) &&
-          commentMatches(readerDocument?.querySelector(".annotation-popup"))
+          commentMatches(readerDocument?.querySelector(".annotation-popup"), readerDocument)
         ) {
           return true;
         }
 
         if (record.comment.length > 0) return false;
+        const viewDocument = view._iframeWindow?.document;
         return isRenderedNode(
-          view._iframeWindow?.document?.querySelector(
-            `[data-annotation-id="${annotationKey}"]`,
-          ),
+          viewDocument?.querySelector(`[data-annotation-id="${annotationKey}"]`),
+          viewDocument,
         );
       })) ?? false
     );

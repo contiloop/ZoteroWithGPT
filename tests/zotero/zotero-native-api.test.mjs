@@ -364,15 +364,86 @@ test("a connected laid-out annotation node is rendered viewer evidence", async (
     operationMarker: "urn:visible-dom",
   });
   host.reader._internalReader._primaryView._iframeWindow.document = {
+    defaultView: { innerWidth: 800, innerHeight: 600 },
     querySelector(selector) {
       if (!selector.includes(created.annotationKey)) return null;
       return {
         isConnected: true,
         getClientRects() { return { length: 1 }; },
+        getBoundingClientRect() {
+          return { left: 10, right: 17, top: 20, bottom: 30 };
+        },
       };
     },
   };
 
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), true);
+});
+
+test("a laid-out annotation outside the PDF viewport is not viewer evidence", async () => {
+  const { env, host } = fixtureEnvironment();
+  const native = createZoteroNativeApi(env);
+  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+  const created = await native.createAnnotation({
+    anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
+    type: "highlight",
+    comment: "",
+    color: "#ffd400",
+    operationMarker: "urn:offscreen-dom",
+  });
+  host.reader._internalReader._primaryView._iframeWindow.document = {
+    defaultView: { innerWidth: 800, innerHeight: 600 },
+    querySelector() {
+      return {
+        isConnected: true,
+        getClientRects() { return { length: 1 }; },
+        getBoundingClientRect() {
+          return { left: -300, right: -200, top: 20, bottom: 30 };
+        },
+      };
+    },
+  };
+
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
+});
+
+test("a laid-out annotation sidebar row is not viewer evidence while the sidebar is closed", async () => {
+  const { env, host } = fixtureEnvironment();
+  const native = createZoteroNativeApi(env);
+  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+  const created = await native.createAnnotation({
+    anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
+    type: "highlight",
+    comment: "Visible only if the annotation sidebar is open",
+    color: "#ffd400",
+    operationMarker: "urn:closed-sidebar",
+  });
+  host.reader._internalReader._state.sidebarOpen = false;
+  host.reader._internalReader._state.sidebarView = "annotations";
+  const rect = { left: 10, right: 300, top: 50, bottom: 100 };
+  const content = {
+    textContent: created.comment,
+    isConnected: true,
+    getClientRects() { return { length: 1 }; },
+    getBoundingClientRect() { return rect; },
+  };
+  host.reader._iframeWindow = {
+    document: {
+      defaultView: { innerWidth: 800, innerHeight: 600 },
+      querySelector(selector) {
+        if (!selector.includes(created.annotationKey)) return null;
+        return {
+          isConnected: true,
+          getClientRects() { return { length: 1 }; },
+          getBoundingClientRect() { return rect; },
+          querySelector() { return content; },
+        };
+      },
+    },
+  };
+
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
+  host.reader._internalReader._state.sidebarOpen = true;
   assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), true);
 });
 

@@ -1,6 +1,6 @@
 # Study-session acceptance
 
-Observed on 2026-10-21 with Zotero 10.0.6 on macOS arm64 and the packaged Research Companion 0.1.0. This record separates actual ChatGPT Web actions, direct Codex local actions, native UI observations, and automated checks. Final acceptance remains in progress while the formatted-preview verification defect is investigated.
+Observed on 2026-10-21 with Zotero 10.0.6 on macOS arm64 and the packaged Research Companion 0.1.0. This record separates actual ChatGPT Web actions, direct Codex local actions, native UI observations, and automated checks. Final acceptance remains in progress while additional storage-safety review fixes are integrated.
 
 ## Real paper and test ownership
 
@@ -28,7 +28,11 @@ The selected sentence on displayed page 3, Section 3.1, is: “This recurrent de
 
 The actual Zotero sidebar showed the comment's Korean paragraphs, numbered steps, inline/display mathematics, and reference text beside the highlighted sentence. Clicking the annotation navigated to page 3 and exposed the correct two-line highlight. The original editable Markdown/LaTeX remained available through **Edit native comment**.
 
-Initial automated viewer checks returned `failed` while storage remained `confirmed`. This included one check with the copy tab active and its formatted content visibly displayed. In native source-edit mode, `local-huginn-source-visible-1` returned both storage and viewer `confirmed`. The discrepancy in formatted-preview verification is under investigation; a screenshot observation is not represented as a successful protocol viewer response.
+Initial automated viewer checks returned `failed` while storage remained `confirmed`. This included one check with the copy tab active and its formatted content visibly displayed. In native source-edit mode, `local-huginn-source-visible-1` returned both storage and viewer `confirmed`. These earlier failures are unclassified prior-session observations; screenshots alone are not represented as successful protocol viewer responses.
+
+After installing the independently reviewed diagnostic package (SHA-256 `e7da52a27f6a83d81882a9e3fee381dbaacbf76ba45f796b89d570ff49afe708`) through the normal Plugins Manager, fresh session `62f30ae98e472b7589b7df432771ff49` returned storage and formatted viewer `confirmed` for `diagnostic-copy-preview-1`. The actual screenshot showed the Korean question and explanation, MathML equations, and exact highlighted sentence together. Switching to **Edit native comment**, scrolling to the end, and choosing **Show formatted comment** again also passed `diagnostic-copy-preview-transition-1`. The earlier failure is retained as historical evidence; these later successes do not establish its root cause.
+
+Independent source review confirmed the diagnostic patch did not relax the acceptance predicate. Between the failed and successful observations, both the comment revision and plugin/reader lifecycle changed; this is not a controlled package-only comparison. The failure did not recur in those two fresh-session checks. A background-tab control, `diagnostic-copy-background-1`, correctly reported storage confirmed and viewer failed at `reader_not_visible`.
 
 ## Concurrent manual edit
 

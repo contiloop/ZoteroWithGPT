@@ -1,6 +1,6 @@
 # Connection validation
 
-Status: **Access preflight passed. Subsequent production-package ChatGPT Web and direct Codex study writes also passed storage and visible native-editor verification on 2026-10-21. Formatted-preview automated verification remains under investigation.**
+Status: **Access preflight passed. Subsequent production-package ChatGPT Web and direct Codex study writes also passed storage and visible native-editor verification on 2026-10-21. Fresh-session formatted-preview checks passed after installing reviewed diagnostics; an earlier prior-session failure was not reproduced and its cause remains unclassified.**
 
 This record covers T1 preflight evidence collected on 2026-10-21. It distinguishes the surface that performed each action. A successful call from Codex to a connected MCP server is not evidence that the same tool is installed or usable in ChatGPT Web. A direct Codex local file test is likewise not evidence of independent ChatGPT Work availability.
 

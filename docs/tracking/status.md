@@ -6,13 +6,13 @@ Research Companion 0.1.0 searches and reads local papers, resolves actual PDF pa
 
 Actual ChatGPT Web with the existing Mac Safe Files connection read Huginn, saved an approved study comment on an owned copy, rejected a stale edit after a native manual change, appended separately approved questions, and freshly read back all content. Strict formatted-reader verification passed after a normal Zotero restart. Direct Codex local files completed an independent native append and reader check without MCP.
 
-Automated verification at source 97d75df passed 160 tests, strict type checking, build, and package validation. A fresh source extraction with npm ci reproduced the installed XPI SHA-256 exactly. Actual optional-note creation preserved a reference, equation, and table; append preserved its existing body, and aggregate-size rejection left both notes and annotations unchanged.
+Automated verification at source 97d75df passed 160 tests, strict type checking, build, and package validation. A fresh source extraction at 5675e2b with npm ci passed all 160 tests and reproduced the final installed XPI SHA-256 exactly. Actual optional-note creation preserved a reference, equation, and table; append preserved its existing body, and aggregate-size rejection left both notes and annotations unchanged.
 
 Normal packaged disable/remove/reinstall retained study records, stopped new dispatch, did not execute old pending-session writes, and replayed a historical operation without duplication. Commit-boundary fault injection reconciled a real committed native note; this was not a forced application crash.
 
 ## Reader lifecycle validation
 
-A reproduced dead unrelated reader no longer aborts healthy reader synchronization. Independent tests confirmed removed and retained dead-reader isolation plus best-effort cleanup without weakening strict viewer checks. The installed final package passed native storage and formatted viewer confirmation immediately after update.
+A reproduced dead unrelated reader no longer aborts healthy reader synchronization. Independent tests confirmed removed and retained dead-reader isolation plus best-effort cleanup without weakening strict viewer checks. The installed final package passed native storage and formatted viewer confirmation immediately after update. Actual Web read-only requests independently confirmed the complete 1,906-character comment and strict formatted preview on that same final artifact.
 
 ## Remaining scope
 

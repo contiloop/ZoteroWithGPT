@@ -393,7 +393,7 @@ verification_failed unknown_outcome
 
 ## Identity, lifecycle, conflicts, and recovery
 
-The canonical digest covers `protocolVersion`, `operation`, `profileId` when present, authorization when present, and the operation payload. It excludes `operationId`, because the durable identity is the pair of the opaque ID and this digest. Object keys are sorted recursively; array order is preserved; non-JSON values and nonfinite numbers are rejected. A digest adapter must apply a collision-resistant cryptographic hash to the canonical UTF-8 bytes.
+The canonical digest covers `protocolVersion`, `operation`, `profileId` when present, authorization when present, and the operation payload. It excludes `operationId`, because the durable identity is the pair of the opaque ID and this digest. Object keys are sorted recursively; array order is preserved; non-JSON values and nonfinite numbers are rejected. The identity digest is a collision-resistant cryptographic hash of the canonical UTF-8 bytes.
 
 An operation store atomically claims the ID and digest. The allowed lifecycle is:
 
@@ -408,4 +408,4 @@ Mutations are serialized per profile. There is no implicit atomic batch transact
 
 `expectedRevision` is checked against the actual current target immediately before an update. A manual edit or sync update that changes the revision returns `conflict`; it is never overwritten. After a conflict, the client must read the target again and obtain renewed human approval for the updated content and target before sending a new operation ID.
 
-The operation store is an adapter responsibility and must survive ordinary plugin reinstall or upgrade. A native adapter must associate a durable operation identity with a committed write so a crash-left `running` operation can be reconciled by inspection. Recovery inspects historical identity and native state; it never calls create again. A previously succeeded operation is returned from history even if a person later deletes its annotation. If commit status cannot be proven, recovery returns `indeterminate` with `unknown_outcome`.
+Historical operation identity and results survive ordinary plugin reinstall or upgrade. A crash-left `running` write is reconciled against its recorded native identity; recovery does not create the item again. A previously succeeded operation is returned from history even if a person later deletes its annotation. If commit status cannot be proven, recovery returns `indeterminate` with `unknown_outcome`.

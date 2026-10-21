@@ -84,3 +84,5 @@ The resulting XPI SHA-256 is `01975e560f477ac024d23ed29cd5a4c1da1bd9bd4ad61ac256
 | Reproducible delivery | Clean dependency install, full verification, deterministic package comparison, compatibility/notice/path validation |
 
 Public publication, an independently tested Work route, and a public Mac Safe Files installer are not claimed. The owned test papers/notes remain in Zotero; their removal was not silently performed.
+
+Final Web follow-up on the reader-hardened installed artifact used session `7b544dc8a43dccb9bee7cfb23fbb8b32`: `web-release160-read-1` freshly confirmed the complete native comment, and `web-release160-verify-1` returned storage and formatted viewer `confirmed`. These were read-only operations; no successful mutation was repeated. A second clean source extraction at `5675e2b`, with no dependencies or generated files, passed `npm ci` and `npm run verify` (both exit 0, 160 tests) and reproduced final installed XPI SHA-256 `01975e560f477ac024d23ed29cd5a4c1da1bd9bd4ad61ac256901158e29cf152` exactly.

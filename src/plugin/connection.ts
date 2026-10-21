@@ -26,6 +26,52 @@ export interface ProductionConnectionEnvironment extends GeckoFileBridgeGlobals 
   reportError(error: unknown): void;
 }
 
+export interface ViewerVerificationDependencies {
+  findAttachment(
+    libraryId: number,
+    attachmentKey: string,
+  ): Promise<{ id?: number } | false | undefined>;
+  readAnnotation(
+    libraryId: string,
+    attachmentKey: string,
+    annotationKey: string,
+  ): Promise<{ comment: string } | undefined>;
+  formattedPreview: Pick<ZoteroReaderRenderingAdapter, "verifyVisiblePreview">;
+  nativeViewer: ZoteroViewerVerificationPort;
+  reportError(error: unknown): void;
+}
+
+/** Adds optional formatted-preview evidence without weakening native fallback. */
+export function createViewerVerificationPort(
+  dependencies: ViewerVerificationDependencies,
+): ZoteroViewerVerificationPort {
+  return {
+    async verifyAnnotationInViewer(request) {
+      const { libraryId, attachmentKey, annotationKey } = request.payload;
+      const item = await dependencies.findAttachment(Number(libraryId), attachmentKey);
+      const record = await dependencies.readAnnotation(libraryId, attachmentKey, annotationKey);
+      if (item && item.id !== undefined && record) {
+        try {
+          const visible = await dependencies.formattedPreview.verifyVisiblePreview({
+            attachmentItemId: item.id,
+            annotationKey,
+            expectedNativeComment: record.comment,
+          });
+          if (visible) {
+            return {
+              confirmed: true,
+              description: "Current native annotation content is visible in its formatted reader preview",
+            };
+          }
+        } catch (error) {
+          dependencies.reportError(error);
+        }
+      }
+      return dependencies.nativeViewer.verifyAnnotationInViewer(request);
+    },
+  };
+}
+
 /** Production composition: all operations remain behind their existing ports. */
 export async function openProductionConnection(
   environment: ProductionConnectionEnvironment,
@@ -50,19 +96,15 @@ export async function openProductionConnection(
     native, digest, profileId, pluginVersion: version, enabled: true,
     accessGate: gate, transport: bridge.describe(),
   });
-  const viewer: ZoteroViewerVerificationPort = {
-    async verifyAnnotationInViewer(request) {
-      const { libraryId, attachmentKey, annotationKey } = request.payload;
-      const item = await environment.Zotero.Items.getByLibraryAndKeyAsync(Number(libraryId), attachmentKey);
-      const record = await native.getAnnotation(libraryId, attachmentKey, annotationKey);
-      if (item && item.id !== undefined && record && await previews.verifyVisiblePreview({
-        attachmentItemId: item.id, annotationKey, expectedNativeComment: record.comment,
-      })) {
-        return { confirmed: true, description: "Current native annotation content is visible in its formatted reader preview" };
-      }
-      return library.verifyAnnotationInViewer(request);
-    },
-  };
+  const viewer = createViewerVerificationPort({
+    findAttachment: (libraryId, attachmentKey) =>
+      environment.Zotero.Items.getByLibraryAndKeyAsync(libraryId, attachmentKey),
+    readAnnotation: (libraryId, attachmentKey, annotationKey) =>
+      native.getAnnotation(libraryId, attachmentKey, annotationKey),
+    formattedPreview: previews,
+    nativeViewer: library,
+    reportError: environment.reportError,
+  });
   const executor = new NativeOperationExecutor({
     reads: library, writes: library, storage: library, viewer,
     anchors: new ZoteroAnchorResolver(library),
@@ -79,12 +121,19 @@ export async function openProductionConnection(
         ? coordinator.reconcileRunning(request.operationId, connectedProfile, recovery)
         : result;
     });
+    let close: Promise<void> | undefined;
     return {
       profileId, subscription,
-      async close() {
+      close() {
+        if (close !== undefined) return close;
         // Close mutation authority before awaiting transport shutdown.
         library.setEnabled(false);
-        await subscription.close();
+        try {
+          close = subscription.close();
+        } catch (error) {
+          close = Promise.reject(error);
+        }
+        return close;
       },
     };
   } catch (error) {

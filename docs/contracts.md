@@ -329,7 +329,7 @@ This is an authorized mutation. A complete revision-checked append request is:
 }
 ```
 
-The result contains the key, new revision, complete saved comment, and deep link. `append` preserves the existing comment verbatim and adds the requested content. If the stored revision differs from `expectedRevision`, the adapter returns `conflict` without writing.
+The result contains the key, new revision, complete saved comment, and deep link. `mode` must be `append` or `replace`. `append` preserves the existing comment verbatim and adds the requested content; `replace` uses the complete approved replacement comment. If the stored revision differs from `expectedRevision`, the adapter returns `conflict` without writing.
 
 ### `create_note`
 
@@ -352,7 +352,7 @@ This is an authorized mutation. Payload:
 }
 ```
 
-The result contains the key, new revision, complete saved content, and deep link. `append` preserves existing content. A stale `expectedRevision` returns `conflict` without writing.
+The result contains the key, new revision, complete saved content, and deep link. `mode` must be `append` or `replace`. `append` preserves existing content; `replace` uses the complete approved replacement content under the note safety policy. A stale `expectedRevision` returns `conflict` without writing.
 
 ### `verify_annotation`
 
@@ -390,6 +390,99 @@ not_connected not_found ambiguous_target unresolved_anchor stale_attachment
 conflict duplicate_id_mismatch unsupported_capability too_large storage_error
 verification_failed unknown_outcome
 ```
+
+## Successful response data
+
+The following shapes describe `data` inside the response envelope, not additional top-level fields. `?` denotes a field that may be omitted (not an alternative `null` value), `[]` an array, and `ResolvedAnchor` the complete anchor shape defined above. Strings containing content are returned in full within the response limits. Compare opaque revision tokens exactly; use the returned revision for a later approved update.
+
+| Operation | `data` shape |
+| --- | --- |
+| `connection_status` | `ConnectionStatus` |
+| `search_papers` | `{ matches: PaperMatch[] }` |
+| `read_pdf` | `{ attachmentFingerprint: string, attachmentRevision: string, pages: PdfPage[] }` |
+| `list_annotations` | `{ annotations: NativeAnnotation[] }` |
+| `list_notes` | `{ notes: NoteSummary[] }` |
+| `read_note` | `{ parentItemKey: string, noteKey: string, revision: string, content: string, deepLink: string }` |
+| `resolve_anchor` | `{ status: "resolved", anchor: ResolvedAnchor }` or `{ status: "unresolved", reason: string, candidates: AnchorCandidate[] }` |
+| `create_annotation` | `{ annotationKey: string, revision: string, deepLink: string, saved: SavedAnnotationSnapshot }` |
+| `update_annotation` | `{ annotationKey: string, revision: string, comment: string, deepLink: string }` |
+| `create_note`, `update_note` | `{ noteKey: string, revision: string, content: string, deepLink: string }` |
+| `verify_annotation` | `{ annotationKey: string, storageEvidence: VerificationDetail, viewerEvidence: VerificationDetail }` |
+
+Named shapes use this TypeScript-style notation solely to specify JSON fields; clients need no TypeScript runtime:
+
+```typescript
+type ConnectionStatus = {
+  protocolVersion: 1;
+  pluginVersion: string;
+  zoteroVersion: string;
+  profile: { id: string; name?: string };
+  enabled: boolean;
+  capabilities: {
+    operations: string[]; // operation names from this contract
+    annotationTypes: ("highlight" | "note")[];
+    annotationColors: string[]; // supported colors listed above
+    maxRequestBytes: number;
+    maxTextBytes: number;
+  };
+  transport: {
+    kind: "http" | "native_messaging" | "custom";
+    description: string;
+  };
+};
+type AttachmentSummary = {
+  attachmentKey: string;
+  title: string;
+  contentType: string;
+  fingerprint?: string;
+};
+type PaperMatch = {
+  libraryId: string;
+  itemKey: string;
+  title: string;
+  creators: string[];
+  year?: number;
+  attachments: AttachmentSummary[];
+};
+type PdfPage = {
+  pageIndex: number;
+  pageLabel: string;
+  text: string;
+  passageCandidates: { exact: string; prefix?: string; suffix?: string }[];
+  regionCandidates: { rectangles: NativeRectangle[]; selectedText?: string }[];
+};
+type NativeAnnotation = {
+  annotationKey: string;
+  revision: string;
+  type: "highlight" | "note";
+  anchor: ResolvedAnchor;
+  text?: string;
+  comment: string;
+  color?: string; // supported native color
+  deepLink: string;
+};
+type NoteSummary = {
+  noteKey: string;
+  parentItemKey: string;
+  title: string;
+  revision: string;
+};
+type AnchorCandidate = { anchor: ResolvedAnchor; reason: string };
+type SavedAnnotationSnapshot = {
+  pageIndex: number;
+  pageLabel: string;
+  rectangles: NativeRectangle[];
+  selectedText?: string;
+  comment: string;
+};
+type VerificationDetail = { confirmed: boolean; description: string };
+```
+
+`NativeRectangle` is the four-number rectangle defined above. Page labels are display strings; page indexes remain zero-based. Passage and region candidates are evidence for resolution, not preapproved write targets. An unresolved resolver result does not authorize a write even if the operation itself completed successfully.
+
+For annotation creation, `saved.comment` is the persisted complete comment; for annotation updates, `comment` is the complete resulting comment rather than only the appended fragment. Note mutation `content` is the complete saved native HTML after the note safety policy. `deepLink` selects the native record; opening it is an explicit client/user action, not automatic network access.
+
+Verification descriptions are diagnostic text, not stable machine-readable error codes. Read each evidence object's `confirmed` boolean together with the envelope's independent `verification.storage` and `verification.viewer` states. Neither a successful verification request nor a deep link proves that its viewer evidence is confirmed. The current file transport reports `kind: "custom"`; other transport kinds in the versioned shape do not claim an installed HTTP or native-messaging endpoint.
 
 ## Identity, lifecycle, conflicts, and recovery
 

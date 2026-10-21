@@ -91,9 +91,11 @@ create-only atomic write, then poll only the matching result path. Mutations
 require a current explicit request or approved proposal from the user.
 
 ChatGPT Work local-file availability has not been independently verified. A
-successful Codex or MCP run does not prove Work access. Full ChatGPT Web
-acceptance also remains a separate end-to-end check; do not infer it from local
-installation or package verification.
+successful Codex or MCP run does not prove Work access. Actual ChatGPT Web
+with the existing Mac Safe Files connection completed real paper reading,
+approved annotation saving, conflict protection, and visible native-editor
+verification on the validation Mac. A new account or Mac still requires its own
+connection and reader check; package verification alone does not establish it.
 
 ## Confirm the setup
 

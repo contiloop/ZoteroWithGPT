@@ -1,10 +1,16 @@
 # Connection validation
 
-Status: **PASSED for the approved T1 scope — both the connected MCP route and the direct Codex local fallback completed bounded real-file round trips.**
+Status: **Access preflight passed. Subsequent production-package ChatGPT Web and direct Codex study writes also passed storage and visible native-editor verification on 2026-10-21. Formatted-preview automated verification remains under investigation.**
 
 This record covers T1 preflight evidence collected on 2026-10-21. It distinguishes the surface that performed each action. A successful call from Codex to a connected MCP server is not evidence that the same tool is installed or usable in ChatGPT Web. A direct Codex local file test is likewise not evidence of independent ChatGPT Work availability.
 
 The approved execution-route amendment for this cycle accepts either real Codex local execution or Work local execution for the no-MCP fallback. The user accepted Codex or Work for this purpose, and the Codex route was available and tested. Work remains unverified and is no longer a T1 gate for this cycle.
+
+## Production study-session follow-up
+
+The initial preflight sections below are historical observations. Later tests installed production Research Companion 0.1.0 in Zotero 10.0.6 and used the same actual Web conversation to find/read Huginn, propose a Korean explanation without writing, resolve a source passage, and save a native annotation on an owned PDF copy. Web operations `web-copy-save-1`, `web-copy-stale-update-1`, and `web-copy-approved-append-1` demonstrated saving, rejecting an outdated revision after a manual edit, and applying a newly approved append. `web-copy-after-append-verify-1` confirmed storage and the actual visible native editor separately.
+
+Direct Codex local file operations, without Mac MCP, appended a further measurement idea to the same annotation and independently read it back. `codex-copy-verify-1` confirmed storage and the visible native editor. The original paper was read only. Work availability and billing were not tested. No permission policy was changed. These observed flows do not certify another account's access or a new Mac's setup.
 
 ## Evidence matrix
 

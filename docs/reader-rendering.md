@@ -134,6 +134,8 @@ and DOMPurify 3.4.17. Tests use jsdom 29.1.1 only as a development dependency. T
 license choices and release notice requirement are recorded in
 `src/adapters/rendering/THIRD_PARTY_NOTICES.md`.
 
-The automated tests exercise browser DOM behavior but do not establish Zotero host compatibility.
-Installation, selected-passage navigation, native editing, refresh, fallback, and removal behavior
-still require the separately controlled Zotero 10.0.6 acceptance run.
+The automated tests exercise browser DOM behavior and alone do not establish Zotero host compatibility.
+Separate Zotero 10.0.6 checks exercised installation, selected-passage navigation, native editing,
+refresh, fallback, and removal. Fresh-session strict formatted-viewer checks passed twice, and
+a background-reader control failed viewer confirmation as expected. The observed results and
+earlier unclassified prior-session failure are recorded in `acceptance-results.md`.

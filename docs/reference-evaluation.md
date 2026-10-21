@@ -2,11 +2,13 @@
 
 This evaluation records primary-source findings available on 2026-10-21. No candidate plugin or rendering dependency was installed, copied, or modified during T1. The access preflight separately validated the connected MCP and direct Codex local request/result routes under the approved cycle scope; it did not produce ChatGPT Work or ChatGPT Web execution evidence and does not change the compatibility limits below.
 
+The runtime observations and pre-installation constraints below describe the initial preflight stage. Subsequent project-package installation, native mathematical rendering, actual Web study writes, direct Codex writes, and removal/reinstall were exercised on Zotero 10.0.6; their results are recorded in `installation-validation.md` and `acceptance-results.md`. Work remains independently unverified.
+
 ## Actual Zotero runtime
 
 The installed application is Zotero 10.0.6 with build ID `20261007113827`, running on macOS 15.7.9 arm64. Its application metadata declares Gecko compatibility 140.0–140.99.*. Better BibTeX 9.0.63 and ZotLit 2.1.4 were active in the inspected profile. The target project plugin, `zotero-annotation-markdown`, and the `cookjohn/zotero-mcp` plugin were not installed.
 
-This proves the target host version and process state. It does not prove runtime compatibility for the new plugin because no installable project package exists yet. Manifest ranges from reference projects are compatibility claims, not acceptance-test results on this host.
+This proved the target host version and process state at preflight. No installable project package existed then. Manifest ranges from reference projects were compatibility claims, not acceptance-test results on this host.
 
 Two Codex computer-use attempts to attach to the running Zotero UI, first by display name and then by bundle identifier `org.zotero.zotero`, each returned `timeoutReached -10005` after five seconds. No reader or viewer state was observed. This does not affect the completed file-route preflight, but real plugin and reader acceptance still requires a later accessible Zotero UI surface and may require user assistance.
 

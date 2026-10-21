@@ -124,6 +124,7 @@ confirmed absence. No Trash was emptied. The failed unique-sentence highlight
 identity remains indeterminate and was never blindly retried.
 
 The upgrade from development 0.1.0.1 to 0.1.0.2 retained native content and the
-operation journal. Full release removal/reinstallation and cleanup remain a
-packaging-stage check. Later acceptance must also cover rich mathematical
-rendering and a real ChatGPT Web study session.
+operation journal. At that development stage, full release removal/reinstallation,
+rich mathematical rendering, and a real ChatGPT Web study session were still
+outstanding. Later production results are recorded in `installation-validation.md`
+and `acceptance-results.md`.

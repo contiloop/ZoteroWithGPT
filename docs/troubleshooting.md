@@ -75,6 +75,12 @@ When the descriptor changes or its status becomes disabled, stop polling that
 session. After renewed authorization, recover an uncertain operation with the
 same operation ID and byte-equivalent payload in the current session.
 
+If the terminal result explicitly says an interrupted queued operation was
+never executed and not written, re-read the target and obtain renewed mutation
+approval before submitting a fresh ID. Do not apply this rule to an unknown
+native outcome. New reads, status checks, and verification always need fresh
+IDs; historical IDs return historical observations.
+
 ## A request is rejected
 
 - `invalid_request` or `unsupported_version`: validate the complete JSON

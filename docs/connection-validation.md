@@ -77,7 +77,7 @@ The no-MCP fallback used direct Codex local filesystem execution in `/Users/USER
 
 `cat` readback matched both in-memory expected strings. `request.json` resolved to `/Users/USER/Desktop/ZoteroWithGPT/.dryforge/local-connection-probe/request.json` and measured 51 bytes; `result.json` resolved to `/Users/USER/Desktop/ZoteroWithGPT/.dryforge/local-connection-probe/result.json` and measured 127 bytes. The hashes are recorded in the evidence matrix. Both files and the owned directory were deleted, and a final absence assertion passed.
 
-This proves that the accepted Codex local alternative can use the dedicated request/result file convention. It does not prove that ChatGPT Work can use the files, and it does not substitute for the later ChatGPT Web-to-plugin-to-Zotero viewer test.
+This proves that the accepted Codex local alternative can use the dedicated request/result file convention. It does not prove that ChatGPT Work can use the files. It did not itself supply Web-to-Zotero viewer evidence; the later production Web and reader results are recorded in `acceptance-results.md`.
 
 ## Later host-access check
 

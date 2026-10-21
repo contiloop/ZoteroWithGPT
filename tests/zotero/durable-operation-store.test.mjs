@@ -9,6 +9,8 @@ import {
   IOUtilsAtomicTextFile,
   KeyedMutationSerializer,
 } from "../../dist/adapters/operation-store/index.js";
+import { OperationCoordinator } from "../../dist/core/index.js";
+import { validateProtocolRequest } from "../../dist/protocol/index.js";
 
 class MemoryAtomicFile {
   text;
@@ -43,6 +45,211 @@ function record(operationId = "op-1", requestDigest = "sha256:payload-a") {
     },
   };
 }
+
+class StableDigest {
+  async digest(bytes) {
+    let hash = 2166136261;
+    for (const byte of bytes) {
+      hash ^= byte;
+      hash = Math.imul(hash, 16777619);
+    }
+    return `test:${(hash >>> 0).toString(16)}`;
+  }
+}
+
+function noteRequest(operationId = "op-queued-interruption", content = "Study note") {
+  return validateProtocolRequest({
+    protocolVersion: 1,
+    operationId,
+    operation: "create_note",
+    profileId: "profile-A",
+    authorization: {
+      kind: "explicit_request",
+      scope: "Create the requested study note on ITEM1234.",
+    },
+    payload: { libraryId: "1", itemKey: "ITEM1234", content },
+  });
+}
+
+test("a restart terminally rejects a queued claim interrupted before native execution", async () => {
+  const file = new MemoryAtomicFile();
+  const durable = new DurableOperationStore(file, { generateProfileId: () => "profile-A" });
+  let interruptTransition = true;
+  const interruptedStore = {
+    claim: (initial) => durable.claim(initial),
+    load: (operationId) => durable.load(operationId),
+    transition(operationId, expectedState, next) {
+      if (interruptTransition && expectedState === "queued" && next.state === "running") {
+        interruptTransition = false;
+        throw new Error("simulated process interruption after durable claim");
+      }
+      return durable.transition(operationId, expectedState, next);
+    },
+  };
+  const firstCoordinator = new OperationCoordinator({
+    store: interruptedStore,
+    digest: new StableDigest(),
+    serializer: new KeyedMutationSerializer(),
+  });
+  let executions = 0;
+  const execute = async () => {
+    executions += 1;
+    return {
+      kind: "completed",
+      data: { noteKey: "NOTE1234", revision: "rev:1", content: "Study note", deepLink: "zotero://note" },
+      verification: { storage: "confirmed", viewer: "not_applicable" },
+    };
+  };
+
+  await assert.rejects(
+    firstCoordinator.submit(noteRequest(), "profile-A", execute),
+    /simulated process interruption/,
+  );
+  assert.equal((await durable.load("op-queued-interruption")).state, "queued");
+  assert.equal(executions, 0);
+
+  const restartedStore = new DurableOperationStore(file, {
+    generateProfileId: () => "must-not-replace-profile",
+  });
+  const restartedCoordinator = new OperationCoordinator({
+    store: restartedStore,
+    digest: new StableDigest(),
+    serializer: new KeyedMutationSerializer(),
+  });
+  const mismatch = await restartedCoordinator.submit(
+    noteRequest("op-queued-interruption", "Different content"),
+    "profile-A",
+    execute,
+  );
+  assert.equal(mismatch.state, "rejected");
+  assert.equal(mismatch.error.code, "duplicate_id_mismatch");
+  const wrongProfile = await restartedCoordinator.submit(noteRequest(), "profile-B", execute);
+  assert.equal(wrongProfile.state, "rejected");
+  assert.equal(wrongProfile.error.code, "permission_denied");
+  assert.equal((await restartedStore.load("op-queued-interruption")).state, "queued");
+  let nativeRecoveryCalls = 0;
+  const startupRecovery = await restartedCoordinator.recoverPending("profile-A", {
+    async reconcile() {
+      nativeRecoveryCalls += 1;
+      throw new Error("queued operations must not reach native recovery");
+    },
+  });
+  assert.equal(startupRecovery.length, 1);
+  assert.equal(startupRecovery[0].state, "rejected");
+  assert.equal(nativeRecoveryCalls, 0);
+  const recovered = await restartedCoordinator.submit(noteRequest(), "profile-A", execute);
+
+  assert.equal(recovered.state, "rejected");
+  assert.equal(recovered.error.code, "storage_error");
+  assert.match(recovered.error.message, /before native execution/i);
+  assert.match(recovered.error.message, /new operation ID/i);
+  assert.equal(executions, 0);
+  assert.deepEqual(await restartedCoordinator.submit(noteRequest(), "profile-A", execute), recovered);
+  assert.equal((await restartedStore.load("op-queued-interruption")).state, "rejected");
+});
+
+test("startup recovery keeps running operations on marker reconciliation", async () => {
+  const file = new MemoryAtomicFile();
+  const store = new DurableOperationStore(file, { generateProfileId: () => "profile-A" });
+  const queued = record("op-running-recovery");
+  await store.claim(queued);
+  await store.transition("op-running-recovery", "queued", {
+    ...queued,
+    state: "running",
+    response: { ...queued.response, state: "running" },
+  });
+  const restartedStore = new DurableOperationStore(file, {
+    generateProfileId: () => "must-not-replace-profile",
+  });
+  const coordinator = new OperationCoordinator({
+    store: restartedStore,
+    digest: new StableDigest(),
+    serializer: new KeyedMutationSerializer(),
+  });
+  let reconciliations = 0;
+  const results = await coordinator.recoverPending("profile-A", {
+    async reconcile(actual) {
+      reconciliations += 1;
+      assert.equal(actual.operationId, "op-running-recovery");
+      return {
+        kind: "completed",
+        data: {
+          annotationKey: "ANN00001",
+          revision: "rev:1",
+          deepLink: "zotero://recovered",
+          saved: {},
+        },
+        verification: { storage: "confirmed", viewer: "not_checked" },
+      };
+    },
+  });
+
+  assert.equal(reconciliations, 1);
+  assert.equal(results.length, 1);
+  assert.equal(results[0].state, "succeeded");
+  assert.equal((await restartedStore.load("op-running-recovery")).state, "succeeded");
+  assert.deepEqual(await restartedStore.listPending(), []);
+});
+
+test("a live queued submission cannot be mistaken for a restart orphan", async () => {
+  const file = new MemoryAtomicFile();
+  const durable = new DurableOperationStore(file, { generateProfileId: () => "profile-A" });
+  let announceTransition;
+  const transitionStarted = new Promise((resolve) => {
+    announceTransition = resolve;
+  });
+  let releaseTransition;
+  const transitionGate = new Promise((resolve) => {
+    releaseTransition = resolve;
+  });
+  const gatedStore = {
+    claim: (initial) => durable.claim(initial),
+    load: (operationId) => durable.load(operationId),
+    listPending: () => durable.listPending(),
+    async transition(operationId, expectedState, next) {
+      if (expectedState === "queued" && next.state === "running") {
+        announceTransition();
+        await transitionGate;
+      }
+      return durable.transition(operationId, expectedState, next);
+    },
+  };
+  const coordinator = new OperationCoordinator({
+    store: gatedStore,
+    digest: new StableDigest(),
+    serializer: new KeyedMutationSerializer(),
+  });
+  let executions = 0;
+  const execute = async () => {
+    executions += 1;
+    return {
+      kind: "completed",
+      data: { noteKey: "NOTE1234", revision: "rev:1", content: "Study note", deepLink: "zotero://note" },
+      verification: { storage: "confirmed", viewer: "not_applicable" },
+    };
+  };
+
+  const first = coordinator.submit(noteRequest("op-live-queued"), "profile-A", execute);
+  await transitionStarted;
+  assert.equal((await durable.load("op-live-queued")).state, "queued");
+  let duplicateSettled = false;
+  const duplicate = coordinator
+    .submit(noteRequest("op-live-queued"), "profile-A", execute)
+    .finally(() => {
+      duplicateSettled = true;
+    });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(duplicateSettled, false);
+  assert.equal((await durable.load("op-live-queued")).state, "queued");
+
+  releaseTransition();
+  const [created, replay] = await Promise.all([first, duplicate]);
+  assert.equal(created.state, "succeeded");
+  assert.deepEqual(replay, created);
+  assert.equal(executions, 1);
+  assert.equal((await durable.load("op-live-queued")).state, "succeeded");
+});
 
 test("an operation claim and terminal response survive a new store instance", async () => {
   const file = new MemoryAtomicFile();

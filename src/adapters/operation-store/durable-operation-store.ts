@@ -146,6 +146,16 @@ export class DurableOperationStore implements OperationPersistencePort {
     });
   }
 
+  async listPending(): Promise<OperationRecord[]> {
+    return this.#exclusive(async () => {
+      const document = await this.#loadOrCreate();
+      return Object.values(document.operations)
+        .filter((record) => record.state === "queued" || record.state === "running")
+        .sort((left, right) => left.operationId.localeCompare(right.operationId))
+        .map((record) => clone(record));
+    });
+  }
+
   async transition(
     operationId: string,
     expectedState: OperationState,

@@ -131,6 +131,7 @@ export async function openProductionConnection(
   });
   const recovery = new ZoteroOperationRecovery(native, digest);
   try {
+    await coordinator.recoverPending(profileId, recovery);
     const subscription = await bridge.listen(async (request, connectedProfile) => {
       const result = await coordinator.submit(request, connectedProfile,
         (accepted, identity) => executor.execute(accepted, identity));

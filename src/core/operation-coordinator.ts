@@ -69,6 +69,7 @@ export class OperationCoordinator {
   readonly #store: OperationPersistencePort;
   readonly #digest: PayloadDigestPort;
   readonly #serializer: MutationSerializationPort;
+  readonly #submissionTails = new Map<string, Promise<void>>();
 
   constructor(dependencies: OperationCoordinatorDependencies) {
     this.#store = dependencies.store;
@@ -80,12 +81,22 @@ export class OperationCoordinator {
     return (await this.#store.load(operationId))?.response;
   }
 
-  async submit(
+  submit(
     request: ProtocolRequest,
     connectedProfileId: string | undefined,
     execute: ExecuteOperation,
   ): Promise<ProtocolResponse> {
     const acceptedRequest = snapshotProtocolRequest(request);
+    return this.#runSubmissionExclusive(acceptedRequest.operationId, () =>
+      this.#submitAccepted(acceptedRequest, connectedProfileId, execute),
+    );
+  }
+
+  async #submitAccepted(
+    acceptedRequest: ProtocolRequest,
+    connectedProfileId: string | undefined,
+    execute: ExecuteOperation,
+  ): Promise<ProtocolResponse> {
     const requestDigest = await this.#digest.digest(canonicalRequestBytes(acceptedRequest));
     if (requestDigest.trim().length === 0) {
       throw new Error("PayloadDigestPort returned an empty digest");
@@ -115,10 +126,19 @@ export class OperationCoordinator {
           ),
         );
       }
+      if (claim.record.state === "queued") {
+        try {
+          assertRequestAuthorizedForProfile(acceptedRequest, connectedProfileId);
+        } catch (error) {
+          if (!(error instanceof CoreOperationError)) throw error;
+          return coreErrorResponse(acceptedRequest.operationId, "rejected", error);
+        }
+        return (await this.#rejectInterruptedQueued(claim.record, connectedProfileId)).response;
+      }
       return claim.record.response;
     }
 
-    let queued = claim.record;
+    const queued = claim.record;
     try {
       assertRequestAuthorizedForProfile(acceptedRequest, connectedProfileId);
     } catch (error) {
@@ -168,21 +188,90 @@ export class OperationCoordinator {
     return (await this.#finish(running, outcome)).response;
   }
 
+  /**
+   * Recovers every durable nonterminal record before a transport accepts work.
+   * Queued records are known not to have reached native execution and are
+   * terminally rejected; running records use marker reconciliation.
+   */
+  async recoverPending(
+    connectedProfileId: string | undefined,
+    recovery: OperationRecoveryPort,
+  ): Promise<ProtocolResponse[]> {
+    const snapshots = await this.#store.listPending();
+    const responses: ProtocolResponse[] = [];
+    for (const snapshot of snapshots) {
+      const recovered = await this.#runSubmissionExclusive(snapshot.operationId, async () => {
+        const current = await this.#store.load(snapshot.operationId);
+        if (current === undefined) return undefined;
+        if (current.state === "queued") {
+          return (await this.#rejectInterruptedQueued(current, connectedProfileId)).response;
+        }
+        if (current.state === "running") {
+          return (await this.#reconcileLoadedRunning(current, connectedProfileId, recovery)).response;
+        }
+        return current.response;
+      });
+      if (recovered !== undefined) responses.push(recovered);
+    }
+    return responses;
+  }
+
   /** Reconciles only a crash-left running record and never calls the writer. */
-  async reconcileRunning(
+  reconcileRunning(
     operationId: string,
     connectedProfileId: string | undefined,
     recovery: OperationRecoveryPort,
   ): Promise<ProtocolResponse> {
-    const record = await this.#store.load(operationId);
-    if (record === undefined) {
-      throw new CoreOperationError("not_found", "No durable operation has that ID");
-    }
-    if (record.state !== "running") return record.response;
+    return this.#runSubmissionExclusive(operationId, async () => {
+      const record = await this.#store.load(operationId);
+      if (record === undefined) {
+        throw new CoreOperationError("not_found", "No durable operation has that ID");
+      }
+      if (record.state !== "running") return record.response;
+      return (await this.#reconcileLoadedRunning(record, connectedProfileId, recovery)).response;
+    });
+  }
+
+  async #reconcileLoadedRunning(
+    record: OperationRecord,
+    connectedProfileId: string | undefined,
+    recovery: OperationRecoveryPort,
+  ): Promise<OperationRecord> {
+    this.#assertRecordProfile(record, connectedProfileId);
     if (!record.mutation || record.profileId === null) {
       const outcome = await recovery.reconcile(record);
-      return (await this.#finish(record, outcome)).response;
+      return this.#finish(record, outcome);
     }
+    const outcome = await this.#serializer.runExclusive(record.profileId, () =>
+      recovery.reconcile(record),
+    );
+    return this.#finish(record, outcome);
+  }
+
+  async #rejectInterruptedQueued(
+    record: OperationRecord,
+    connectedProfileId: string | undefined,
+  ): Promise<OperationRecord> {
+    this.#assertRecordProfile(record, connectedProfileId);
+    const detail = record.mutation
+      ? "The queued mutation was interrupted before native execution. It was not written and " +
+        "will not be resumed automatically; re-read the target and submit a new operation ID " +
+        "with renewed authorization."
+      : "The queued operation was interrupted before execution. It was not run and will not " +
+        "be resumed automatically; submit a new operation ID.";
+    const rejected = coreErrorResponse(
+      record.operationId,
+      "rejected",
+      new CoreOperationError("storage_error", detail, false),
+    );
+    return this.#move(record, "rejected", rejected);
+  }
+
+  #assertRecordProfile(
+    record: OperationRecord,
+    connectedProfileId: string | undefined,
+  ): void {
+    if (record.profileId === null) return;
     if (connectedProfileId === undefined) {
       throw new CoreOperationError("not_connected", "No enabled Zotero profile is connected");
     }
@@ -192,10 +281,6 @@ export class OperationCoordinator {
         "The operation belongs to a different Zotero profile",
       );
     }
-    const outcome = await this.#serializer.runExclusive(record.profileId, () =>
-      recovery.reconcile(record),
-    );
-    return (await this.#finish(record, outcome)).response;
   }
 
   async #finish(
@@ -255,5 +340,28 @@ export class OperationCoordinator {
     transitionOperationState(current.state, state);
     const next: OperationRecord = { ...current, state, response: nextResponse };
     return this.#store.transition(current.operationId, current.state, next);
+  }
+
+  async #runSubmissionExclusive<T>(operationId: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.#submissionTails.get(operationId) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const current = previous.catch(() => undefined).then(() => gate);
+    this.#submissionTails.set(operationId, current);
+    await previous.catch(() => undefined);
+    try {
+      return await work();
+    } finally {
+      release();
+      if (this.#submissionTails.get(operationId) === current) {
+        void current.finally(() => {
+          if (this.#submissionTails.get(operationId) === current) {
+            this.#submissionTails.delete(operationId);
+          }
+        });
+      }
+    }
   }
 }

@@ -77,7 +77,10 @@ test('a retained settings callback cannot restart a stopped plugin', async t => 
       BUTTON_POS_1: 256,
       BUTTON_POS_2: 65_536,
       BUTTON_TITLE_IS_STRING: 1,
-      confirmEx: () => selections.shift() ?? 2,
+      confirmEx: () => {
+        assert.ok(selections.length > 0, 'unexpected settings prompt');
+        return selections.shift();
+      },
       alert: (_window, _title, message) => alerts.push(message),
     },
   };
@@ -87,7 +90,7 @@ test('a retained settings callback cannot restart a stopped plugin', async t => 
   assert.equal(typeof retainedCommand, 'function');
   await entry.stop();
 
-  selections.push(0, 2);
+  selections.push(0, 1);
   retainedCommand();
   await nextTurn();
   await nextTurn();

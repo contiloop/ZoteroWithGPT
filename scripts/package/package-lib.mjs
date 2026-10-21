@@ -22,6 +22,8 @@ const ARCHIVE_TIMESTAMP = new Date("2000-01-01T00:00:00.000Z");
 const ZIP_PATH = "/usr/bin/zip";
 const REQUIRED_COMPATIBILITY = Object.freeze({ minimum: "10.0.6", maximum: "10.0.*" });
 const ARCHIVE_PREFIX = "zotero-ai-research-companion";
+const MANUAL_UPDATE_SENTINEL =
+  "https://updates.invalid/zotero-ai-research-companion/updates.json";
 const ASSET_DIRECTORY = fileURLToPath(new URL("./assets", import.meta.url));
 const CLIENT_README_TEMPLATE = path.join(ASSET_DIRECTORY, "client", "README.md");
 
@@ -86,11 +88,13 @@ function validateManifest(manifest, version) {
   if (zotero?.strict_max_version !== REQUIRED_COMPATIBILITY.maximum) {
     throw new Error(`manifest strict_max_version must be ${REQUIRED_COMPATIBILITY.maximum}`);
   }
-  if (typeof zotero.id !== "string" || zotero.id.length === 0) {
+  if (typeof zotero?.id !== "string" || zotero.id.length === 0) {
     throw new Error("manifest must declare a Zotero plugin id");
   }
-  if ("update_url" in manifest || "update_url" in zotero) {
-    throw new Error("manual distribution packages must not declare an update URL");
+  if ("update_url" in manifest || zotero.update_url !== MANUAL_UPDATE_SENTINEL) {
+    throw new Error(
+      `manifest must declare the reserved manual-update sentinel ${MANUAL_UPDATE_SENTINEL}`,
+    );
   }
 }
 
@@ -329,6 +333,10 @@ export async function buildXpi({
       version,
       projectLicense: null,
       distribution: "manual",
+      updatePolicy: {
+        service: false,
+        manifestSentinel: MANUAL_UPDATE_SENTINEL,
+      },
       zoteroCompatibility: REQUIRED_COMPATIBILITY,
       runtimePackages: packages.map(({ name, version: dependencyVersion, license }) => ({
         name,

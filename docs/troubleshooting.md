@@ -12,6 +12,24 @@ Close and reopen the main Zotero window after enabling the plugin. If the XPI
 was rejected as an older version, remove the installed development build and
 install the versioned release manually.
 
+## Check for Updates reports that updates are unavailable
+
+This release is distributed manually and has no update server. Zotero 10.0.6's
+extension loader requires a truthy `applications.zotero.update_url`, even for a
+manual-only XPI. The package therefore uses
+`https://updates.invalid/zotero-ai-research-companion/updates.json`. The
+`.invalid` top-level domain is reserved for names that cannot resolve, so a
+manual **Check for Updates** can report a download error or unavailable update.
+That result is expected and does not indicate a bridge or Zotero-library error.
+
+Package verification requires that exact value. An arbitrary HTTPS host is
+rejected because it would claim an update service, and a self-contained `data:`
+URL is rejected by the installed Gecko manifest URL check: the manifest schema
+normalizes `update_url` as a URL through `Schemas.sys.mjs`, while
+`ExtensionCommon.sys.mjs` applies `DISALLOW_INHERIT_PRINCIPAL`, which covers
+`data:` URLs. Install newer versions manually from the same trusted source as
+the original XPI.
+
 ## The connection is Disabled
 
 Choose a dedicated directory, then choose **Enable**. Directory selection alone

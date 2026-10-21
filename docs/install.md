@@ -27,8 +27,12 @@ release XPI. This does not delete Zotero annotations, notes, or the companion's
 operation identity journal.
 
 The package is distributed manually. To update it, obtain the next matching XPI
-and client folder, then install the XPI from the Plugins Manager. Do not add an
-update URL or use an unverified replacement package.
+and client folder, then install the XPI from the Plugins Manager. Zotero requires
+every installable extension manifest to contain an update URL, so this package
+uses the reserved no-service address
+`https://updates.invalid/zotero-ai-research-companion/updates.json`. The
+`.invalid` name cannot provide an update service. Do not replace it with a real
+host or use an unverified replacement package.
 
 ## Select the local bridge directory
 

@@ -9,6 +9,7 @@ const STYLE_ATTRIBUTE = "data-zotero-gpt-reader-style";
 const PREVIEW_SELECTOR = `[${PREVIEW_ATTRIBUTE}]`;
 
 interface ReaderStateLike {
+  annotations?: unknown;
   sidebarOpen?: unknown;
   sidebarView?: unknown;
   selectedAnnotationIDs?: unknown;
@@ -16,8 +17,12 @@ interface ReaderStateLike {
 
 export interface ZoteroReaderLike {
   itemID?: number;
+  tabID?: unknown;
   _initPromise?: Promise<unknown>;
-  _iframeWindow?: { document?: Document };
+  _iframe?: Element;
+  _iframeWindow?: { document?: Document; frameElement?: Element | null };
+  _tabContainer?: Element;
+  _window?: { Zotero_Tabs?: { selectedID?: unknown } };
   _internalReader?: {
     _primaryView?: { initializedPromise?: Promise<unknown> };
     _state?: ReaderStateLike;
@@ -138,6 +143,7 @@ export class ZoteroReaderRenderingAdapter {
 
     for (const attached of candidates) {
       await this.#renderAttached(attached);
+      if (!isOwningReaderVisible(attached)) continue;
       const expectedMarkup = normalizeMarkup(attached.document, rendered.content);
       const state = attached.reader._internalReader?._state;
 
@@ -294,7 +300,8 @@ export class ZoteroReaderRenderingAdapter {
     if (comment === null) return undefined;
     const editor = comment.querySelector<HTMLElement>(".content");
     if (editor === null) return undefined;
-    const source = typeof editor.innerText === "string" ? editor.innerText : (editor.textContent ?? "");
+    const source = nativeCommentForAnnotation(attached.reader, annotationKey) ??
+      extractNativeCommentFromEditor(editor);
     let preview = comment.querySelector<HTMLElement>(PREVIEW_SELECTOR);
     if (source.length === 0) {
       preview?.remove();
@@ -472,8 +479,74 @@ function previewMatches(
     preview.getAttribute("data-zotero-attachment-item-id") === String(request.attachmentItemId) &&
     preview.parentElement?.getAttribute(COMMENT_MODE_ATTRIBUTE) === "preview" &&
     body?.innerHTML === expectedMarkup &&
-    isActuallyVisible(preview, document)
+    isActuallyVisible(preview, document) &&
+    body !== null &&
+    body !== undefined &&
+    isActuallyVisible(body, document)
   );
+}
+
+function nativeCommentForAnnotation(
+  reader: ZoteroReaderLike,
+  annotationKey: string,
+): string | undefined {
+  const annotations = reader._internalReader?._state?.annotations;
+  if (!Array.isArray(annotations)) return undefined;
+  for (const annotation of annotations) {
+    if (
+      annotation !== null &&
+      typeof annotation === "object" &&
+      "id" in annotation &&
+      annotation.id === annotationKey &&
+      "comment" in annotation &&
+      typeof annotation.comment === "string"
+    ) {
+      return annotation.comment;
+    }
+  }
+  return undefined;
+}
+
+const NATIVE_RICH_TEXT_TAGS = new Set(["b", "i", "sub", "sup"]);
+
+/**
+ * Transient fallback for a reader state that has not exposed its annotation
+ * array yet. It mirrors Zotero's supported rich editor structure without
+ * depending on layout-sensitive innerText from a hidden editor.
+ */
+function extractNativeCommentFromEditor(editor: HTMLElement): string {
+  const serializeChildren = (parent: Node): string => {
+    let output = "";
+    for (const child of parent.childNodes) {
+      if (child.nodeType === 3) {
+        output += child.nodeValue ?? "";
+        continue;
+      }
+      if (child.nodeType !== 1) continue;
+      const element = child as Element;
+      const name = element.localName.toLowerCase();
+      if (name === "br") {
+        output += "\n";
+        continue;
+      }
+
+      const content = serializeChildren(element);
+      if (name === "div") {
+        if (output.length > 0 && !output.endsWith("\n")) output += "\n";
+        output += content;
+        if (!output.endsWith("\n")) output += "\n";
+      } else if (NATIVE_RICH_TEXT_TAGS.has(name) && content.trim().length > 0) {
+        output += `<${name}>${content}</${name}>`;
+      } else {
+        output += content;
+      }
+    }
+    return output;
+  };
+
+  return serializeChildren(editor)
+    .replace(/\n<\/(b|i|sub|sup)>/giu, "</$1>")
+    .trim();
 }
 
 function normalizeMarkup(document: Document, markup: string): string {
@@ -488,7 +561,46 @@ function clipsOverflow(value: string): boolean {
   return value === "auto" || value === "clip" || value === "hidden" || value === "scroll";
 }
 
-function isActuallyVisible(node: HTMLElement, document: Document): boolean {
+function isOwningReaderVisible(attached: AttachedReader): boolean {
+  const { document, reader } = attached;
+  if (document.hidden || document.visibilityState !== "visible") return false;
+  if (document.body === null || !hasVisibleStyleChain(document.body, document)) return false;
+
+  if (reader.tabID !== undefined && reader.tabID !== null) {
+    if (reader._window?.Zotero_Tabs?.selectedID !== reader.tabID) return false;
+  }
+
+  let frameElement: Element | null | undefined;
+  try {
+    frameElement = reader._iframe ?? reader._iframeWindow?.frameElement;
+  } catch {
+    return false;
+  }
+  if (frameElement === undefined || frameElement === null) return false;
+  if (!isActuallyVisible(frameElement, frameElement.ownerDocument)) return false;
+  const tabContainer = reader._tabContainer;
+  return tabContainer === undefined || isActuallyVisible(tabContainer, tabContainer.ownerDocument);
+}
+
+function hasVisibleStyleChain(node: Element, document: Document): boolean {
+  const view = document.defaultView;
+  if (view === null) return false;
+  for (let current: Element | null = node; current !== null; current = current.parentElement) {
+    const style = view.getComputedStyle(current);
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.visibility === "collapse" ||
+      style.contentVisibility === "hidden" ||
+      Number(style.opacity) === 0
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isActuallyVisible(node: Element, document: Document): boolean {
   if (!node.isConnected || node.getClientRects().length === 0) return false;
   const view = document.defaultView;
   if (view === null) return false;
@@ -504,17 +616,9 @@ function isActuallyVisible(node: HTMLElement, document: Document): boolean {
   let bottom = Math.min(height, rect.bottom);
   if (right <= left || bottom <= top) return false;
 
-  for (let current: HTMLElement | null = node; current !== null; current = current.parentElement) {
+  if (!hasVisibleStyleChain(node, document)) return false;
+  for (let current: Element | null = node; current !== null; current = current.parentElement) {
     const style = view.getComputedStyle(current);
-    if (
-      style.display === "none" ||
-      style.visibility === "hidden" ||
-      style.visibility === "collapse" ||
-      style.contentVisibility === "hidden" ||
-      Number(style.opacity) === 0
-    ) {
-      return false;
-    }
     if (current === node) continue;
     const clipX = clipsOverflow(style.overflowX || style.overflow);
     const clipY = clipsOverflow(style.overflowY || style.overflow);

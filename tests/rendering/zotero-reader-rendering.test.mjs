@@ -8,7 +8,11 @@ import { SafeMarkdownRenderer } from "../../dist/adapters/rendering/index.js";
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function readerFixture({ annotationKey = "ANNOT01", attachmentItemId = 42 } = {}) {
+function readerFixture({
+  annotationKey = "ANNOT01",
+  attachmentItemId = 42,
+  nativeComment,
+} = {}) {
   const dom = new JSDOM(
     `<!doctype html><html><head></head><body>
       <main id="annotationsView">
@@ -21,18 +25,34 @@ function readerFixture({ annotationKey = "ANNOT01", attachmentItemId = 42 } = {}
     </body></html>`,
     { url: "https://reader.invalid/", pretendToBeVisual: true },
   );
+  const outerDom = new JSDOM(
+    '<!doctype html><html><body><section id="reader-tab"><iframe id="reader-browser"></iframe></section></body></html>',
+    { url: "https://zotero.invalid/", pretendToBeVisual: true },
+  );
   const document = dom.window.document;
+  const tabContainer = outerDom.window.document.querySelector("#reader-tab");
+  const browser = outerDom.window.document.querySelector("#reader-browser");
+  giveLayout(tabContainer);
+  giveLayout(browser);
+  const state = {
+    sidebarOpen: true,
+    sidebarView: "annotations",
+    selectedAnnotationIDs: [annotationKey],
+  };
+  if (nativeComment !== undefined) {
+    state.annotations = [{ id: annotationKey, comment: nativeComment }];
+  }
   const reader = {
     itemID: attachmentItemId,
+    tabID: "reader-tab-1",
     _initPromise: Promise.resolve(),
-    _iframeWindow: { document },
+    _iframe: browser,
+    _iframeWindow: { document, frameElement: browser },
+    _tabContainer: tabContainer,
+    _window: { Zotero_Tabs: { selectedID: "reader-tab-1" } },
     _internalReader: {
       _primaryView: { initializedPromise: Promise.resolve() },
-      _state: {
-        sidebarOpen: true,
-        sidebarView: "annotations",
-        selectedAnnotationIDs: [annotationKey],
-      },
+      _state: state,
     },
   };
   const links = [];
@@ -45,7 +65,20 @@ function readerFixture({ annotationKey = "ANNOT01", attachmentItemId = 42 } = {}
     scanIntervalMilliseconds: 60_000,
   });
   const editor = document.querySelector(".comment .content");
-  return { adapter, attachmentItemId, document, dom, editor, host, links, reader, annotationKey };
+  return {
+    adapter,
+    annotationKey,
+    attachmentItemId,
+    browser,
+    document,
+    dom,
+    editor,
+    host,
+    links,
+    outerDom,
+    reader,
+    tabContainer,
+  };
 }
 
 function setEditorText(editor, value) {
@@ -55,6 +88,15 @@ function setEditorText(editor, value) {
 function giveLayout(node, rect = { left: 10, right: 410, top: 20, bottom: 500 }) {
   node.getClientRects = () => ({ length: 1, item: () => rect, 0: rect });
   node.getBoundingClientRect = () => rect;
+}
+
+function givePreviewLayout(fixture, bodyRect) {
+  const preview = fixture.document.querySelector("[data-zotero-gpt-rendered-comment]");
+  const body = preview.querySelector("[data-zotero-gpt-rendered-body]");
+  giveLayout(preview);
+  giveLayout(body, bodyRect);
+  giveLayout(fixture.document.querySelector(".annotation"));
+  return preview;
 }
 
 test("adds a full formatted preview beside the native editor and preserves passage navigation", async () => {
@@ -128,15 +170,61 @@ test("refreshes after an ordinary native edit and removal restores the native DO
   assert.equal(fixture.editor.getAttribute("contenteditable"), "true");
 });
 
+test("refreshes from the canonical reader annotation when the rich native editor is hidden", async () => {
+  const canonical = [
+    "<b>핵심 질문</b>",
+    "",
+    "1. $x_1=1$을 확인한다.",
+    "",
+    "2. 귀납 단계가 성립한다.",
+    "",
+    "[원문](https://example.org/proof)",
+  ].join("\n");
+  const fixture = readerFixture({ nativeComment: canonical });
+  fixture.editor.innerHTML = [
+    "<b>핵심 질문</b>",
+    "<br><br>",
+    "<div>1. $x_1=1$을 확인한다.</div>",
+    "<div><br></div>",
+    "<div>2. 귀납 단계가 성립한다.</div>",
+    "<div><br></div>",
+    '<div><a>원문</a></div>',
+  ].join("");
+  Object.defineProperty(fixture.editor, "innerText", {
+    configurable: true,
+    get() {
+      return fixture.dom.window.getComputedStyle(fixture.editor).display === "none"
+        ? fixture.editor.textContent
+        : canonical;
+    },
+  });
+
+  await fixture.adapter.start();
+  await fixture.adapter.refresh();
+
+  const preview = givePreviewLayout(fixture);
+  const body = preview.querySelector("[data-zotero-gpt-rendered-body]");
+  assert.equal(body.querySelectorAll("p").length, 4, "blank native paragraphs remain paragraph boundaries");
+  assert.match(body.textContent, /<b>핵심 질문<\/b>/u, "native rich-text markers remain canonical input");
+  assert.equal(body.querySelector("a")?.getAttribute("href"), "https://example.org/proof");
+  assert.equal(
+    await fixture.adapter.verifyVisiblePreview({
+      attachmentItemId: fixture.attachmentItemId,
+      annotationKey: fixture.annotationKey,
+      expectedNativeComment: canonical,
+    }),
+    true,
+  );
+  fixture.adapter.stop();
+});
+
 test("verifies only a currently visible preview with exact attachment, annotation, and fresh content", async () => {
   const fixture = readerFixture();
   const expected = "긴 설명과 $x^2$";
   setEditorText(fixture.editor, expected);
   await fixture.adapter.start();
   await fixture.adapter.refresh();
-  const preview = fixture.document.querySelector("[data-zotero-gpt-rendered-comment]");
-  giveLayout(preview);
-  giveLayout(fixture.document.querySelector(".annotation"));
+  const preview = givePreviewLayout(fixture);
 
   assert.equal(
     await fixture.adapter.verifyVisiblePreview({
@@ -194,9 +282,7 @@ test("checks every open reader for the exact attachment instead of accepting a h
 
   await hidden.adapter.start();
   await hidden.adapter.refresh();
-  const preview = visible.document.querySelector("[data-zotero-gpt-rendered-comment]");
-  giveLayout(preview);
-  giveLayout(visible.document.querySelector(".annotation"));
+  const preview = givePreviewLayout(visible);
 
   assert.equal(
     await hidden.adapter.verifyVisiblePreview({
@@ -207,6 +293,91 @@ test("checks every open reader for the exact attachment instead of accepting a h
     true,
   );
   hidden.adapter.stop();
+});
+
+test("does not count a visible toolbar when the formatted body is outside the viewport", async () => {
+  const fixture = readerFixture();
+  const expected = "본문이 화면 밖인 $x$ 설명";
+  setEditorText(fixture.editor, expected);
+  await fixture.adapter.start();
+  await fixture.adapter.refresh();
+  givePreviewLayout(fixture, { left: 10, right: 410, top: 900, bottom: 980 });
+
+  assert.equal(
+    await fixture.adapter.verifyVisiblePreview({
+      attachmentItemId: fixture.attachmentItemId,
+      annotationKey: fixture.annotationKey,
+      expectedNativeComment: expected,
+    }),
+    false,
+  );
+  fixture.adapter.stop();
+});
+
+test("requires a visible owning reader browser in the selected Zotero tab", async () => {
+  const fixture = readerFixture();
+  const expected = "소유 리더가 보이는 경우만 증거";
+  setEditorText(fixture.editor, expected);
+  await fixture.adapter.start();
+  await fixture.adapter.refresh();
+  givePreviewLayout(fixture);
+
+  fixture.browser.style.display = "none";
+  assert.equal(
+    await fixture.adapter.verifyVisiblePreview({
+      attachmentItemId: fixture.attachmentItemId,
+      annotationKey: fixture.annotationKey,
+      expectedNativeComment: expected,
+    }),
+    false,
+    "a hidden owning browser invalidates otherwise positive inner layout",
+  );
+
+  fixture.browser.style.display = "block";
+  fixture.reader._window.Zotero_Tabs.selectedID = "different-tab";
+  fixture.browser.docShellIsActive = true;
+  assert.equal(
+    await fixture.adapter.verifyVisiblePreview({
+      attachmentItemId: fixture.attachmentItemId,
+      annotationKey: fixture.annotationKey,
+      expectedNativeComment: expected,
+    }),
+    false,
+    "an active read-aloud docShell does not make a background reader tab visible",
+  );
+
+  fixture.reader._window.Zotero_Tabs.selectedID = fixture.reader.tabID;
+  assert.equal(
+    await fixture.adapter.verifyVisiblePreview({
+      attachmentItemId: fixture.attachmentItemId,
+      annotationKey: fixture.annotationKey,
+      expectedNativeComment: expected,
+    }),
+    true,
+  );
+  fixture.adapter.stop();
+});
+
+test("supports a visible standalone reader window without a tab identity", async () => {
+  const fixture = readerFixture();
+  const expected = "독립 리더 창의 $w$ 설명";
+  delete fixture.reader.tabID;
+  delete fixture.reader._window;
+  delete fixture.reader._tabContainer;
+  setEditorText(fixture.editor, expected);
+  await fixture.adapter.start();
+  await fixture.adapter.refresh();
+  givePreviewLayout(fixture);
+
+  assert.equal(
+    await fixture.adapter.verifyVisiblePreview({
+      attachmentItemId: fixture.attachmentItemId,
+      annotationKey: fixture.annotationKey,
+      expectedNativeComment: expected,
+    }),
+    true,
+  );
+  fixture.adapter.stop();
 });
 
 test("reattaches after a reader document reload and cleans the replaced document", async () => {
@@ -246,6 +417,7 @@ test("renders and verifies the selected annotation popup when the sidebar is clo
   assert.ok(preview);
   assert.equal(preview.getAttribute("data-zotero-annotation-key"), fixture.annotationKey);
   giveLayout(preview);
+  giveLayout(preview.querySelector("[data-zotero-gpt-rendered-body]"));
   giveLayout(popup);
 
   assert.equal(

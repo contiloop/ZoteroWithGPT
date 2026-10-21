@@ -70,6 +70,13 @@ and detaches closed or reloaded reader documents. Call `stop()` when access is d
 shuts down. Stop and render-error cleanup remove all adapter-owned previews, styles, listeners, and
 mode attributes.
 
+The adapter resolves each comment by exact annotation ID from
+`reader._internalReader._state.annotations`. That value is Zotero's canonical HTML-flavored plain
+text, including native paragraph breaks and the supported `<b>`, `<i>`, `<sub>`, and `<sup>`
+markers. This avoids reading layout-dependent `innerText` after the native editor is hidden. A
+transient fallback serializes only Zotero's supported native editor structure; neither path stores a
+second copy of the comment.
+
 The adapter uses the Zotero 10 reader surfaces observed in the shipped application:
 `Zotero.Reader._readers`, `reader.itemID`, `reader._initPromise`,
 `reader._internalReader._state`, `reader._iframeWindow.document`,
@@ -96,7 +103,8 @@ all of the following hold:
 - the exact annotation row is in the open annotations sidebar, or the exact annotation is the sole
   selection represented by the popup;
 - the formatted preview is connected, laid out, and intersects the visible reader viewport after
-  ancestor clipping;
+  ancestor clipping, including the formatted body rather than only its toolbar;
+- the outer reader browser is visible and, for a reader tab, its tab ID is currently selected;
 - the visible formatted body equals a fresh safe rendering of the expected native comment; and
 - the preview is in formatted mode rather than native-source editing mode.
 

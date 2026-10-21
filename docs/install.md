@@ -4,9 +4,19 @@ This release supports Zotero 10.0.6 through 10.0.x on macOS. It uses local
 protocol-v1 request and result files. It does not need a model API key and does
 not contain an automatic update service.
 
+Obtain the two matching items from the release bundle:
+
+```text
+zotero-ai-research-companion-<version>.xpi
+zotero-ai-research-companion-<version>-client/
+```
+
+The second item is an ordinary folder of plain UTF-8 client instructions,
+schemas, and examples. Keep both items at the same version.
+
 ## Install the XPI
 
-1. Download the versioned `zotero-ai-research-companion-<version>.xpi` file.
+1. Locate the versioned `zotero-ai-research-companion-<version>.xpi` file.
 2. In Zotero, choose **Tools → Plugins**.
 3. Open the gear menu, choose **Install Plugin From File…**, and select the XPI.
 4. Confirm the installation when Zotero asks.
@@ -16,17 +26,26 @@ that development build in the Plugins Manager, then install the versioned
 release XPI. This does not delete Zotero annotations, notes, or the companion's
 operation identity journal.
 
-The package is distributed manually. To update it, download the next versioned
-XPI and install it from the Plugins Manager. Do not add an update URL or use an
-unverified replacement package.
+The package is distributed manually. To update it, obtain the next matching XPI
+and client folder, then install the XPI from the Plugins Manager. Do not add an
+update URL or use an unverified replacement package.
 
 ## Select the local bridge directory
 
-Create one empty directory for this Zotero profile. The directory is the
+Create one new dedicated directory for this Zotero profile. The directory is the
 authority boundary for client request and result files, so do not select your
 home directory, Desktop, Zotero data directory, a synced research folder, or a
 directory used by another plugin. Do not share write access with an untrusted
 local account or process.
+
+Before enabling the connection, copy the client kit with Finder:
+
+1. Inside the dedicated directory, create a folder named `client-v1`.
+2. Open `zotero-ai-research-companion-<version>-client` and copy every item
+   inside it into `client-v1`.
+3. Confirm that `<BRIDGE_ROOT>/client-v1/README.md` exists, where
+   `<BRIDGE_ROOT>` means the dedicated directory. Do not select `client-v1` as
+   the bridge root.
 
 1. Choose **Tools → Research Companion Settings…**.
 2. Choose **Choose Directory…** and select the dedicated existing directory.
@@ -45,8 +64,10 @@ until Enable is chosen explicitly.
 
 ## Connect a local-file client
 
-The XPI includes `protocol/v1.md`, a JSON request schema, and complete request
-examples. The two currently documented client routes are:
+The XPI and matching plain-text client kit include `protocol/v1.md`, request and
+response schemas, and complete examples. Replace `<BRIDGE_ROOT>` in the starter
+prompt in `<BRIDGE_ROOT>/client-v1/README.md` with the exact absolute directory
+displayed by Zotero. The two currently documented client routes are:
 
 - **Direct Codex local files:** start a local Codex task that has access to the
   selected directory, then have it follow the descriptor-status-descriptor
@@ -77,8 +98,10 @@ version to match the current descriptor and require `enabled: true`. A healthy
 setup has all of the following:
 
 - the Zotero settings dialog shows the intended directory and **Ready**;
-- `bridge-v1.json`, its status file, and the response report the same profile
-  and session;
+- `<BRIDGE_ROOT>/client-v1/README.md` is readable by the chosen local client;
+- `bridge-v1.json` and its status file report the same profile and session;
+- the `connection_status` response read from that session's result directory
+  has a `data.profile.id` matching the descriptor profile;
 - the request and result directories are relative to the selected root; and
 - no API key, tunnel key, or credential appears in the directory.
 

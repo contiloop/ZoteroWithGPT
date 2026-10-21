@@ -123,13 +123,20 @@ export class ResearchCompanionSettings {
 
   /** Removes adapter-owned UI and closes the connection without erasing setup. */
   async shutdown(): Promise<void> {
-    for (const cleanup of this.#windowCleanup.values()) cleanup();
-    this.#windowCleanup.clear();
     try {
       await this.#runtime.stopConnection();
       this.#status = { state: "disabled", detail: "Connection stopped" };
     } catch (error) {
       this.#status = { state: "error", detail: errorMessage(error) };
+    }
+    const cleanups = [...this.#windowCleanup.values()];
+    this.#windowCleanup.clear();
+    for (const cleanup of cleanups) {
+      try {
+        cleanup();
+      } catch {
+        // Closed windows must not prevent cleanup of other adapter-owned menus.
+      }
     }
     this.#initialized = false;
   }

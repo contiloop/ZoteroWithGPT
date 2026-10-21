@@ -5,9 +5,11 @@ import os from "node:os";
 import path from "node:path";
 
 const UNZIP_PATH = "/usr/bin/unzip";
+const ARCHIVE_PREFIX = "zotero-ai-research-companion";
 const REQUIRED_MEMBERS = Object.freeze([
   "bootstrap.js",
   "BUILD_METADATA.json",
+  "client/README.md",
   "companion.js",
   "docs/install.md",
   "docs/troubleshooting.md",
@@ -24,6 +26,21 @@ const REQUIRED_MEMBERS = Object.freeze([
   "protocol/v1-response.schema.json",
   "protocol/v1.md",
   "THIRD_PARTY_NOTICES",
+]);
+const REQUIRED_CLIENT_MEMBERS = Object.freeze([
+  "README.md",
+  "docs/install.md",
+  "docs/troubleshooting.md",
+  "docs/uninstall.md",
+  "protocol/examples/connection-status.request.json",
+  "protocol/examples/connection-status.response.json",
+  "protocol/examples/create-annotation.request.json",
+  "protocol/examples/create-annotation.response.json",
+  "protocol/examples/create-note.request.json",
+  "protocol/examples/read-pdf.request.json",
+  "protocol/v1-request.schema.json",
+  "protocol/v1-response.schema.json",
+  "protocol/v1.md",
 ]);
 const OPERATIONS = new Set([
   "connection_status",
@@ -72,6 +89,7 @@ async function listFiles(directory, prefix = "") {
     const relative = prefix.length === 0 ? entry.name : `${prefix}/${entry.name}`;
     if (entry.isDirectory()) files.push(...await listFiles(directory, relative));
     else if (entry.isFile()) files.push(relative);
+    else throw new Error(`Package contains an unsupported filesystem entry: ${relative}`);
   }
   return files.sort();
 }
@@ -201,6 +219,20 @@ function validateManifest(manifest, expectedVersion) {
   }
 }
 
+function noticePackageIdentities(notices) {
+  const identities = new Set();
+  for (const line of notices.split(/\r?\n/u)) {
+    if (!line.startsWith("Package:")) continue;
+    const match = line.match(/^Package: ([^\s]+@[^\s]+)$/u);
+    if (match === null) throw new Error(`Invalid THIRD_PARTY_NOTICES package identity: ${line}`);
+    if (identities.has(match[1])) {
+      throw new Error(`Duplicate THIRD_PARTY_NOTICES package identity: ${match[1]}`);
+    }
+    identities.add(match[1]);
+  }
+  return identities;
+}
+
 function validateThirdParty(metadata, notices, members) {
   if (metadata.projectLicense !== null) {
     throw new Error("BUILD_METADATA.json invents a project license");
@@ -211,6 +243,7 @@ function validateThirdParty(metadata, notices, members) {
   if (!Array.isArray(metadata.runtimePackages)) {
     throw new Error("BUILD_METADATA.json lacks runtimePackages");
   }
+  const noticedPackages = noticePackageIdentities(notices);
   for (const dependency of metadata.runtimePackages) {
     if (
       typeof dependency.name !== "string" ||
@@ -219,14 +252,48 @@ function validateThirdParty(metadata, notices, members) {
     ) {
       throw new Error("BUILD_METADATA.json contains invalid runtime package metadata");
     }
-    if (!notices.includes(`${dependency.name} ${dependency.version}`)) {
-      throw new Error(`THIRD_PARTY_NOTICES omits ${dependency.name} ${dependency.version}`);
+    const noticeIdentity = `${dependency.name}@${dependency.version}`;
+    if (!noticedPackages.has(noticeIdentity)) {
+      throw new Error(`THIRD_PARTY_NOTICES omits ${noticeIdentity}`);
     }
     const licensePrefix = `third-party-licenses/${dependency.name.replaceAll("/", "__")}/`;
     if (!members.some((member) => member.startsWith(licensePrefix))) {
       throw new Error(`XPI omits the license text for ${dependency.name} ${dependency.version}`);
     }
   }
+}
+
+async function validateClientKit(clientDirectory, extractedXpi, version) {
+  let info;
+  try {
+    info = await stat(clientDirectory);
+  } catch {
+    throw new Error(`Release is missing client sidecar ${path.basename(clientDirectory)}`);
+  }
+  if (!info.isDirectory()) throw new Error("Client sidecar path is not a directory");
+  const members = await listFiles(clientDirectory);
+  if (JSON.stringify(members) !== JSON.stringify([...REQUIRED_CLIENT_MEMBERS].sort())) {
+    throw new Error("Client sidecar does not contain the exact documented release files");
+  }
+  for (const member of members) {
+    const content = await readFile(path.join(clientDirectory, ...member.split("/")), "utf8");
+    validateText(content, `client sidecar ${member}`);
+    const xpiMember = member === "README.md" ? "client/README.md" : member;
+    const packaged = await readFile(path.join(extractedXpi, ...xpiMember.split("/")), "utf8");
+    if (content !== packaged) {
+      throw new Error(`Client sidecar ${member} differs from the XPI`);
+    }
+  }
+  const readme = await readFile(path.join(clientDirectory, "README.md"), "utf8");
+  if (
+    !readme.includes(`Package version: \`${version}\``) ||
+    !readme.includes("<BRIDGE_ROOT>/client-v1/README.md") ||
+    !readme.includes("connection_status") ||
+    readme.includes("{{PACKAGE_VERSION}}")
+  ) {
+    throw new Error("Client sidecar README lacks the versioned setup path or starter prompt");
+  }
+  return members;
 }
 
 export async function verifyXpi(xpiPath, { expectedProjectRoot } = {}) {
@@ -254,8 +321,12 @@ export async function verifyXpi(xpiPath, { expectedProjectRoot } = {}) {
     ));
     const version = metadata.version;
     if (typeof version !== "string") throw new Error("BUILD_METADATA.json lacks a version");
-    if (path.basename(archive) !== `zotero-ai-research-companion-${version}.xpi`) {
+    if (path.basename(archive) !== `${ARCHIVE_PREFIX}-${version}.xpi`) {
       throw new Error("XPI filename does not match BUILD_METADATA.json version");
+    }
+    const expectedClientName = `${ARCHIVE_PREFIX}-${version}-client`;
+    if (metadata.clientKit !== expectedClientName) {
+      throw new Error("BUILD_METADATA.json does not identify the matching client sidecar");
     }
     if (expectedProjectRoot !== undefined) {
       const project = JSON.parse(await readFile(path.join(expectedProjectRoot, "package.json"), "utf8"));
@@ -294,9 +365,13 @@ export async function verifyXpi(xpiPath, { expectedProjectRoot } = {}) {
     }
     const notices = await readFile(path.join(temporaryDirectory, "THIRD_PARTY_NOTICES"), "utf8");
     validateThirdParty(metadata, notices, extracted);
+    const clientDirectory = path.join(path.dirname(archive), expectedClientName);
+    const clientMembers = await validateClientKit(clientDirectory, temporaryDirectory, version);
     return {
       version,
       members: extracted,
+      clientDirectory,
+      clientMembers,
       zoteroCompatibility: {
         minimum: manifest.applications.zotero.strict_min_version,
         maximum: manifest.applications.zotero.strict_max_version,

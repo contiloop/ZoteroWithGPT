@@ -33,22 +33,27 @@ Keep this file across ordinary uninstall and reinstall. It records historical
 operation identities and prevents the same authorized native mutation from
 being executed again. It is safety metadata, not a cache.
 
-## Optional cleanup of owned transient files
+## Optional cleanup of owned connection files
 
 After the plugin is disabled and removed, the selected dedicated bridge
-directory can contain only companion transport data:
+directory can contain companion transport data and the copied client kit:
 
 ```text
 bridge-v1.json
 sessions/<session-id>/status-v1.json
 sessions/<session-id>/requests/
 sessions/<session-id>/results/
+client-v1/README.md
+client-v1/docs/
+client-v1/protocol/
 ```
 
-If the directory was dedicated to this plugin, move exactly `bridge-v1.json`
-and the `sessions` directory to Trash. Inspect the directory first and leave
-any unrecognized file in place. Do not delete the selected directory itself
-unless you created it only for the companion and have confirmed it is empty.
+If the directory was dedicated to this plugin, move exactly `bridge-v1.json`,
+the `sessions` directory, and the copied `client-v1` directory to Trash. Inspect
+the directory first and leave any unrecognized file in place. Do not delete the
+selected directory itself unless you created it only for the companion and have
+confirmed it is empty. The release-bundle client folder outside the bridge is a
+separate copy and is not changed by the plugin.
 
 The two owned preferences are:
 

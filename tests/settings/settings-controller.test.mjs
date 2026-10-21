@@ -230,6 +230,41 @@ test("shutdown retains setup so a new adapter starts a fresh reinstall session",
   assert.equal(replacement.snapshot().status.sessionId, "replacement-session");
 });
 
+test("shutdown closes runtime authority before fallible window cleanup", async () => {
+  const events = [];
+  const settings = new ResearchCompanionSettings({
+    host: {
+      getPreference: (name) => name === SETTINGS_PREFERENCE_NAMES.enabled
+        ? true
+        : "/Users/alice/Research Companion",
+      setPreference: () => {},
+      normalizeDirectory: (value) => value,
+      chooseDirectory: async () => undefined,
+      addToolsMenu: () => () => {
+        events.push("menu-cleanup");
+        throw new Error("window already closed");
+      },
+      promptAction: async () => "close",
+      showError: () => {},
+    },
+    runtime: {
+      async startConnection(directory) {
+        events.push("start");
+        return { state: "ready", directory, sessionId: "session" };
+      },
+      async stopConnection() { events.push("stop"); },
+      getConnectionStatus: () => ({ state: "disabled" }),
+    },
+  });
+
+  await settings.initialize();
+  settings.onMainWindowLoad({ document: {} });
+  await settings.shutdown();
+
+  assert.deepEqual(events, ["start", "stop", "menu-cleanup"]);
+  assert.equal(settings.snapshot().status.state, "disabled");
+});
+
 test("a failed enable is readable and does not persist an enabled startup state", async () => {
   const window = { id: "main" };
   const preferences = new Map([

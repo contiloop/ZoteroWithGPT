@@ -29,7 +29,7 @@ interface PromptServiceLike {
     button1Title: string,
     button2Title: string,
     checkMessage: string | null,
-    checkState: { value: boolean } | null,
+    checkState: { value: boolean },
   ): number;
   alert(parent: unknown, title: string, text: string): void;
 }
@@ -87,13 +87,13 @@ function promptButtons(snapshot: SettingsSnapshot): {
 } {
   if (snapshot.status.state === "ready" || snapshot.status.state === "connecting") {
     return {
-      labels: ["Disable", "Reconnect", "Close"],
-      actions: ["disable", "reconnect", "close"],
+      labels: ["Disable", "Close", "Reconnect"],
+      actions: ["disable", "close", "reconnect"],
     };
   }
   return {
-    labels: ["Enable", "Choose Directory…", "Close"],
-    actions: ["enable", "choose_directory", "close"],
+    labels: ["Enable", "Close", "Choose Directory…"],
+    actions: ["enable", "close", "choose_directory"],
   };
 }
 
@@ -188,7 +188,7 @@ export function createZoteroSettingsHost(
         labels[1],
         labels[2],
         null,
-        null,
+        { value: false },
       );
       return actions[selected] ?? "close";
     },

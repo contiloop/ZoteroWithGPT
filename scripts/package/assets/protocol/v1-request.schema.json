@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://zoterowithgpt.local/schemas/protocol-v1-request.json",
   "title": "Zotero AI Research Companion protocol-v1 request",
-  "description": "Strict request shapes. The runtime additionally enforces documented UTF-8 byte limits and cross-field geometry constraints.",
+  "description": "Strict request shapes. The runtime additionally enforces documented UTF-8 byte limits and cross-field semantic constraints.",
   "oneOf": [
     { "$ref": "#/$defs/connectionStatusRequest" },
     { "$ref": "#/$defs/searchPapersRequest" },

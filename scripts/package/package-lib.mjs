@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import {
   chmod,
+  cp,
   copyFile,
   mkdir,
   mkdtemp,
@@ -22,6 +23,7 @@ const ZIP_PATH = "/usr/bin/zip";
 const REQUIRED_COMPATIBILITY = Object.freeze({ minimum: "10.0.6", maximum: "10.0.*" });
 const ARCHIVE_PREFIX = "zotero-ai-research-companion";
 const ASSET_DIRECTORY = fileURLToPath(new URL("./assets", import.meta.url));
+const CLIENT_README_TEMPLATE = path.join(ASSET_DIRECTORY, "client", "README.md");
 
 const STATIC_FILES = Object.freeze([
   ["addon/bootstrap.js", "bootstrap.js"],
@@ -42,6 +44,13 @@ const ASSET_FILES = Object.freeze([
   ["protocol/examples/create-annotation.request.json", "protocol/examples/create-annotation.request.json"],
   ["protocol/examples/create-annotation.response.json", "protocol/examples/create-annotation.response.json"],
   ["protocol/examples/create-note.request.json", "protocol/examples/create-note.request.json"],
+]);
+
+const CLIENT_PROJECT_FILES = Object.freeze([
+  ["docs/install.md", "docs/install.md"],
+  ["docs/uninstall.md", "docs/uninstall.md"],
+  ["docs/troubleshooting.md", "docs/troubleshooting.md"],
+  ["docs/protocol/v1.md", "protocol/v1.md"],
 ]);
 
 const DEFAULT_PREFERENCES = [
@@ -84,6 +93,7 @@ function validateManifest(manifest, version) {
     throw new Error("manual distribution packages must not declare an update URL");
   }
 }
+
 function validateReleaseText(content, label) {
   if (PRIVATE_OR_DEVELOPMENT_PATTERN.test(content)) {
     throw new Error(`${label} contains a private or development-specific path or marker`);
@@ -104,6 +114,20 @@ function packageNameFromInput(input) {
   const normalized = input.replaceAll("\\", "/");
   const match = normalized.match(/(?:^|\/)node_modules\/((?:@[^/]+\/)?[^/]+)/u);
   return match?.[1];
+}
+
+function noticePackageIdentities(notices) {
+  const identities = new Set();
+  for (const line of notices.split(/\r?\n/u)) {
+    if (!line.startsWith("Package:")) continue;
+    const match = line.match(/^Package: ([^\s]+@[^\s]+)$/u);
+    if (match === null) throw new Error(`Invalid THIRD_PARTY_NOTICES package identity: ${line}`);
+    if (identities.has(match[1])) {
+      throw new Error(`Duplicate THIRD_PARTY_NOTICES package identity: ${match[1]}`);
+    }
+    identities.add(match[1]);
+  }
+  return identities;
 }
 
 async function runtimePackages(projectRoot, metafile) {
@@ -134,9 +158,10 @@ async function runtimePackages(projectRoot, metafile) {
 }
 
 async function copyRuntimeLicenses(stagingDirectory, packages, notices) {
+  const noticedPackages = noticePackageIdentities(notices);
   for (const dependency of packages) {
-    const noticeIdentity = `${dependency.name} ${dependency.version}`;
-    if (!notices.includes(noticeIdentity)) {
+    const noticeIdentity = `${dependency.name}@${dependency.version}`;
+    if (!noticedPackages.has(noticeIdentity)) {
       throw new Error(`THIRD_PARTY_NOTICES does not identify bundled package ${noticeIdentity}`);
     }
     const archiveDirectory = dependency.name.replaceAll("/", "__");
@@ -173,11 +198,41 @@ async function normalizeArchiveMetadata(stagingDirectory, members) {
   }
 }
 
+async function stageClientKit(projectRoot, directory, version) {
+  await mkdir(directory, { recursive: true });
+  const readmeTemplate = await readFile(CLIENT_README_TEMPLATE, "utf8");
+  const readme = readmeTemplate.replaceAll("{{PACKAGE_VERSION}}", version);
+  if (readme.includes("{{PACKAGE_VERSION}}")) {
+    throw new Error("Client README contains an unresolved package version");
+  }
+  validateReleaseText(readme, "client README");
+  await writeFile(path.join(directory, "README.md"), readme, "utf8");
+  for (const [source, destination] of CLIENT_PROJECT_FILES) {
+    await copyText(
+      path.join(projectRoot, ...source.split("/")),
+      path.join(directory, ...destination.split("/")),
+      `client kit ${source}`,
+    );
+  }
+  for (const [source, destination] of ASSET_FILES) {
+    await copyText(
+      path.join(ASSET_DIRECTORY, ...source.split("/")),
+      path.join(directory, ...destination.split("/")),
+      `client kit ${source}`,
+    );
+  }
+  const members = (await allFiles(directory)).sort();
+  await normalizeArchiveMetadata(directory, members);
+  return { members, readme };
+}
+
 async function runZip(stagingDirectory, outputPath, members) {
   await rm(outputPath, { force: true });
+  const environment = { ...process.env, COPYFILE_DISABLE: "1", LC_ALL: "C", TZ: "UTC" };
+  delete environment.ZIPOPT;
   const child = spawn(ZIP_PATH, ["-X", "-q", outputPath, "-@"], {
     cwd: stagingDirectory,
-    env: { ...process.env, COPYFILE_DISABLE: "1", LC_ALL: "C", TZ: "UTC" },
+    env: environment,
     stdio: ["pipe", "pipe", "pipe"],
   });
   let standardError = "";
@@ -203,12 +258,20 @@ export async function buildXpi({
   validateManifest(manifest, version);
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "research-companion-xpi-"));
   const stagingDirectory = path.join(temporaryDirectory, "package");
+  const clientStagingDirectory = path.join(temporaryDirectory, "client");
   const outputPath = path.resolve(
     outputDirectory,
     `${ARCHIVE_PREFIX}-${version}.xpi`,
   );
+  const clientDirectory = path.resolve(
+    outputDirectory,
+    `${ARCHIVE_PREFIX}-${version}-client`,
+  );
+  let published = false;
 
   try {
+    await rm(outputPath, { force: true });
+    await rm(clientDirectory, { recursive: true, force: true });
     await mkdir(stagingDirectory, { recursive: true });
     for (const [source, destination] of STATIC_FILES) {
       await copyText(
@@ -225,6 +288,13 @@ export async function buildXpi({
       );
     }
     await writeFile(path.join(stagingDirectory, "prefs.js"), DEFAULT_PREFERENCES, "utf8");
+    const clientKit = await stageClientKit(projectRoot, clientStagingDirectory, version);
+    await mkdir(path.join(stagingDirectory, "client"), { recursive: true });
+    await writeFile(
+      path.join(stagingDirectory, "client", "README.md"),
+      clientKit.readme,
+      "utf8",
+    );
 
     const buildResult = await build({
       absWorkingDir: projectRoot,
@@ -255,6 +325,7 @@ export async function buildXpi({
     await copyRuntimeLicenses(stagingDirectory, packages, notices);
     const buildMetadata = {
       artifact: `${ARCHIVE_PREFIX}-${version}.xpi`,
+      clientKit: `${ARCHIVE_PREFIX}-${version}-client`,
       version,
       projectLicense: null,
       distribution: "manual",
@@ -271,6 +342,7 @@ export async function buildXpi({
         platform: "browser",
         target: "firefox140",
         archive: "/usr/bin/zip -X with sorted members and fixed UTC timestamps",
+        clientKit: "plain UTF-8 files with the same fixed timestamps",
       },
     };
     await writeFile(
@@ -283,13 +355,25 @@ export async function buildXpi({
     await normalizeArchiveMetadata(stagingDirectory, members);
     await mkdir(path.dirname(outputPath), { recursive: true });
     await runZip(stagingDirectory, outputPath, members);
+    await cp(clientStagingDirectory, clientDirectory, {
+      recursive: true,
+      preserveTimestamps: true,
+      errorOnExist: true,
+    });
+    published = true;
     return {
       outputPath,
+      clientDirectory,
       version,
       members,
+      clientMembers: clientKit.members,
       runtimePackages: buildMetadata.runtimePackages,
     };
   } finally {
+    if (!published) {
+      await rm(outputPath, { force: true });
+      await rm(clientDirectory, { recursive: true, force: true });
+    }
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
 }

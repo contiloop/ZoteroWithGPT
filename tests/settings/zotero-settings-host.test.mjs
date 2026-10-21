@@ -55,7 +55,11 @@ function environment() {
         BUTTON_POS_1: 256,
         BUTTON_POS_2: 65536,
         BUTTON_TITLE_IS_STRING: 127,
-        confirmEx(...args) { promptCalls.push(args); return promptResult; },
+        confirmEx(...args) {
+          assert.deepEqual(args[8], { value: false });
+          promptCalls.push(args);
+          return promptResult;
+        },
         alert(...args) { alerts.push(args); },
       },
     },
@@ -160,7 +164,7 @@ test("Zotero host attaches one removable Tools menu command", async () => {
 test("Zotero host displays directory, state, session, and diagnostic detail", async () => {
   const setup = environment();
   const host = createZoteroSettingsHost(setup.value);
-  setup.promptResult = 1;
+  setup.promptResult = 2;
 
   const action = await host.promptAction({ document: {} }, {
     enabled: true,
@@ -184,5 +188,27 @@ test("Zotero host displays directory, state, session, and diagnostic detail", as
   assert.match(call[2], /State: Ready/u);
   assert.match(call[2], /Directory: \/Users\/alice\/Research Companion/u);
   assert.match(call[2], /Session: 0123456789abcdef0123456789abcdef/u);
-  assert.deepEqual(call.slice(4, 7), ["Disable", "Reconnect", "Close"]);
+  assert.deepEqual(call.slice(4, 7), ["Disable", "Close", "Reconnect"]);
+});
+
+test("Zotero cancel button and Escape always close settings without an action", async () => {
+  const setup = environment();
+  const host = createZoteroSettingsHost(setup.value);
+  setup.promptResult = 1;
+
+  const readyAction = await host.promptAction({ document: {} }, {
+    enabled: true,
+    selectedDirectory: "/Users/alice/Research Companion",
+    status: { state: "ready" },
+    diagnostics: ["State: Ready"],
+  });
+  const disabledAction = await host.promptAction({ document: {} }, {
+    enabled: false,
+    status: { state: "disabled" },
+    diagnostics: ["State: Disabled"],
+  });
+
+  assert.equal(readyAction, "close");
+  assert.equal(disabledAction, "close");
+  assert.deepEqual(setup.promptCalls[1].slice(4, 7), ["Enable", "Close", "Choose Directory…"]);
 });

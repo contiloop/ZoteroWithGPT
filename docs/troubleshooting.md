@@ -33,6 +33,12 @@ session status file manually.
 
 ## Status is Ready but no result appears
 
+First confirm that the local client can read
+`<BRIDGE_ROOT>/client-v1/README.md`. If it cannot, copy the contents of the
+matching versioned client folder into `<BRIDGE_ROOT>/client-v1` with Finder.
+Do not point the client at the compressed XPI and do not select `client-v1` as
+the bridge root.
+
 Check the client in this order:
 
 1. Read `bridge-v1.json` from the selected root.

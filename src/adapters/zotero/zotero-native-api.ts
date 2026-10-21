@@ -119,7 +119,14 @@ interface ReaderPrimaryViewLike {
 
 interface ReaderLike {
   itemID?: number;
-  _iframeWindow?: { document?: QueryDocumentLike };
+  tabID?: unknown;
+  _iframe?: QueryNodeLike;
+  _iframeWindow?: {
+    document?: QueryDocumentLike;
+    frameElement?: QueryNodeLike | null;
+  };
+  _tabContainer?: QueryNodeLike;
+  _window?: { Zotero_Tabs?: { selectedID?: unknown } };
   _initPromise?: Promise<unknown>;
   _internalReader?: {
     _primaryView?: ReaderPrimaryViewLike;
@@ -195,6 +202,7 @@ interface QueryNodeLike {
   textContent?: string | null;
   innerText?: string;
   isConnected?: boolean;
+  ownerDocument?: QueryDocumentLike;
   getClientRects?(): { length: number };
   getBoundingClientRect?(): QueryRectLike;
   parentElement?: QueryNodeLike | null;
@@ -219,6 +227,9 @@ interface QueryStyleLike {
 }
 
 interface QueryDocumentLike {
+  hidden?: boolean;
+  visibilityState?: string;
+  body?: QueryNodeLike | null;
   defaultView?: {
     innerWidth?: number;
     innerHeight?: number;
@@ -419,6 +430,79 @@ function isRenderedNode(
     if (right <= left || bottom <= top) return false;
   }
   return true;
+}
+
+function hasVisibleStyleChain(
+  node: QueryNodeLike,
+  document: QueryDocumentLike,
+): boolean {
+  if (document.defaultView?.getComputedStyle === undefined) return false;
+  for (
+    let current: QueryNodeLike | null | undefined = node;
+    current;
+    current = current.parentElement
+  ) {
+    const style = document.defaultView.getComputedStyle(current);
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.visibility === "collapse" ||
+      style.contentVisibility === "hidden" ||
+      (style.opacity !== undefined && Number(style.opacity) === 0)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function visibleDocument(document: QueryDocumentLike | undefined): document is QueryDocumentLike {
+  return (
+    document !== undefined &&
+    document.hidden === false &&
+    document.visibilityState === "visible" &&
+    document.body !== undefined &&
+    document.body !== null &&
+    hasVisibleStyleChain(document.body, document)
+  );
+}
+
+function hasOwnerVisibilityApis(document: QueryDocumentLike | undefined): document is QueryDocumentLike {
+  return typeof document?.defaultView?.getComputedStyle === "function";
+}
+
+function owningReaderVisible(reader: ReaderLike, document: QueryDocumentLike): boolean {
+  if (!visibleDocument(document)) return false;
+  if (
+    reader.tabID !== undefined &&
+    reader.tabID !== null &&
+    reader._window?.Zotero_Tabs?.selectedID !== reader.tabID
+  ) {
+    return false;
+  }
+
+  let frame: QueryNodeLike | null | undefined;
+  try {
+    frame = reader._iframe ?? reader._iframeWindow?.frameElement;
+  } catch {
+    return false;
+  }
+  const ownerDocument = frame?.ownerDocument;
+  if (
+    frame === undefined ||
+    frame === null ||
+    !hasOwnerVisibilityApis(ownerDocument) ||
+    !isRenderedNode(frame, ownerDocument)
+  ) {
+    return false;
+  }
+  const tabContainer = reader._tabContainer;
+  if (tabContainer === undefined) return true;
+  const tabDocument = tabContainer.ownerDocument;
+  return (
+    hasOwnerVisibilityApis(tabDocument) &&
+    isRenderedNode(tabContainer, tabDocument)
+  );
 }
 
 function mapPageChars(value: unknown): NativePageChar[] {
@@ -918,10 +1002,18 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     if (!/^[A-Za-z0-9]+$/u.test(annotationKey)) return false;
     const record = await this.getAnnotation(requestedLibraryId, attachmentKey, annotationKey);
     if (record === undefined) return false;
-    return (
-      (await this.#withReader(attachment.id, false, async (reader, _view) => {
+    const readers = this.#zotero.Reader._readers.filter(
+      (candidate) => candidate.itemID === attachment.id,
+    );
+    for (const reader of readers) {
+      try {
+        await reader._initPromise;
+        const view = reader._internalReader?._primaryView;
+        if (view === undefined) continue;
+        await view.initializedPromise;
         const internal = reader._internalReader;
         const readerDocument = reader._iframeWindow?.document;
+        if (readerDocument === undefined || !owningReaderVisible(reader, readerDocument)) continue;
         const sidebar = readerDocument?.querySelector(
           `[data-sidebar-annotation-id="${annotationKey}"]`,
         );
@@ -954,10 +1046,11 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
         ) {
           return true;
         }
-
-        return false;
-      })) ?? false
-    );
+      } catch {
+        continue;
+      }
+    }
+    return false;
   }
 
   async findByOperationMarker(marker: string): Promise<NativeMutationRecord[]> {

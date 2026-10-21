@@ -16,9 +16,32 @@ The approved execution-route amendment for this cycle accepts either real Codex 
 | Codex → plugin permission inspector | Installed app identity **Mac Safe Files** | 2026-10-21 | Read current app permission policy | Global default was `Allow low-risk actions`; the app-specific override was `Allow all actions`. | Neither Work nor the file MCP action; connector metadata read | None appeared because this was a read-only inspection. The observed override conflicts with the server policy requirement that ChatGPT remain **Always ask**. |
 | Local macOS shell → installed Zotero application | Zotero 10.0.6, build ID `20261007113827`, Gecko compatibility 140.0–140.99.*; macOS 15.7.9 arm64 | 2026-10-21 | Read application metadata and list running processes | `/Applications/Zotero.app` reported bundle versions 10.0.6; the Zotero main process and plugin container were running. | Neither | None; read-only local inspection. |
 | ChatGPT Work local task without Mac Safe Files | Not observed | 2026-10-21 | Optional future parity test using a dedicated `request.json` / `result.json` pair | No Work-originated files or result exist in the evidence available to this task. Work support remains unverified and is not claimed. | Work | Unknown until a real Work run. |
-| ChatGPT Web study → installed plugin → Zotero viewer | No plugin package exists yet | 2026-10-21 | End-to-end study/comment delivery | Not run. This belongs to the later end-to-end gate after the plugin exists; it is not substituted by the Codex MCP probe. | Intended MCP/Web path | Unknown until that later run. |
+| ChatGPT Web → Mac Safe Files → development bridge descriptor/status | Installed development plugin 0.1.0.6 | 2026-10-21 | Read-only descriptor/status/descriptor preflight | The Web response reported matching profile/session and `enabled: true`; no mutation was requested. Full study/comment delivery and reader verification remain pending. | Actual Web/MCP preflight | No approval prompt was displayed during this read-only run. |
 
 No credentials, API keys, tunnel keys, profile contents, or Zotero local API authorization tokens were read or recorded.
+
+## ChatGPT Web read-only preflight
+
+The actual browser session showed **Mac Safe Files** installed, with its
+**Try in chat** action available. That action opened a fresh test conversation:
+[Mac Safe Files check](https://example.invalid/private-chat/2).
+The submitted request explicitly prohibited file writes and Zotero changes and
+asked the Web model to read this project's protocol guide, the development
+bridge descriptor, its selected status file, and the descriptor again.
+
+The completed Web response named `mcp__Mac_Safe_Files__policy_status` and
+`mcp__Mac_Safe_Files__fs_read_text`, reported profile
+`060902e7-34a5-4f7e-b983-2376ecd861db`, session
+`d2abd1fa19eff5bfa1476d1a00495cf2`, and `enabled: true`, and reported that both
+descriptor reads and the status agreed. A direct local read independently
+matched those non-secret identifiers. The expanded browser activity summary
+stated that filesystem policy and preview configurations had been checked.
+
+This establishes an actual Web-origin read-only preflight against the current
+development bridge. The evidence is the observed Web response/activity summary
+and matching local descriptor, not an exported server audit trace. It does not
+establish a Web-origin annotation write, release-package installation, or the
+final study-session acceptance criteria.
 
 ## Bounded MCP round trip
 

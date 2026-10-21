@@ -8,8 +8,8 @@ PDF. Existing papers were not changed.
 
 ## Build and installation
 
-The plugin ID is `research-companion@zoterowithgpt.local`, development version
-`0.1.0.1`. It was installed through Zotero's Plugins Manager. Startup reported
+The plugin ID is `research-companion@zoterowithgpt.local`, development versions
+`0.1.0.1` and `0.1.0.2`. It was installed through Zotero's Plugins Manager. Startup reported
 Zotero 10.0.6, a durable profile identifier and an enabled file-bridge session.
 The bridge is restricted to the disclosed repository-local development directory.
 The release must provide directory selection and remove developer-specific paths.
@@ -31,6 +31,7 @@ sentence and a short recurrent equation. Its marker note identifies test ownersh
 | Ownership marker note | `UXF76RHR` |
 | Optional native item-note test | `Y3MW6EDI` |
 | Proof-context highlight | `986UN7S4` |
+| Commit-boundary recovery note | `KFTWXKZ2` |
 
 The original PDF SHA-256 is
 `c2fbe4c5d2d2a372492278542b9aa4008dbf8407f8bc54335a3aaf30b990e336`.
@@ -85,9 +86,44 @@ before native save, and subsequent native lists were empty. It was not replayed
 or replaced with another identity. The successful proof-context operation has a
 different passage and content. Unknown results must not trigger blind retries.
 
-The automated `verify_annotation` check currently reports reader evidence as
-failed despite the independently observed native sidebar. Its detection remains
-under investigation; storage and UI observations must not be conflated. Crash-
-boundary recovery, disable/reconnect and reinstall checks are pending. Later
-release checks must also cover rich mathematical rendering, installation cleanup
-and a real ChatGPT Web study session.
+The final conservative viewer detector uses live sidebar/popup visibility and the
+native editor's rendered text. Unsupported PDF overlay detection was removed;
+overlay-only display is reported as unconfirmed. With native adapter commit
+`bc1b631954f30894148af59a47c199908cb246fc`, actual operation
+`native-proof-viewer-3` confirmed both storage and reader display for `986UN7S4`.
+
+The file picker initially reused an old reference when an archive was rebuilt at
+the same path. Source checks alone did not establish the installed version. A
+fresh numbered artifact was explicitly selected, and the installed XPI's SHA-256
+matched the built archive:
+`6b56b500e089c36dbc941c59aa60dd9ab8245f8cc42859385eba8b9073cb487e`.
+This installed development composition passed strict typecheck/build and 77 tests.
+
+## Recovery and reconnect evidence
+
+A successful highlight request was republished with identical identity and payload
+after a session replacement. It returned the original key; a fresh list contained
+one annotation and retained its later manual edit. Disable marked the old session
+inactive. A mutation staged there while disabled produced no result or note and
+was ignored after reconnect into a fresh session.
+
+A development-only operation-store wrapper deliberately threw after an actual
+native note commit/readback but before final journal/result persistence for
+`native-commit-boundary-note-2`. The actual client received `indeterminate`; the
+persistent journal still said `running`, and a native note list found exactly one
+committed note, `KFTWXKZ2`. This is fault injection at the crash boundary, not a
+forced crash of the user's Zotero application. After disabling/enabling the
+extension, an identical request reconciled through the native operation marker,
+returned `KFTWXKZ2` with confirmed storage, and still had one matching note.
+The wrapper is confined to the ignored development assembly, not product source.
+
+The earlier successful test note `HID4ESGF` was moved to Zotero Trash through the
+ordinary native UI. Republishing its original successful operation returned its
+historical key without recreating the deleted item. A fresh native note list
+confirmed absence. No Trash was emptied. The failed unique-sentence highlight
+identity remains indeterminate and was never blindly retried.
+
+The upgrade from development 0.1.0.1 to 0.1.0.2 retained native content and the
+operation journal. Full release removal/reinstallation and cleanup remain a
+packaging-stage check. Later acceptance must also cover rich mathematical
+rendering and a real ChatGPT Web study session.

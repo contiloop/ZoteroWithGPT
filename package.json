@@ -10,7 +10,9 @@
     "build": "tsc --build",
     "typecheck": "tsc --noEmit --incremental --tsBuildInfoFile .cache/typecheck.tsbuildinfo",
     "test": "npm run build && node --test",
-    "verify": "npm run typecheck && npm test && npm run build"
+    "package": "node scripts/package/build-xpi.mjs",
+    "verify:package": "node scripts/verify/package.mjs",
+    "verify": "npm run typecheck && npm test && npm run build && npm run package && npm run verify:package"
   },
   "devDependencies": {
     "esbuild": "0.28.2",

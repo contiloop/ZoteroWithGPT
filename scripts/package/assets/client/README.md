@@ -62,6 +62,10 @@ After Enable, the important paths are:
    with the same operation ID and byte-equivalent payload in the current
    session after renewed authorization.
 
+If recovery explicitly rejects an interrupted queued operation as never
+executed and not written, re-read the target and obtain renewed mutation
+approval before submitting a new ID. An unknown outcome must retain its ID.
+
 ## Starter prompt
 
 Replace `<BRIDGE_ROOT>` below with the exact absolute directory displayed by

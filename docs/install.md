@@ -117,3 +117,7 @@ recorded historical result. When recovering an uncertain
 or interrupted operation, reuse the exact same operation ID and payload. The
 durable identity journal prevents a completed native write from being repeated
 after an ordinary reconnect, update, or reinstall.
+
+An interrupted queued operation is rejected without being executed. After that
+definitive non-writing result, re-read the target and obtain renewed mutation
+approval before submitting a new ID. Keep the original ID for unknown outcomes.

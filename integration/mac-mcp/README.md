@@ -1,6 +1,6 @@
 # Mac Safe Files client guide
 
-This guide uses the existing **Mac Safe Files** MCP connection as a bounded UTF-8 file client for protocol v1. On 2026-10-21, Codex used that MCP connection with an actual Zotero 10.0.6 development host to publish `connection_status` and a `create_annotation` request; the mutation created native highlight `986UN7S4`. This is Codex-originated MCP evidence. A full ChatGPT Web-originated session through the plugin has not succeeded, so this guide does not claim that result.
+This guide uses the existing **Mac Safe Files** MCP connection as a bounded UTF-8 file client for protocol v1. On 2026-10-21, actual ChatGPT Web read Huginn through the packaged Zotero 10.0.6 connection and saved native highlight `WCBZZI8H` on an owned paper copy. Its Korean comment contains a question, a multi-step mathematical explanation, and reference links. A stale update was rejected after a manual edit; a separately approved append preserved that edit. Earlier highlight `986UN7S4` was created by Codex through MCP in a development host. These observations do not establish another account's connection or ChatGPT Work availability.
 
 The repository does not contain an evidenced public server package or installation procedure. If Mac Safe Files is unavailable, use the connection owner's runbook or the approved direct Codex route in `integration/work/README.md`. Do not install a tunnel, change MCP policy, or invent server setup steps from this guide.
 
@@ -57,6 +57,8 @@ Choose one operation ID matching `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`. Its final
 <BRIDGE_ROOT>/<requestDirectory>/<operationId>.request.json
 ```
 
+Use a fresh operation ID for every new observation, including reads, status checks, and verification. A reused ID returns its recorded historical result.
+
 Build one complete protocol-v1 JSON object using `docs/protocol/v1.md`. The JSON `operationId` must equal the filename operation ID. Reads omit `authorization`; mutations include exactly one current authorization record with `kind: "explicit_request"` or `kind: "approved_proposal"` and a nonempty scope naming the approved content and target. Keep full annotation comments as annotation comments and stay within the published request limit; do not truncate content or turn a long comment into a note.
 
 `fs_write_text` performs an atomic UTF-8 write and enforces the server's write bound. Publish the complete request in one call:
@@ -96,7 +98,7 @@ The durable operation identity is the operation ID plus the canonical request di
 
 Storage and reader evidence are separate. A mutation is saved only when `state` is `succeeded` and `verification.storage` is `confirmed`. `verification.viewer` reports independent reader evidence and may be `failed` without repeating a storage-confirmed write. Treat `indeterminate` as an unknown native outcome and do not retry it under a new ID.
 
-If polling times out, repeat the descriptor-status-descriptor read. When the descriptor selects another session or the selected status is disabled, stop using the old directories. For a pending mutation, obtain renewed user authorization and publish the exact same operation ID and payload into the current session; durable identity then returns a prior result if the earlier attempt was already claimed. Use a new ID only when the approved content or target changes.
+If polling times out, repeat the descriptor-status-descriptor read. When the descriptor selects another session or the selected status is disabled, stop using the old directories. For an uncertain mutation, obtain renewed user authorization and publish the exact same operation ID and payload into the current session; durable identity returns its recorded outcome or reconciles a running operation. Never retry an unknown outcome under a new ID. If the result explicitly rejects an interrupted queued operation as never executed and not written, re-read the target and obtain renewed mutation approval before submitting a new operation ID.
 
 Session replacement prevents dispatches that have not passed the bridge's final ownership check. An operation that already passed that check may finish while another process activates a new session. Treat it as an already-dispatched durable operation: keep the same ID and payload during recovery, and never assume that a missing old-session result means the mutation did not commit.
 
@@ -112,6 +114,6 @@ Actual checks ran on 2026-10-21 against Zotero 10.0.6 with a development-only co
 
 The running host ignored incomplete publication and rejected malformed JSON, the wrong profile, oversized input, and a symlinked request before native dispatch. Disable stopped new dispatch. A pending `create_note` placed in disabled session prefix `4a6ae…` produced neither a result nor a note; after reconnect selected session prefix `678aa…`, listing notes confirmed that the pending mutation remained absent. This is actual evidence for disable/reconnect freshness, not evidence for crash recovery or reinstall behavior.
 
-The installed development composition contained file-bridge source `f1c477d` and T3 source `12d8b2a`. Later T3 source `9f41ada` was not installed for these checks, and a further source fix remains in progress. The tested package is a development build with a developer-specific bridge root. It is not a distribution build and does not establish completion of release packaging or installation work.
+That historical development composition contained file-bridge source `f1c477d` and native adapter source `12d8b2a`. It did not establish distribution readiness. Later production-package checks used a user-selected directory, passed disable/remove/reinstall retention and historical retry protection, and reconciled a real native commit interrupted before result finalization. This was fault injection, not a forced application crash.
 
-Release validation still needs a packaged build with user-selected directory authority, the final reviewed source, upgrade/uninstall/reinstall and cleanup checks, crash-boundary recovery, and a real ChatGPT Web-originated study session. ChatGPT Work requires its own independent run. Do not infer those results from the successful Codex clients.
+The actual Web session described above passed native storage and visible native-editor verification. Fresh-session strict formatted-preview checks also passed twice; activating another PDF tab correctly failed viewer confirmation. Additional source-safety fixes are being integrated before final package acceptance. ChatGPT Work remains independently unverified. There is no public Mac Safe Files installer in this repository, and public publication was not performed.

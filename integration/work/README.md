@@ -1,6 +1,6 @@
 # Direct Codex and intended Work client guide
 
-The direct Codex local-file route is the approved no-MCP route for this cycle. On 2026-10-21 it exercised an actual Zotero 10.0.6 development host for search, read, native annotation append, conflict rejection after a real manual edit, changed-PDF stale rejection, hostile request boundaries, and disabled-session freshness. ChatGPT Work parity has not been independently tested. This document describes the intended compatible Work client behavior if the user's Work environment actually provides approved local-file access; it makes no claim about Work availability, account access, billing, or charges.
+The direct Codex local-file route is the approved no-MCP route for this cycle. On 2026-10-21 it completed real production-package Huginn reading, native annotation append, fresh readback, and visible native-editor verification. An inactive paper tab correctly failed viewer confirmation. Earlier development-host checks covered conflict rejection after a real manual edit, changed-PDF stale rejection, hostile request boundaries, and disabled-session freshness. ChatGPT Work parity has not been independently tested. This document describes the intended compatible Work client behavior if the user's Work environment actually provides approved local-file access; it makes no claim about Work availability, account access, billing, or charges.
 
 Both clients use the same protocol-v1 files as Mac Safe Files. They do not call a model API and do not need an API key. This release supports macOS only.
 
@@ -21,6 +21,8 @@ The current user instruction supplies authority. For a mutation, confirm that th
 ## Publish atomically
 
 Choose a safe operation ID and build the complete strict request described in `docs/protocol/v1.md`. Reads and searches use the same envelope as mutations. `read_pdf` asks for bounded page ranges and returns extracted text and excerpt/region candidates, never arbitrary PDF bytes.
+
+Use a fresh operation ID for every new observation, including reads, status checks, and verification. A reused ID returns its recorded historical result.
 
 The final request path is:
 
@@ -52,10 +54,10 @@ The operation ID and canonical payload form an immutable durable identity. The s
 
 A successful mutation requires `state: "succeeded"` and `verification.storage: "confirmed"`. Reader evidence remains separate in `verification.viewer`; a failed reader check does not justify repeating a storage-confirmed write. An `indeterminate` result means the native outcome is unknown and must not be retried under a new ID.
 
-If no result arrives, repeat the descriptor-status-descriptor read. When the active descriptor changed or the selected status is disabled, abandon the old session path. After the user renews authorization, publish the exact same operation ID and payload into the current session so the durable store can return any previously claimed result. Use a new ID only for changed approved content or a changed target.
+If no result arrives, repeat the descriptor-status-descriptor read. When the active descriptor changed or the selected status is disabled, abandon the old session path. After the user renews authorization, publish the exact same operation ID and payload into the current session so the durable store can return its recorded outcome or reconcile a running operation. Never retry an unknown outcome under a new ID. If the result explicitly rejects an interrupted queued operation as never executed and not written, re-read the target and obtain renewed mutation approval before submitting a new operation ID.
 
 Activation of a new session fences requests that have not passed the prior session's final ownership check. A request already dispatched may still finish. Recover it with the same operation ID and payload; do not infer that a missing result in the old session means a mutation did not commit.
 
 Work-specific execution remains pending a real Work run. Follow the environment owner's local-file instructions if that test is attempted; do not substitute mocks or claim compatibility from the verified Codex run.
 
-The actual development-host evidence, including successful Mac Safe Files annotation creation and disable/reconnect checks, is recorded in `integration/mac-mcp/README.md`. The installed composition used file-bridge source `f1c477d` and T3 source `12d8b2a`; later T3 source `9f41ada` was not installed, and another source fix remains in progress. The tested development package uses a developer-specific bridge root, so these results do not establish a distributable package, completion of release installation work, ChatGPT Web-origin access, or Work access.
+Subsequent actual ChatGPT Web study writes and production-package install/remove/reinstall checks passed independently of this direct local route. Strict formatted-preview checks passed in a fresh native reader session. Additional source-safety fixes are being integrated before final package acceptance. This repository has no public Mac Safe Files installer, and no public release was performed. The approved Codex alternative satisfies this cycle's no-MCP route; independent Work execution remains unverified.

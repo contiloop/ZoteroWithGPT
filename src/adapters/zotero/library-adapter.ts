@@ -43,17 +43,27 @@ import {
   annotationDeepLink,
   annotationRevision,
   appendNoteContent,
-  nativeNoteContent,
   noteDeepLink,
   noteRevision,
   operationIdentityMarker,
+  safeNativeNoteContent,
 } from "./record-utils.js";
 
 const DEFAULT_LIMIT = 25;
 const DEFAULT_ANNOTATION_COLOR: NativeAnnotationColor = "#ffd400";
+const textEncoder = new TextEncoder();
 
 function notFound(message: string): never {
   throw new CoreOperationError("not_found", message);
+}
+
+function assertTextWithinLimit(content: string, description: string): void {
+  if (textEncoder.encode(content).byteLength > MAX_TEXT_BYTES) {
+    throw new CoreOperationError(
+      "too_large",
+      `${description} exceeds ${MAX_TEXT_BYTES} UTF-8 bytes`,
+    );
+  }
 }
 
 function exactRectangles(left: readonly object[], right: readonly object[]): boolean {
@@ -396,6 +406,7 @@ export class ZoteroLibraryAdapter
       request.payload.mode === "append"
         ? `${current.comment}\n\n${request.payload.comment}`
         : request.payload.comment;
+    assertTextWithinLimit(comment, "The complete annotation comment");
     const marker = operationIdentityMarker(identity);
     this.#assertProfile(request.profileId);
     await this.#native.updateAnnotation({ expected: current, comment, operationMarker: marker });
@@ -421,7 +432,8 @@ export class ZoteroLibraryAdapter
   ): Promise<CreateNoteResult> {
     this.#assertProfile(request.profileId);
     const marker = operationIdentityMarker(identity);
-    const content = nativeNoteContent(request.payload.content);
+    const content = safeNativeNoteContent(request.payload.content);
+    assertTextWithinLimit(content, "The complete child note");
     this.#assertProfile(request.profileId);
     const record = await this.#native.createNote({
       libraryId: request.payload.libraryId,
@@ -455,7 +467,8 @@ export class ZoteroLibraryAdapter
     const content =
       request.payload.mode === "append"
         ? appendNoteContent(current.content, request.payload.content)
-        : nativeNoteContent(request.payload.content);
+        : safeNativeNoteContent(request.payload.content);
+    assertTextWithinLimit(content, "The complete child note");
     const marker = operationIdentityMarker(identity);
     this.#assertProfile(request.profileId);
     await this.#native.updateNote({ expected: current, content, operationMarker: marker });

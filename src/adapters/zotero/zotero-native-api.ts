@@ -4,6 +4,7 @@ import type { WebCryptoLike } from "../operation-store/web-crypto-digest.js";
 import type { NativePageChar, NativeRectTuple } from "../anchors/text-layer.js";
 import {
   OPERATION_RELATION_PREDICATE,
+  safeNativeNoteContent,
 } from "./record-utils.js";
 import type {
   NativeAnnotationCreate,
@@ -884,9 +885,9 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     if (!item.isEditable()) {
       throw new CoreOperationError("permission_denied", "The annotation is not editable");
     }
+    this.#assertMutationEnabled();
     item.annotationComment = input.comment;
     item.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
-    this.#assertMutationEnabled();
     await item.saveTx({ skipSelect: true });
     const record = await this.getAnnotation(
       input.expected.libraryId,
@@ -942,7 +943,7 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     const note = new this.#zotero.Item("note");
     note.libraryID = requiredNumber(parent.libraryID, "library ID");
     note.parentID = requiredNumber(parent.id, "parent item ID");
-    note.setNote?.(input.content);
+    note.setNote?.(safeNativeNoteContent(input.content));
     note.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
     this.#assertMutationEnabled();
     await note.saveTx({ skipSelect: true });
@@ -977,9 +978,9 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     if (!note.isEditable()) {
       throw new CoreOperationError("permission_denied", "The child note is not editable");
     }
-    note.setNote?.(input.content);
-    note.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
     this.#assertMutationEnabled();
+    note.setNote?.(safeNativeNoteContent(input.content));
+    note.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
     await note.saveTx({ skipSelect: true });
     const record = await this.getNote(
       input.expected.libraryId,

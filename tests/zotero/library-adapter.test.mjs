@@ -8,6 +8,7 @@ import {
   ZoteroOperationRecovery,
   operationIdentityMarker,
 } from "../../dist/adapters/zotero/index.js";
+import { MAX_TEXT_BYTES } from "../../dist/protocol/index.js";
 
 class Sha256Digest {
   async digest(bytes) {
@@ -42,7 +43,7 @@ function createAnnotationRequest(comment = "Full explanation") {
   };
 }
 
-function updateAnnotationRequest(revision, mode = "append") {
+function updateAnnotationRequest(revision, mode = "append", comment = "Added by the researcher") {
   return {
     protocolVersion: 1,
     operationId: "op-update-1",
@@ -55,7 +56,7 @@ function updateAnnotationRequest(revision, mode = "append") {
       annotationKey: "ANN00001",
       expectedRevision: revision,
       mode,
-      comment: "Added by the researcher",
+      comment,
     },
   };
 }
@@ -64,6 +65,8 @@ class NativeApiDouble {
   fingerprint = "sha256:pdf-a";
   created = 0;
   updated = 0;
+  notesCreated = 0;
+  notesUpdated = 0;
   annotations = new Map();
   notes = new Map();
 
@@ -187,6 +190,7 @@ class NativeApiDouble {
 
   async createNote() {
     const input = arguments[0];
+    this.notesCreated += 1;
     const wrapper = input.content.match(
       /^<div class="zotero-note znv[0-9]+">([\s\S]*)<\/div>$/u,
     );
@@ -195,7 +199,9 @@ class NativeApiDouble {
       itemKey: input.itemKey,
       noteKey: "NOTE0001",
       title: "Requested note",
-      content: wrapper ? wrapper[1] : input.content,
+      content: (wrapper ? wrapper[1] : input.content)
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, "")
+        .trim(),
       version: 1,
       dateModified: "2026-10-21 10:00:00",
       operationMarkers: [input.operationMarker],
@@ -208,12 +214,15 @@ class NativeApiDouble {
     const input = arguments[0];
     const current = this.notes.get(input.expected.noteKey);
     if (!current) throw new Error("note missing");
+    this.notesUpdated += 1;
     const wrapper = input.content.match(
       /^<div class="zotero-note znv[0-9]+">([\s\S]*)<\/div>$/u,
     );
     const record = {
       ...current,
-      content: wrapper ? wrapper[1] : input.content,
+      content: (wrapper ? wrapper[1] : input.content)
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, "")
+        .trim(),
       version: current.version + 1,
       dateModified: "2026-10-21 10:00:01",
       operationMarkers: [...current.operationMarkers, input.operationMarker],
@@ -326,6 +335,64 @@ test("annotation append preserves the existing comment and refuses a concurrent 
   );
   assert.equal(native.updated, 1);
   assert.match(native.annotations.get("ANN00001").comment, /Manual sync edit/);
+});
+
+test("annotation append enforces the final UTF-8 limit before the native writer", async () => {
+  const makeNative = (comment) => {
+    const native = new NativeApiDouble();
+    native.annotations.set("ANN00001", {
+      libraryId: "1",
+      itemKey: "ITEM0001",
+      attachmentKey: "ATTACH01",
+      annotationKey: "ANN00001",
+      type: "highlight",
+      text: "posterior concentration",
+      comment,
+      color: "#ffd400",
+      pageIndex: 0,
+      pageLabel: "1",
+      rectangles: anchor.rectangles,
+      version: 1,
+      dateModified: "2026-10-21 10:00:00",
+      operationMarkers: [],
+    });
+    return native;
+  };
+  const currentAtBoundary = "a".repeat(MAX_TEXT_BYTES - 5);
+  const allowedNative = makeNative(currentAtBoundary);
+  const allowedLibrary = adapter(allowedNative);
+  const allowedList = await allowedLibrary.listAnnotations({
+    protocolVersion: 1,
+    operationId: "op-list-boundary-allowed",
+    operation: "list_annotations",
+    profileId: "profile-A",
+    payload: { libraryId: "1", attachmentKey: "ATTACH01" },
+  });
+  const allowed = await allowedLibrary.updateAnnotation(
+    updateAnnotationRequest(allowedList.annotations[0].revision, "append", "가"),
+    { operationId: "op-annotation-boundary-allowed", requestDigest: "sha256:allowed" },
+  );
+  assert.equal(new TextEncoder().encode(allowed.comment).byteLength, MAX_TEXT_BYTES);
+  assert.equal(allowedNative.updated, 1);
+
+  const overflowingNative = makeNative("a".repeat(MAX_TEXT_BYTES - 4));
+  const overflowingLibrary = adapter(overflowingNative);
+  const overflowingList = await overflowingLibrary.listAnnotations({
+    protocolVersion: 1,
+    operationId: "op-list-boundary-overflow",
+    operation: "list_annotations",
+    profileId: "profile-A",
+    payload: { libraryId: "1", attachmentKey: "ATTACH01" },
+  });
+  await assert.rejects(
+    () =>
+      overflowingLibrary.updateAnnotation(
+        updateAnnotationRequest(overflowingList.annotations[0].revision, "append", "가"),
+        { operationId: "op-annotation-boundary-overflow", requestDigest: "sha256:overflow" },
+      ),
+    (error) => error instanceof CoreOperationError && error.code === "too_large",
+  );
+  assert.equal(overflowingNative.updated, 0);
 });
 
 test("storage readback requires the committed operation identity marker", async () => {
@@ -466,4 +533,188 @@ test("child-note replacement confirms the wrapper-free body returned by Zotero",
   );
 
   assert.equal(result.content, "<p>Replacement body</p>");
+});
+
+test("child-note creation stores remote-resource and executable markup as inert readable text", async () => {
+  const native = new NativeApiDouble();
+  const library = adapter(native);
+  const result = await library.createNote(
+    {
+      protocolVersion: 1,
+      operationId: "op-create-unsafe-note",
+      operation: "create_note",
+      profileId: "profile-A",
+      authorization: { kind: "explicit_request", scope: "Create a safe child note" },
+      payload: {
+        libraryId: "1",
+        itemKey: "ITEM0001",
+        content:
+          '<p>Approved study proof</p><img src="https://example.invalid/probe.png" alt="diagram evidence"><script>script words</script><iframe src="https://example.invalid/frame">frame words</iframe>\n',
+      },
+    },
+    { operationId: "op-create-unsafe-note", requestDigest: "sha256:create-unsafe-note" },
+  );
+
+  assert.doesNotMatch(result.content, /<(?:img|script|iframe)\b/iu);
+  assert.match(result.content, /Approved study proof/u);
+  assert.match(result.content, /diagram evidence/u);
+  assert.match(result.content, /script words/u);
+  assert.match(result.content, /frame words/u);
+  assert.match(result.content, /https:\/\/example\.invalid\/probe\.png/u);
+  assert.match(result.content, /\n<\/div>$/u);
+  assert.equal(native.notesCreated, 1);
+});
+
+test("child-note replacement sanitizes active HTML before native mutation", async () => {
+  const native = new NativeApiDouble();
+  native.notes.set("NOTE0001", {
+    libraryId: "1",
+    itemKey: "ITEM0001",
+    noteKey: "NOTE0001",
+    title: "Existing note",
+    content: "<p>Existing body</p>",
+    version: 1,
+    dateModified: "2026-10-21 10:00:00",
+    operationMarkers: [],
+  });
+  const library = adapter(native);
+  const current = await library.readNote({
+    protocolVersion: 1,
+    operationId: "op-read-note-before-safe-replace",
+    operation: "read_note",
+    profileId: "profile-A",
+    payload: { libraryId: "1", itemKey: "ITEM0001", noteKey: "NOTE0001" },
+  });
+  const result = await library.updateNote(
+    {
+      protocolVersion: 1,
+      operationId: "op-safe-replace-note",
+      operation: "update_note",
+      profileId: "profile-A",
+      authorization: { kind: "explicit_request", scope: "Replace NOTE0001 safely" },
+      payload: {
+        libraryId: "1",
+        itemKey: "ITEM0001",
+        noteKey: "NOTE0001",
+        expectedRevision: current.revision,
+        mode: "replace",
+        content:
+          '<p onclick="steal()">Replacement words</p><object data="https://example.invalid/object">object words</object>',
+      },
+    },
+    { operationId: "op-safe-replace-note", requestDigest: "sha256:safe-replace" },
+  );
+
+  assert.doesNotMatch(result.content, /\sonclick=|<(?:object|script|iframe|img)\b/iu);
+  assert.match(result.content, /Replacement words/u);
+  assert.match(result.content, /object words/u);
+  assert.match(result.content, /https:\/\/example\.invalid\/object/u);
+  assert.equal(native.notesUpdated, 1);
+});
+
+test("child-note append sanitizes existing and added HTML while preserving readable content", async () => {
+  const native = new NativeApiDouble();
+  native.notes.set("NOTE0001", {
+    libraryId: "1",
+    itemKey: "ITEM0001",
+    noteKey: "NOTE0001",
+    title: "Existing note",
+    content:
+      '<p>Manual study words</p><img src="https://example.invalid/existing.png" alt="existing diagram"><script>manual script words</script>',
+    version: 1,
+    dateModified: "2026-10-21 10:00:00",
+    operationMarkers: [],
+  });
+  const library = adapter(native);
+  const current = await library.readNote({
+    protocolVersion: 1,
+    operationId: "op-read-note-before-safe-append",
+    operation: "read_note",
+    profileId: "profile-A",
+    payload: { libraryId: "1", itemKey: "ITEM0001", noteKey: "NOTE0001" },
+  });
+  const result = await library.updateNote(
+    {
+      protocolVersion: 1,
+      operationId: "op-safe-append-note",
+      operation: "update_note",
+      profileId: "profile-A",
+      authorization: { kind: "explicit_request", scope: "Append safely to NOTE0001" },
+      payload: {
+        libraryId: "1",
+        itemKey: "ITEM0001",
+        noteKey: "NOTE0001",
+        expectedRevision: current.revision,
+        mode: "append",
+        content:
+          '<p>New approved question</p><iframe src="https://example.invalid/new-frame">new frame words</iframe>',
+      },
+    },
+    { operationId: "op-safe-append-note", requestDigest: "sha256:safe-append" },
+  );
+
+  assert.doesNotMatch(result.content, /<(?:img|script|iframe)\b/iu);
+  assert.match(result.content, /Manual study words/u);
+  assert.match(result.content, /existing diagram/u);
+  assert.match(result.content, /manual script words/u);
+  assert.match(result.content, /New approved question/u);
+  assert.match(result.content, /new frame words/u);
+  assert.match(result.content, /https:\/\/example\.invalid\/existing\.png/u);
+  assert.equal(native.notesUpdated, 1);
+});
+
+test("child-note append enforces the final UTF-8 limit before the native writer", async () => {
+  const makeNative = (content) => {
+    const native = new NativeApiDouble();
+    native.notes.set("NOTE0001", {
+      libraryId: "1",
+      itemKey: "ITEM0001",
+      noteKey: "NOTE0001",
+      title: "Existing note",
+      content,
+      version: 1,
+      dateModified: "2026-10-21 10:00:00",
+      operationMarkers: [],
+    });
+    return native;
+  };
+  const append = async (library, operationId) => {
+    const current = await library.readNote({
+      protocolVersion: 1,
+      operationId: `${operationId}-read`,
+      operation: "read_note",
+      profileId: "profile-A",
+      payload: { libraryId: "1", itemKey: "ITEM0001", noteKey: "NOTE0001" },
+    });
+    return library.updateNote(
+      {
+        protocolVersion: 1,
+        operationId,
+        operation: "update_note",
+        profileId: "profile-A",
+        authorization: { kind: "explicit_request", scope: "Append at the byte boundary" },
+        payload: {
+          libraryId: "1",
+          itemKey: "ITEM0001",
+          noteKey: "NOTE0001",
+          expectedRevision: current.revision,
+          mode: "append",
+          content: "가",
+        },
+      },
+      { operationId, requestDigest: `sha256:${operationId}` },
+    );
+  };
+
+  const allowedNative = makeNative("a".repeat(MAX_TEXT_BYTES - 5));
+  const allowed = await append(adapter(allowedNative), "op-note-boundary-allowed");
+  assert.equal(new TextEncoder().encode(allowed.content).byteLength, MAX_TEXT_BYTES);
+  assert.equal(allowedNative.notesUpdated, 1);
+
+  const overflowingNative = makeNative("a".repeat(MAX_TEXT_BYTES - 4));
+  await assert.rejects(
+    () => append(adapter(overflowingNative), "op-note-boundary-overflow"),
+    (error) => error instanceof CoreOperationError && error.code === "too_large",
+  );
+  assert.equal(overflowingNative.notesUpdated, 0);
 });

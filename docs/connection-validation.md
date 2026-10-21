@@ -68,8 +68,9 @@ available, and required an ordinary restart.
 With the user’s authorization, Activity Monitor’s **Quit** action terminated the
 old Zotero process (PID 34560); its absence was confirmed. Reopening Zotero
 through the computer-use tool succeeded and exposed the paper reader and
-annotation sidebar. No **Force Quit** action was used. Native plugin runtime
-version and annotation behavior still require a loaded development build.
+annotation sidebar. No **Force Quit** action was used. The reopened application’s **About Zotero**
+window visibly reported **10.0.6**. Plugin startup, native API behavior and
+annotation display still require a loaded development build.
 
 ## Setup and removal evidence
 

@@ -32,6 +32,34 @@ After Enable, the important paths are:
 <BRIDGE_ROOT>/client-v1/protocol/examples/
 ```
 
+## Publish and read one operation
+
+1. Read `<BRIDGE_ROOT>/bridge-v1.json` and keep the complete descriptor.
+2. Read `<BRIDGE_ROOT>/<statusFile>`, using the relative `statusFile` value from
+   that descriptor. Require bridge version 1, protocol version 1, matching
+   profile and session IDs, and `enabled: true`.
+3. Read `<BRIDGE_ROOT>/bridge-v1.json` again and require the complete descriptor
+   to be unchanged. Stop if it changed or the selected status became disabled.
+4. Build one complete request with an operation ID that matches
+   `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` and the packaged request schema.
+5. Publish it with a create-only atomic write at exactly:
+
+   ```text
+   <BRIDGE_ROOT>/<requestDirectory>/<operationId><requestSuffix>
+   ```
+
+6. Poll only the corresponding path:
+
+   ```text
+   <BRIDGE_ROOT>/<resultDirectory>/<operationId><resultSuffix>
+   ```
+
+7. Parse the complete result and require its `protocolVersion` and `operationId`
+   to match the request. Stop using the session if the descriptor changes or
+   its selected status becomes disabled. Recover an uncertain operation only
+   with the same operation ID and byte-equivalent payload in the current
+   session after renewed authorization.
+
 ## Starter prompt
 
 Replace `<BRIDGE_ROOT>` below with the exact absolute directory displayed by
@@ -40,8 +68,8 @@ Zotero, then give the resulting prompt to the local-file client:
 > Use local file access to connect to the Zotero Research Companion rooted at
 > `<BRIDGE_ROOT>`. First read `<BRIDGE_ROOT>/client-v1/README.md` and
 > `<BRIDGE_ROOT>/client-v1/protocol/v1.md`. Validate requests against the
-> packaged request schema and examples. Read the current `bridge-v1.json`, then
-> perform the descriptor-status-descriptor check before every publication.
+> packaged request schema and examples. Follow the README's **Publish and read
+> one operation** procedure for every publication.
 > Require the descriptor and status to identify the same profile and session.
 > Start with one `connection_status` request in that session and require its
 > response `data.profile.id` to match the descriptor profile. Do not publish a

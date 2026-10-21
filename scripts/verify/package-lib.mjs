@@ -288,6 +288,9 @@ async function validateClientKit(clientDirectory, extractedXpi, version) {
   if (
     !readme.includes(`Package version: \`${version}\``) ||
     !readme.includes("<BRIDGE_ROOT>/client-v1/README.md") ||
+    !readme.includes("<requestDirectory>/<operationId><requestSuffix>") ||
+    !readme.includes("<resultDirectory>/<operationId><resultSuffix>") ||
+    !readme.includes("require its `protocolVersion` and `operationId`") ||
     !readme.includes("connection_status") ||
     readme.includes("{{PACKAGE_VERSION}}")
   ) {

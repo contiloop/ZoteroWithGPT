@@ -401,7 +401,7 @@ test("missing and hidden reader DOM never count as viewer evidence", async () =>
   assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
 });
 
-test("a connected laid-out annotation node is rendered viewer evidence", async () => {
+test("a connected laid-out annotation in the native PDF shadow root is viewer evidence", async () => {
   const { env, host } = fixtureEnvironment();
   const native = createZoteroNativeApi(env);
   const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
@@ -412,8 +412,12 @@ test("a connected laid-out annotation node is rendered viewer evidence", async (
     color: "#ffd400",
     operationMarker: "urn:visible-dom",
   });
-  host.reader._internalReader._primaryView._iframeWindow.document = {
+  const viewDocument = {
     defaultView: { innerWidth: 800, innerHeight: 600 },
+    querySelector() { return null; },
+  };
+  host.reader._internalReader._primaryView._iframeWindow.document = viewDocument;
+  host.reader._internalReader._primaryView._annotationRenderRootEl = {
     querySelector(selector) {
       if (!selector.includes(created.annotationKey)) return null;
       return {
@@ -429,7 +433,7 @@ test("a connected laid-out annotation node is rendered viewer evidence", async (
   assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), true);
 });
 
-test("a laid-out annotation outside the PDF viewport is not viewer evidence", async () => {
+test("a laid-out shadow-root annotation outside the PDF viewport is not viewer evidence", async () => {
   const { env, host } = fixtureEnvironment();
   const native = createZoteroNativeApi(env);
   const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
@@ -440,8 +444,12 @@ test("a laid-out annotation outside the PDF viewport is not viewer evidence", as
     color: "#ffd400",
     operationMarker: "urn:offscreen-dom",
   });
-  host.reader._internalReader._primaryView._iframeWindow.document = {
+  const viewDocument = {
     defaultView: { innerWidth: 800, innerHeight: 600 },
+    querySelector() { return null; },
+  };
+  host.reader._internalReader._primaryView._iframeWindow.document = viewDocument;
+  host.reader._internalReader._primaryView._annotationRenderRootEl = {
     querySelector() {
       return {
         isConnected: true,
@@ -472,6 +480,7 @@ test("a laid-out annotation sidebar row is not viewer evidence while the sidebar
   const rect = { left: 10, right: 300, top: 50, bottom: 100 };
   const content = {
     textContent: created.comment,
+    innerText: created.comment,
     isConnected: true,
     getClientRects() { return { length: 1 }; },
     getBoundingClientRect() { return rect; },
@@ -494,6 +503,48 @@ test("a laid-out annotation sidebar row is not viewer evidence while the sidebar
   assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
   host.reader._internalReader._state.sidebarOpen = true;
   assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), true);
+});
+
+test("the visible native editor preserves multiline comment evidence through innerText", async () => {
+  const { env, host } = fixtureEnvironment();
+  const native = createZoteroNativeApi(env);
+  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+  const created = await native.createAnnotation({
+    anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
+    type: "highlight",
+    comment: "First proof line\nSecond reference line",
+    color: "#ffd400",
+    operationMarker: "urn:multiline-viewer-comment",
+  });
+  host.reader._internalReader._state.sidebarOpen = true;
+  host.reader._internalReader._state.sidebarView = "annotations";
+  const rect = { left: 10, right: 300, top: 50, bottom: 120 };
+  const content = {
+    // Browser textContent omits the visual line break inserted by innerText.
+    textContent: "First proof lineSecond reference line",
+    innerText: created.comment,
+    isConnected: true,
+    getClientRects() { return { length: 1 }; },
+    getBoundingClientRect() { return rect; },
+  };
+  host.reader._iframeWindow = {
+    document: {
+      defaultView: { innerWidth: 800, innerHeight: 600 },
+      querySelector(selector) {
+        if (!selector.includes(created.annotationKey)) return null;
+        return {
+          isConnected: true,
+          getClientRects() { return { length: 1 }; },
+          getBoundingClientRect() { return rect; },
+          querySelector() { return content; },
+        };
+      },
+    },
+  };
+
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), true);
+  content.innerText = "A stale comment still displayed in the editor";
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
 });
 
 test("native child-note updates use fresh content and preserve a concurrent manual edit", async () => {

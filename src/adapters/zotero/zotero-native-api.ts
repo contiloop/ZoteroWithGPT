@@ -108,6 +108,9 @@ interface ReaderPrimaryViewLike {
     document?: QueryDocumentLike;
   };
   _selectionRanges?: unknown[];
+  _annotationRenderRootEl?: {
+    querySelector(selector: string): QueryNodeLike | null;
+  };
   _getAnnotationFromSelectionRanges?(
     ranges: unknown[],
     type: "highlight",
@@ -193,6 +196,7 @@ export interface ZoteroNativeEnvironment {
 
 interface QueryNodeLike {
   textContent?: string | null;
+  innerText?: string;
   isConnected?: boolean;
   getClientRects?(): { length: number };
   getBoundingClientRect?(): QueryRectLike;
@@ -349,6 +353,10 @@ function noteMaterial(record: NativeNoteRecord): string {
 
 function clipsOverflow(value: string | undefined): boolean {
   return value === "auto" || value === "clip" || value === "hidden" || value === "scroll";
+}
+
+function normalizedRenderedText(value: string): string {
+  return value.replace(/\r\n?/gu, "\n").trim();
 }
 
 function isRenderedNode(
@@ -929,7 +937,8 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
           const content = node.querySelector?.(".comment .content");
           return (
             isRenderedNode(content, document) &&
-            content.textContent?.trim() === record.comment.trim()
+            typeof content.innerText === "string" &&
+            normalizedRenderedText(content.innerText) === normalizedRenderedText(record.comment)
           );
         };
         if (
@@ -952,7 +961,9 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
         if (record.comment.length > 0) return false;
         const viewDocument = view._iframeWindow?.document;
         return isRenderedNode(
-          viewDocument?.querySelector(`[data-annotation-id="${annotationKey}"]`),
+          view._annotationRenderRootEl?.querySelector(
+            `[data-annotation-id="${annotationKey}"]`,
+          ),
           viewDocument,
         );
       })) ?? false

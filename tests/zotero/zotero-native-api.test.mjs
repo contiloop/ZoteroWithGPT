@@ -9,6 +9,48 @@ import {
   createZoteroNativeApi,
 } from "../../dist/adapters/zotero/index.js";
 
+function visibleDocument(querySelector = () => null) {
+  const body = {
+    isConnected: true,
+    parentElement: null,
+    getClientRects() { return { length: 1 }; },
+    getBoundingClientRect() { return { left: 0, right: 800, top: 0, bottom: 600 }; },
+  };
+  return {
+    hidden: false,
+    visibilityState: "visible",
+    body,
+    documentElement: { clientWidth: 800, clientHeight: 600 },
+    defaultView: {
+      innerWidth: 800,
+      innerHeight: 600,
+      getComputedStyle(node) {
+        return {
+          display: node.computedStyle?.display ?? "block",
+          visibility: node.computedStyle?.visibility ?? "visible",
+          opacity: node.computedStyle?.opacity ?? "1",
+          contentVisibility: node.computedStyle?.contentVisibility ?? "visible",
+          overflow: node.computedStyle?.overflow ?? "visible",
+          overflowX: node.computedStyle?.overflowX ?? "visible",
+          overflowY: node.computedStyle?.overflowY ?? "visible",
+        };
+      },
+    },
+    querySelector,
+  };
+}
+
+function laidOutNode(ownerDocument, rect = { left: 0, right: 800, top: 0, bottom: 600 }) {
+  return {
+    ownerDocument,
+    isConnected: true,
+    parentElement: null,
+    computedStyle: {},
+    getClientRects() { return { length: 1 }; },
+    getBoundingClientRect() { return rect; },
+  };
+}
+
 class FakeItem {
   constructor(host, itemType, values = {}) {
     this.host = host;
@@ -105,9 +147,16 @@ function fixtureEnvironment() {
       { u: "A", rect: [10, 20, 17, 30], inlineRect: [10, 20, 17, 30] },
     ],
   };
+  const ownerDocument = visibleDocument();
+  const frame = laidOutNode(ownerDocument);
+  const tabContainer = laidOutNode(ownerDocument);
   const reader = {
     itemID: 2,
-    _iframeWindow: {},
+    tabID: "reader-tab-1",
+    _iframe: frame,
+    _tabContainer: tabContainer,
+    _window: { Zotero_Tabs: { selectedID: "reader-tab-1" } },
+    _iframeWindow: { document: visibleDocument(), frameElement: frame },
     _initPromise: Promise.resolve(),
     _internalReader: {
       _state: { annotations: [] },
@@ -232,6 +281,46 @@ const anchor = {
   selectedText: "A",
   matchEvidence: { method: "exact_quote", matchedText: "A", exact: true },
 };
+
+function showAnnotationInReader(reader, annotation) {
+  reader._internalReader._state.sidebarOpen = true;
+  reader._internalReader._state.sidebarView = "annotations";
+  reader._internalReader._state.selectedAnnotationIDs = [annotation.annotationKey];
+  const rect = { left: 10, right: 300, top: 50, bottom: 120 };
+  const content = {
+    innerText: annotation.comment,
+    isConnected: true,
+    getClientRects() { return { length: 1 }; },
+    getBoundingClientRect() { return rect; },
+  };
+  reader._iframeWindow.document = visibleDocument((selector) => {
+    if (!selector.includes(annotation.annotationKey)) return null;
+    return {
+      isConnected: true,
+      getClientRects() { return { length: 1 }; },
+      getBoundingClientRect() { return rect; },
+      querySelector() { return content; },
+    };
+  });
+}
+
+function duplicateReader(reader, tabID) {
+  const ownerDocument = visibleDocument();
+  const frame = laidOutNode(ownerDocument);
+  return {
+    itemID: reader.itemID,
+    tabID,
+    _iframe: frame,
+    _tabContainer: laidOutNode(ownerDocument),
+    _window: { Zotero_Tabs: { selectedID: tabID } },
+    _iframeWindow: { document: visibleDocument(), frameElement: frame },
+    _initPromise: Promise.resolve(),
+    _internalReader: {
+      _state: { annotations: [] },
+      _primaryView: reader._internalReader._primaryView,
+    },
+  };
+}
 
 test("native annotation create commits content and durable identity in one Zotero save", async () => {
   const { env, host } = fixtureEnvironment();
@@ -450,20 +539,15 @@ test("a laid-out annotation sidebar row is not viewer evidence while the sidebar
     getClientRects() { return { length: 1 }; },
     getBoundingClientRect() { return rect; },
   };
-  host.reader._iframeWindow = {
-    document: {
-      defaultView: { innerWidth: 800, innerHeight: 600 },
-      querySelector(selector) {
-        if (!selector.includes(created.annotationKey)) return null;
-        return {
-          isConnected: true,
-          getClientRects() { return { length: 1 }; },
-          getBoundingClientRect() { return rect; },
-          querySelector() { return content; },
-        };
-      },
-    },
-  };
+  host.reader._iframeWindow.document = visibleDocument((selector) => {
+    if (!selector.includes(created.annotationKey)) return null;
+    return {
+      isConnected: true,
+      getClientRects() { return { length: 1 }; },
+      getBoundingClientRect() { return rect; },
+      querySelector() { return content; },
+    };
+  });
 
   assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
   host.reader._internalReader._state.sidebarOpen = true;
@@ -492,24 +576,110 @@ test("the visible native editor preserves multiline comment evidence through inn
     getClientRects() { return { length: 1 }; },
     getBoundingClientRect() { return rect; },
   };
-  host.reader._iframeWindow = {
-    document: {
-      defaultView: { innerWidth: 800, innerHeight: 600 },
-      querySelector(selector) {
-        if (!selector.includes(created.annotationKey)) return null;
-        return {
-          isConnected: true,
-          getClientRects() { return { length: 1 }; },
-          getBoundingClientRect() { return rect; },
-          querySelector() { return content; },
-        };
-      },
-    },
-  };
+  host.reader._iframeWindow.document = visibleDocument((selector) => {
+    if (!selector.includes(created.annotationKey)) return null;
+    return {
+      isConnected: true,
+      getClientRects() { return { length: 1 }; },
+      getBoundingClientRect() { return rect; },
+      querySelector() { return content; },
+    };
+  });
 
   assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), true);
   content.innerText = "A stale comment still displayed in the editor";
   assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
+});
+
+test("a hidden owning reader frame or document invalidates visible inner annotation DOM", async () => {
+  const { env, host } = fixtureEnvironment();
+  const native = createZoteroNativeApi(env);
+  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+  const created = await native.createAnnotation({
+    anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
+    type: "highlight",
+    comment: "Inner row alone cannot prove the owner is visible",
+    color: "#ffd400",
+    operationMarker: "urn:hidden-reader-owner",
+  });
+  showAnnotationInReader(host.reader, created);
+
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), true);
+  host.reader._iframe.computedStyle.display = "none";
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
+
+  host.reader._iframe.computedStyle.display = "block";
+  host.reader._iframeWindow.document.hidden = true;
+  host.reader._iframeWindow.document.visibilityState = "hidden";
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
+
+  host.reader._iframeWindow.document.hidden = false;
+  host.reader._iframeWindow.document.visibilityState = "visible";
+  host.reader._tabContainer.computedStyle.display = "none";
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
+
+  host.reader._tabContainer.computedStyle.display = "block";
+  delete host.reader._iframe;
+  delete host.reader._iframeWindow.frameElement;
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
+});
+
+test("a background reader tab is not viewer evidence even with an active document shell", async () => {
+  const { env, host } = fixtureEnvironment();
+  const native = createZoteroNativeApi(env);
+  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+  const created = await native.createAnnotation({
+    anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
+    type: "highlight",
+    comment: "Background tab fixture",
+    color: "#ffd400",
+    operationMarker: "urn:background-reader-tab",
+  });
+  showAnnotationInReader(host.reader, created);
+  host.reader._window.Zotero_Tabs.selectedID = "another-tab";
+  host.reader._iframe.docShellIsActive = true;
+
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
+});
+
+test("a visible selected duplicate reader can confirm when an earlier duplicate is hidden", async () => {
+  const { env, host } = fixtureEnvironment();
+  const native = createZoteroNativeApi(env);
+  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+  const created = await native.createAnnotation({
+    anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
+    type: "highlight",
+    comment: "Visible duplicate reader fixture",
+    color: "#ffd400",
+    operationMarker: "urn:visible-reader-duplicate",
+  });
+  showAnnotationInReader(host.reader, created);
+  host.reader._iframe.computedStyle.display = "none";
+  const visible = duplicateReader(host.reader, "reader-tab-2");
+  showAnnotationInReader(visible, created);
+  env.Zotero.Reader._readers.push(visible);
+
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), true);
+});
+
+test("a visible standalone reader window remains valid without a tab identity", async () => {
+  const { env, host } = fixtureEnvironment();
+  const native = createZoteroNativeApi(env);
+  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+  const created = await native.createAnnotation({
+    anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
+    type: "highlight",
+    comment: "Standalone reader window fixture",
+    color: "#ffd400",
+    operationMarker: "urn:standalone-reader-window",
+  });
+  showAnnotationInReader(host.reader, created);
+  delete host.reader.tabID;
+  delete host.reader._window;
+  delete host.reader._tabContainer;
+  delete host.reader._iframe;
+
+  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), true);
 });
 
 test("native child-note updates use fresh content and preserve a concurrent manual edit", async () => {

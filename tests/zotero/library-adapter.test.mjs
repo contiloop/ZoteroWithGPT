@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import { JSDOM } from "jsdom";
@@ -607,6 +608,74 @@ test("native note policy fails closed without a trusted DOM implementation", () 
   );
 });
 
+test("native note DOM work stays bounded in an isolated process", () => {
+  const moduleUrl = new URL("../../dist/adapters/zotero/index.js", import.meta.url).href;
+  const probe = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `
+        import { JSDOM } from "jsdom";
+        import { DomPurifyNativeNoteContentPolicy } from ${JSON.stringify(moduleUrl)};
+        const policy = new DomPurifyNativeNoteContentPolicy({ window: new JSDOM("").window });
+        const nested = "<div>".repeat(6000) + "x" + "</div>".repeat(6000);
+        const escape = source => source
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#39;");
+        const fallback = policy.sanitize(nested);
+        if (fallback !== '<pre class="research-companion-note-source">' + escape(nested) + "</pre>") {
+          throw new Error("nested source was not preserved exactly");
+        }
+        if (policy.accepts(nested)) throw new Error("over-depth existing note was accepted");
+        if (!policy.accepts(fallback)) throw new Error("bounded fallback is not native-safe");
+        if (Buffer.byteLength(fallback, "utf8") > 524288) {
+          throw new Error("bounded fallback exceeded the native note byte limit");
+        }
+        if (policy.accepts("<b>x</b>".repeat(50000))) {
+          throw new Error("over-budget existing note was accepted");
+        }
+        const wideTag = '<span title="' + "x".repeat(70000) + '">complete proof</span>';
+        const wideFallback = policy.sanitize(wideTag);
+        if (wideFallback !== '<pre class="research-companion-note-source">' + escape(wideTag) + "</pre>") {
+          throw new Error("over-budget tag source was not preserved exactly");
+        }
+        if (!policy.accepts(wideFallback)) throw new Error("wide fallback is not native-safe");
+      `,
+    ],
+    { cwd: process.cwd(), encoding: "utf8", timeout: 4_000 },
+  );
+
+  assert.equal(probe.signal, null, probe.error?.message ?? probe.stderr);
+  assert.equal(probe.status, 0, probe.stderr);
+});
+
+test("child-note creation keeps deeply nested source in a lossless inert fallback", async () => {
+  const native = new NativeApiDouble();
+  const source = "<div>".repeat(100) + "complete proof" + "</div>".repeat(100);
+  const result = await adapter(native).createNote(
+    {
+      protocolVersion: 1,
+      operationId: "op-create-over-budget-note",
+      operation: "create_note",
+      profileId: "profile-A",
+      authorization: { kind: "explicit_request", scope: "Save the complete nested source" },
+      payload: { libraryId: "1", itemKey: "ITEM0001", content: source },
+    },
+    {
+      operationId: "op-create-over-budget-note",
+      requestDigest: "sha256:create-over-budget",
+    },
+  );
+
+  const document = new JSDOM(result.content).window.document;
+  assert.equal(document.querySelector("pre")?.textContent, source);
+  assert.equal(native.notesCreated, 1);
+});
+
 test("child-note creation preserves malformed source in an inert readable fallback", async () => {
   const native = new NativeApiDouble();
   const result = await adapter(native).createNote(
@@ -1036,6 +1105,58 @@ test("child-note append rejects duplicate or malformed existing attributes", asy
     assert.equal(native.notes.get("NOTE0001").content, existingContent, label);
     assert.deepEqual(native.notes.get("NOTE0001").operationMarkers, [], label);
   }
+});
+
+test("child-note append rejects an over-budget existing DOM before mutation", async () => {
+  const native = new NativeApiDouble();
+  const existingContent = "<b>x</b>".repeat(3_000);
+  native.notes.set("NOTE0001", {
+    libraryId: "1",
+    itemKey: "ITEM0001",
+    noteKey: "NOTE0001",
+    title: "Existing note",
+    content: existingContent,
+    version: 1,
+    dateModified: "2026-10-21 10:00:00",
+    operationMarkers: [],
+  });
+  const library = adapter(native);
+  const current = await library.readNote({
+    protocolVersion: 1,
+    operationId: "op-read-over-budget-note",
+    operation: "read_note",
+    profileId: "profile-A",
+    payload: { libraryId: "1", itemKey: "ITEM0001", noteKey: "NOTE0001" },
+  });
+
+  await assert.rejects(
+    () =>
+      library.updateNote(
+        {
+          protocolVersion: 1,
+          operationId: "op-append-over-budget-note",
+          operation: "update_note",
+          profileId: "profile-A",
+          authorization: { kind: "explicit_request", scope: "Append to NOTE0001" },
+          payload: {
+            libraryId: "1",
+            itemKey: "ITEM0001",
+            noteKey: "NOTE0001",
+            expectedRevision: current.revision,
+            mode: "append",
+            content: "<p>Approved addition</p>",
+          },
+        },
+        {
+          operationId: "op-append-over-budget-note",
+          requestDigest: "sha256:append-over-budget-note",
+        },
+      ),
+    (error) => error instanceof CoreOperationError && error.code === "unsupported_capability",
+  );
+  assert.equal(native.notesUpdated, 0);
+  assert.equal(native.notes.get("NOTE0001").content, existingContent);
+  assert.deepEqual(native.notes.get("NOTE0001").operationMarkers, []);
 });
 
 test("child-note append enforces the final UTF-8 limit before the native writer", async () => {

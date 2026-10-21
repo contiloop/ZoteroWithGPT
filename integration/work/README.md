@@ -1,6 +1,6 @@
 # Direct Codex and intended Work client guide
 
-The direct Codex local-file route completed a real bounded request/result probe during T1 and is the approved no-MCP route for this cycle. ChatGPT Work parity has not been independently tested. This document describes the intended compatible Work client behavior if the user's Work environment actually provides approved local-file access; it makes no claim about Work availability, account access, billing, or charges.
+The direct Codex local-file route is the approved no-MCP route for this cycle. On 2026-10-21 it exercised an actual Zotero 10.0.6 development host for search, read, native annotation append, conflict rejection after a real manual edit, changed-PDF stale rejection, hostile request boundaries, and disabled-session freshness. ChatGPT Work parity has not been independently tested. This document describes the intended compatible Work client behavior if the user's Work environment actually provides approved local-file access; it makes no claim about Work availability, account access, billing, or charges.
 
 Both clients use the same protocol-v1 files as Mac Safe Files. They do not call a model API and do not need an API key. This release supports macOS only.
 
@@ -58,4 +58,4 @@ Activation of a new session fences requests that have not passed the prior sessi
 
 Work-specific execution remains pending a real Work run. Follow the environment owner's local-file instructions if that test is attempted; do not substitute mocks or claim compatibility from the verified Codex run.
 
-The composed Zotero plugin round trip also remains pending the native host procedure in `integration/mac-mcp/README.md`. The transport's real-filesystem tests establish request/result behavior at the adapter boundary; they do not establish that the packaged plugin lifecycle or a Work client can access it.
+The actual development-host evidence, including successful Mac Safe Files annotation creation and disable/reconnect checks, is recorded in `integration/mac-mcp/README.md`. The installed composition used file-bridge source `f1c477d` and T3 source `12d8b2a`; later T3 source `9f41ada` was not installed, and another source fix remains in progress. The tested development package uses a developer-specific bridge root, so these results do not establish a distributable package, completion of release installation work, ChatGPT Web-origin access, or Work access.

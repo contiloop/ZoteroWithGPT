@@ -1,6 +1,6 @@
 # Mac Safe Files client guide
 
-This guide uses the existing **Mac Safe Files** MCP connection as a bounded UTF-8 file client for protocol v1. A Codex-originated MCP write/read round trip was verified during T1. A full ChatGPT Web-originated session through the plugin is still pending T7, so this guide does not claim that result.
+This guide uses the existing **Mac Safe Files** MCP connection as a bounded UTF-8 file client for protocol v1. On 2026-10-21, Codex used that MCP connection with an actual Zotero 10.0.6 development host to publish `connection_status` and a `create_annotation` request; the mutation created native highlight `986UN7S4`. This is Codex-originated MCP evidence. A full ChatGPT Web-originated session through the plugin has not succeeded, so this guide does not claim that result.
 
 The repository does not contain an evidenced public server package or installation procedure. If Mac Safe Files is unavailable, use the connection owner's runbook or the approved direct Codex route in `integration/work/README.md`. Do not install a tunnel, change MCP policy, or invent server setup steps from this guide.
 
@@ -106,14 +106,12 @@ Session replacement prevents dispatches that have not passed the bridge's final 
 
 The native adapter uses Gecko 140 `nsIFile` inspection, canonical path checks, bounded `IOUtils.read`, private session directories, and atomic `IOUtils.write`. Gecko does not expose a no-follow or directory-handle read through `IOUtils`, so a hostile process running as the same macOS user could still swap a checked path before the later open. The bridge checks the path before and after each read and again before dispatch, but those checks do not remove that operating-system race. Keep the bridge in a dedicated directory owned by the user and do not share write access with untrusted processes.
 
-## Native host verification still required
+## Development native-host evidence and remaining checks
 
-After the plugin is packaged and loaded through the repository owner's Zotero runbook, verify the composed host without forcing an application restart:
+Actual checks ran on 2026-10-21 against Zotero 10.0.6 with a development-only composition. Mac Safe Files calls from Codex completed `connection_status` and the native annotation creation described above. Direct Codex file requests also completed search and read operations, appended to the native annotation, rejected a stale edit after a real manual comment change with `conflict`, and rejected a changed stored PDF with `stale_attachment`.
 
-1. Enable one selected directory and profile, then read `bridge-v1.json` and its published status file; confirm their matching session, profile, enabled state, and limits.
-2. Publish `connection_status` and one bounded read request with the atomic procedure above; confirm their matching result files.
-3. With a fresh explicit user instruction, publish one mutation and verify both the response's storage status and the resulting Zotero object. Check reader evidence separately.
-4. Disable the bridge, place a mutation in the disabled session, reconnect, and confirm the new session does not process the stale file.
-5. Repeat the boundary checks with an oversized request and a symlinked request; neither may reach the native dispatcher.
+The running host ignored incomplete publication and rejected malformed JSON, the wrong profile, oversized input, and a symlinked request before native dispatch. Disable stopped new dispatch. A pending `create_note` placed in disabled session prefix `4a6ae…` produced neither a result nor a note; after reconnect selected session prefix `678aa…`, listing notes confirmed that the pending mutation remained absent. This is actual evidence for disable/reconnect freshness, not evidence for crash recovery or reinstall behavior.
 
-These host checks have not run in the current environment: Zotero automation did not bind, the available application update is pending a restart, and the MCP server is disabled or refusing the connection. The source and real-filesystem transport tests do not substitute for this composed plugin test.
+The installed development composition contained file-bridge source `f1c477d` and T3 source `12d8b2a`. Later T3 source `9f41ada` was not installed for these checks, and a further source fix remains in progress. The tested package is a development build with a developer-specific bridge root. It is not a distribution build and does not establish completion of release packaging or installation work.
+
+Release validation still needs a packaged build with user-selected directory authority, the final reviewed source, upgrade/uninstall/reinstall and cleanup checks, crash-boundary recovery, and a real ChatGPT Web-originated study session. ChatGPT Work requires its own independent run. Do not infer those results from the successful Codex clients.

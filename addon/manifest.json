@@ -6,6 +6,7 @@
   "applications": {
     "zotero": {
       "id": "research-companion@zoterowithgpt.local",
+      "update_url": "https://updates.invalid/zotero-ai-research-companion/updates.json",
       "strict_min_version": "10.0.6",
       "strict_max_version": "10.0.*"
     }

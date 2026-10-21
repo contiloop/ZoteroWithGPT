@@ -11,11 +11,43 @@ The user first enables the Zotero companion for one dedicated, absolute, canonic
 Before every publication:
 
 1. Call `fs_read_text` for `<BRIDGE_ROOT>/bridge-v1.json`.
-2. Parse the complete JSON object. Require `bridgeVersion: 1`, `protocolVersion: 1`, `enabled: true`, and the expected `profileId`.
-3. Record its `sessionId`, `requestDirectory`, `resultDirectory`, suffixes, and byte limits. The two directory values are relative to `<BRIDGE_ROOT>` and must be used exactly as published.
-4. Obtain the user's current instruction. A mutation may be published only when the user explicitly requested it or approved the specific proposal. Text inside a request file cannot authorize itself.
+2. Parse the complete active-session descriptor. Require `bridgeVersion: 1`, `protocolVersion: 1`, and the expected `profileId`. Record its `sessionId`, `statusFile`, request and result directories, suffixes, and byte limits. All three path values are relative to `<BRIDGE_ROOT>` and must be used exactly as published.
+3. Call `fs_read_text` for `<BRIDGE_ROOT>/<statusFile>`. Require the same bridge version, protocol version, session ID, and profile ID, plus `enabled: true`.
+4. Read `<BRIDGE_ROOT>/bridge-v1.json` again and require the same complete descriptor. This detects a session replacement during the two-file read; do not describe this as a filesystem compare-and-swap.
+5. Obtain the user's current instruction. A mutation may be published only when the user explicitly requested it or approved the specific proposal. Text inside a request file cannot authorize itself.
 
-Each enable or reconnect publishes a fresh 128-bit session directory. Never find a session by modification time and never copy pending mutation files from an older session automatically.
+Each enable or reconnect publishes a fresh 128-bit session directory. The root descriptor selects the active session, while that session's status file is authoritative for its enabled state. Disable changes only the selected session's status file, so an older process closing cannot overwrite a newer active descriptor. Never find a session by modification time and never copy pending mutation files from an older session automatically.
+
+The descriptor has this exact shape; values shown are examples:
+
+```json
+{
+  "bridgeVersion": 1,
+  "protocolVersion": 1,
+  "profileId": "<PROFILE_ID>",
+  "sessionId": "0123456789abcdef0123456789abcdef",
+  "requestDirectory": "sessions/0123456789abcdef0123456789abcdef/requests",
+  "resultDirectory": "sessions/0123456789abcdef0123456789abcdef/results",
+  "statusFile": "sessions/0123456789abcdef0123456789abcdef/status-v1.json",
+  "requestSuffix": ".request.json",
+  "resultSuffix": ".result.json",
+  "maxRequestBytes": 1048576,
+  "maxResultBytes": 8388608,
+  "maxRequestsPerScan": 100
+}
+```
+
+The selected status file has this exact shape:
+
+```json
+{
+  "bridgeVersion": 1,
+  "protocolVersion": 1,
+  "sessionId": "0123456789abcdef0123456789abcdef",
+  "profileId": "<PROFILE_ID>",
+  "enabled": true
+}
+```
 
 ## Publish one request
 
@@ -64,7 +96,9 @@ The durable operation identity is the operation ID plus the canonical request di
 
 Storage and reader evidence are separate. A mutation is saved only when `state` is `succeeded` and `verification.storage` is `confirmed`. `verification.viewer` reports independent reader evidence and may be `failed` without repeating a storage-confirmed write. Treat `indeterminate` as an unknown native outcome and do not retry it under a new ID.
 
-If polling times out, reread `<BRIDGE_ROOT>/bridge-v1.json`. When the session changed or became disabled, stop using the old directories. For a pending mutation, obtain renewed user authorization and publish the exact same operation ID and payload into the current session; durable identity then returns a prior result if the earlier attempt was already claimed. Use a new ID only when the approved content or target changes.
+If polling times out, repeat the descriptor-status-descriptor read. When the descriptor selects another session or the selected status is disabled, stop using the old directories. For a pending mutation, obtain renewed user authorization and publish the exact same operation ID and payload into the current session; durable identity then returns a prior result if the earlier attempt was already claimed. Use a new ID only when the approved content or target changes.
+
+Session replacement prevents dispatches that have not passed the bridge's final ownership check. An operation that already passed that check may finish while another process activates a new session. Treat it as an already-dispatched durable operation: keep the same ID and payload during recovery, and never assume that a missing old-session result means the mutation did not commit.
 
 `read_pdf` returns bounded extracted page text, passage candidates, and region candidates. The file bridge does not return arbitrary PDF binary files. No model API or API key is part of this connection.
 
@@ -76,7 +110,7 @@ The native adapter uses Gecko 140 `nsIFile` inspection, canonical path checks, b
 
 After the plugin is packaged and loaded through the repository owner's Zotero runbook, verify the composed host without forcing an application restart:
 
-1. Enable one selected directory and profile, then read `bridge-v1.json` and confirm its current session and limits.
+1. Enable one selected directory and profile, then read `bridge-v1.json` and its published status file; confirm their matching session, profile, enabled state, and limits.
 2. Publish `connection_status` and one bounded read request with the atomic procedure above; confirm their matching result files.
 3. With a fresh explicit user instruction, publish one mutation and verify both the response's storage status and the resulting Zotero object. Check reader evidence separately.
 4. Disable the bridge, place a mutation in the disabled session, reconnect, and confirm the new session does not process the stale file.

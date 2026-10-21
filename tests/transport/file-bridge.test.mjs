@@ -19,6 +19,7 @@ import test from "node:test";
 
 import { OperationCoordinator } from "../../dist/core/index.js";
 import {
+  FileBridgeConfigurationError,
   FileBridgeSecurityError,
   FileBridgeTransport,
   MAX_FILE_BRIDGE_REQUESTS_PER_SCAN,
@@ -29,6 +30,9 @@ import { MAX_REQUEST_BYTES } from "../../dist/protocol/index.js";
 const encoder = new TextEncoder();
 
 class NodeFileBridgeFileSystem {
+  beforeAtomicWrite;
+  beforeReadBounded;
+
   isAbsolute(value) {
     return path.isAbsolute(value);
   }
@@ -75,6 +79,7 @@ class NodeFileBridgeFileSystem {
   }
 
   async readBounded(value, maxBytes) {
+    await this.beforeReadBounded?.(value, maxBytes);
     const handle = await open(value, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
     try {
       const chunks = [];
@@ -94,6 +99,7 @@ class NodeFileBridgeFileSystem {
   }
 
   async atomicWrite(value, bytes, temporaryPath) {
+    await this.beforeAtomicWrite?.(value, bytes, temporaryPath);
     const handle = await open(temporaryPath, "w", 0o600);
     try {
       await handle.writeFile(bytes);
@@ -210,8 +216,12 @@ async function readResult(subscription, operationId) {
   return JSON.parse(await readFile(target, "utf8"));
 }
 
+async function readSessionStatus(root, readiness) {
+  return JSON.parse(await readFile(path.join(root, readiness.statusFile), "utf8"));
+}
+
 test("real filesystem request/result round trip publishes bounded UTF-8 JSON atomically", async (t) => {
-  const { transport } = await withBridge(t);
+  const { root, transport } = await withBridge(t);
   let executions = 0;
   const handler = createCoordinatorHandler(async (accepted) => {
     executions += 1;
@@ -225,14 +235,18 @@ test("real filesystem request/result round trip publishes bounded UTF-8 JSON ato
   const subscription = await transport.listen(handler);
   t.after(() => subscription.close());
 
-  assert.equal(subscription.readiness.enabled, true);
+  assert.equal(Object.hasOwn(subscription.readiness, "enabled"), false);
   assert.equal(subscription.readiness.protocolVersion, 1);
   assert.equal(subscription.readiness.bridgeVersion, 1);
   assert.equal(subscription.readiness.profileId, "profile-A");
   assert.equal(subscription.readiness.maxRequestBytes, MAX_REQUEST_BYTES);
   assert.equal(subscription.readiness.maxResultBytes, MAX_FILE_BRIDGE_RESULT_BYTES);
   assert.equal(path.isAbsolute(subscription.readiness.requestDirectory), false);
+  assert.equal(path.isAbsolute(subscription.readiness.statusFile), false);
   assert.equal(path.isAbsolute(subscription.paths.requestDirectory), true);
+  const status = await readSessionStatus(root, subscription.readiness);
+  assert.equal(status.enabled, true);
+  assert.equal(status.sessionId, subscription.readiness.sessionId);
 
   await publishJson(subscription, "op.search-1", request("op.search-1"));
   await subscription.pollOnce();
@@ -354,6 +368,51 @@ test("durable identity replays same payload and rejects a changed payload", asyn
   assert.equal(executions, 1);
 });
 
+test("an indeterminate mutation cache rejects changed content and replays canonical identity", async (t) => {
+  const { transport } = await withBridge(t);
+  let dispatches = 0;
+  const subscription = await transport.listen(async () => {
+    dispatches += 1;
+    throw new Error("native outcome unavailable");
+  });
+  t.after(() => subscription.close());
+
+  const operationId = "op.indeterminate-identity-1";
+  const original = mutationRequest(operationId, "original content");
+  await publishJson(subscription, operationId, original);
+  await subscription.pollOnce();
+  const first = await readResult(subscription, operationId);
+  assert.equal(first.state, "indeterminate");
+  assert.equal(first.error.code, "unknown_outcome");
+  assert.equal(dispatches, 1);
+
+  await publishJson(subscription, operationId, mutationRequest(operationId, "changed content"));
+  await subscription.pollOnce();
+  const mismatch = await readResult(subscription, operationId);
+  assert.equal(mismatch.state, "rejected");
+  assert.equal(mismatch.error.code, "duplicate_id_mismatch");
+  assert.equal(dispatches, 1);
+
+  const canonicalReplay = {
+    payload: {
+      content: "original content",
+      itemKey: original.payload.itemKey,
+      libraryId: original.payload.libraryId,
+    },
+    authorization: { ...original.authorization },
+    profileId: original.profileId,
+    operation: original.operation,
+    operationId: original.operationId,
+    protocolVersion: original.protocolVersion,
+  };
+  await publishJson(subscription, operationId, canonicalReplay);
+  await subscription.pollOnce();
+  const replay = await readResult(subscription, operationId);
+  assert.equal(replay.state, "indeterminate");
+  assert.equal(replay.error.code, "unknown_outcome");
+  assert.equal(dispatches, 1);
+});
+
 test("disabled bridge does not process files published after close", async (t) => {
   const { root, transport } = await withBridge(t);
   let dispatches = 0;
@@ -363,7 +422,9 @@ test("disabled bridge does not process files published after close", async (t) =
   });
   await subscription.close();
 
-  const disabled = JSON.parse(await readFile(path.join(root, "bridge-v1.json"), "utf8"));
+  const descriptor = JSON.parse(await readFile(path.join(root, "bridge-v1.json"), "utf8"));
+  assert.equal(descriptor.sessionId, subscription.readiness.sessionId);
+  const disabled = await readSessionStatus(root, descriptor);
   assert.equal(disabled.enabled, false);
   await publishJson(subscription, "op.disabled-1", mutationRequest("op.disabled-1"));
   await subscription.pollOnce();
@@ -539,7 +600,7 @@ test("new session ignores stale pending mutations and requires fresh publication
   assert.equal((await readResult(second, "op.fresh-1")).state, "succeeded");
 });
 
-test("a superseded live session cannot process requests or overwrite current readiness", async (t) => {
+test("one runtime refuses two active owners for the same bridge root", async (t) => {
   const { fileSystem, root } = await withBridge(t);
   let writes = 0;
   const handler = createCoordinatorHandler(async (accepted) => {
@@ -572,17 +633,146 @@ test("a superseded live session cannot process requests or overwrite current rea
     onError: () => {},
   });
   const first = await firstTransport.listen(handler);
+  await assert.rejects(secondTransport.listen(handler), FileBridgeConfigurationError);
+
+  await first.close();
+  const second = await secondTransport.listen(handler);
+  t.after(() => second.close());
+  await publishJson(second, "op.new-owner-1", mutationRequest("op.new-owner-1"));
+  await second.pollOnce();
+  assert.equal(writes, 1);
+});
+
+test("an old close cannot overwrite a newer descriptor across isolated runtimes", async (t) => {
+  const { fileSystem, root } = await withBridge(t);
+  const handler = createCoordinatorHandler(async () => ({
+    kind: "completed",
+    data: { matches: [] },
+    verification: { storage: "not_applicable", viewer: "not_checked" },
+  }));
+  const firstTransport = new FileBridgeTransport({
+    fileSystem,
+    directory: root,
+    connectedProfileId: "profile-A",
+    pollIntervalMs: 60_000,
+    createSessionId: () => "55555555555555555555555555555555",
+    onError: () => {},
+  });
+  const first = await firstTransport.listen(handler);
+
+  let markClosePaused;
+  let releaseClose;
+  const closePaused = new Promise((resolve) => {
+    markClosePaused = resolve;
+  });
+  const closeMayFinish = new Promise((resolve) => {
+    releaseClose = resolve;
+  });
+  t.after(() => releaseClose());
+  fileSystem.beforeAtomicWrite = async (target, bytes) => {
+    if (target !== first.paths.statusFile) return;
+    const status = JSON.parse(new TextDecoder().decode(bytes));
+    if (status.enabled !== false) return;
+    fileSystem.beforeAtomicWrite = undefined;
+    markClosePaused();
+    await closeMayFinish;
+  };
+
+  const closingFirst = first.close();
+  await closePaused;
+
+  const isolatedModule = await import(
+    "../../dist/adapters/file-bridge/file-bridge.js?isolated-runtime=close-race"
+  );
+  const secondTransport = new isolatedModule.FileBridgeTransport({
+    fileSystem,
+    directory: root,
+    connectedProfileId: "profile-A",
+    pollIntervalMs: 60_000,
+    createSessionId: () => "66666666666666666666666666666666",
+    onError: () => {},
+  });
+  const second = await secondTransport.listen(handler);
+  t.after(() => second.close());
+  const beforeRelease = JSON.parse(await readFile(path.join(root, "bridge-v1.json"), "utf8"));
+  assert.equal(beforeRelease.sessionId, second.readiness.sessionId);
+
+  releaseClose();
+  await closingFirst;
+
+  const afterRelease = JSON.parse(await readFile(path.join(root, "bridge-v1.json"), "utf8"));
+  assert.equal(afterRelease.sessionId, second.readiness.sessionId);
+  assert.equal((await readSessionStatus(root, first.readiness)).enabled, false);
+  assert.equal((await readSessionStatus(root, second.readiness)).enabled, true);
+
+  await publishJson(second, "op.new-process-1", request("op.new-process-1"));
+  await second.pollOnce();
+  assert.equal((await readResult(second, "op.new-process-1")).state, "succeeded");
+});
+
+test("descriptor-status-descriptor confirmation fences a superseded process", async (t) => {
+  const { fileSystem, root } = await withBridge(t);
+  let writes = 0;
+  const handler = createCoordinatorHandler(async (accepted) => {
+    writes += 1;
+    return {
+      kind: "completed",
+      data: {
+        noteKey: "NOTE1",
+        revision: "rev:1",
+        content: accepted.payload.content,
+        deepLink: "zotero://select/library/items/NOTE1",
+      },
+      verification: { storage: "confirmed", viewer: "not_checked" },
+    };
+  });
+  const firstTransport = new FileBridgeTransport({
+    fileSystem,
+    directory: root,
+    connectedProfileId: "profile-A",
+    pollIntervalMs: 60_000,
+    createSessionId: () => "77777777777777777777777777777777",
+    onError: () => {},
+  });
+  const first = await firstTransport.listen(handler);
+  t.after(() => first.close());
+  await publishJson(first, "op.fenced-1", mutationRequest("op.fenced-1"));
+
+  let markStatusRead;
+  let releaseStatusRead;
+  const statusRead = new Promise((resolve) => {
+    markStatusRead = resolve;
+  });
+  const statusMayFinish = new Promise((resolve) => {
+    releaseStatusRead = resolve;
+  });
+  t.after(() => releaseStatusRead());
+  fileSystem.beforeReadBounded = async (target) => {
+    if (target !== first.paths.statusFile) return;
+    fileSystem.beforeReadBounded = undefined;
+    markStatusRead();
+    await statusMayFinish;
+  };
+
+  const firstPoll = first.pollOnce();
+  await statusRead;
+  const isolatedModule = await import(
+    "../../dist/adapters/file-bridge/file-bridge.js?isolated-runtime=status-race"
+  );
+  const secondTransport = new isolatedModule.FileBridgeTransport({
+    fileSystem,
+    directory: root,
+    connectedProfileId: "profile-A",
+    pollIntervalMs: 60_000,
+    createSessionId: () => "88888888888888888888888888888888",
+    onError: () => {},
+  });
   const second = await secondTransport.listen(handler);
   t.after(() => second.close());
 
-  await publishJson(first, "op.superseded-1", mutationRequest("op.superseded-1"));
-  await assert.rejects(first.pollOnce(), FileBridgeSecurityError);
+  releaseStatusRead();
+  await assert.rejects(firstPoll, FileBridgeSecurityError);
   assert.equal(writes, 0);
-
-  await first.close();
-  const readiness = JSON.parse(await readFile(path.join(root, "bridge-v1.json"), "utf8"));
-  assert.equal(readiness.enabled, true);
-  assert.equal(readiness.sessionId, second.readiness.sessionId);
 });
 
 test("the per-scan bound advances fairly instead of starving later requests", async (t) => {

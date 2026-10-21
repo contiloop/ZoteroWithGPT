@@ -2,6 +2,7 @@ import type { ProtocolRequest, ProtocolResponse } from "../../protocol/index.js"
 
 export const FILE_BRIDGE_VERSION = 1 as const;
 export const FILE_BRIDGE_READINESS_FILENAME = "bridge-v1.json";
+export const FILE_BRIDGE_SESSION_STATUS_FILENAME = "status-v1.json";
 export const FILE_BRIDGE_REQUEST_SUFFIX = ".request.json";
 export const FILE_BRIDGE_RESULT_SUFFIX = ".result.json";
 export const MIN_FILE_BRIDGE_RESULT_BYTES = 1_024;
@@ -41,7 +42,6 @@ export interface FileBridgeFileSystem {
 export interface FileBridgeReadiness {
   bridgeVersion: typeof FILE_BRIDGE_VERSION;
   protocolVersion: 1;
-  enabled: boolean;
   profileId: string;
   /** Random 128-bit hex session name. It is a freshness nonce, not a credential. */
   sessionId: string;
@@ -49,6 +49,8 @@ export interface FileBridgeReadiness {
   requestDirectory: string;
   /** Relative to the explicitly selected bridge root. */
   resultDirectory: string;
+  /** Relative to the explicitly selected bridge root and authoritative for enabled state. */
+  statusFile: string;
   requestSuffix: typeof FILE_BRIDGE_REQUEST_SUFFIX;
   resultSuffix: typeof FILE_BRIDGE_RESULT_SUFFIX;
   maxRequestBytes: number;
@@ -56,10 +58,20 @@ export interface FileBridgeReadiness {
   maxRequestsPerScan: number;
 }
 
+export interface FileBridgeSessionStatus {
+  bridgeVersion: typeof FILE_BRIDGE_VERSION;
+  protocolVersion: 1;
+  sessionId: string;
+  profileId: string;
+  enabled: boolean;
+}
+
 export interface FileBridgeSessionPaths {
   rootDirectory: string;
+  sessionDirectory: string;
   requestDirectory: string;
   resultDirectory: string;
+  statusFile: string;
 }
 
 export type FileBridgeRequestHandler = (

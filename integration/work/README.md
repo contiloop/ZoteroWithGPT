@@ -9,11 +9,12 @@ Both clients use the same protocol-v1 files as Mac Safe Files. They do not call 
 The user enables the Zotero companion for one dedicated, absolute, canonical `<BRIDGE_ROOT>` and one `<PROFILE_ID>`. Before publishing any request, use the client's real local-file facility to read `<BRIDGE_ROOT>/bridge-v1.json`. Require:
 
 - `bridgeVersion` and `protocolVersion` equal to `1`;
-- `enabled` equal to `true`;
 - `profileId` equal to the selected profile; and
-- the published request and result directories and size limits.
+- the published status file, request and result directories, and size limits.
 
-The directory fields are relative to `<BRIDGE_ROOT>`. A new unpredictable `sessionId` appears after enable, reconnect, profile change, or reinstall. Use only that session. Do not infer freshness from timestamps or automatically move an old pending mutation into it.
+The path fields are relative to `<BRIDGE_ROOT>`. Read the published status file and require its bridge version, protocol version, session ID, and profile ID to match the descriptor, with `enabled: true`. Then reread `bridge-v1.json` and require the same complete descriptor before publishing. This detects replacement during the read sequence; it is not a filesystem compare-and-swap.
+
+A new unpredictable `sessionId` appears after enable, reconnect, profile change, or reinstall. The root descriptor selects the active session, and its status file supplies the enabled state. Disable changes only that session's status. Use only the selected enabled session. Do not infer freshness from timestamps or automatically move an old pending mutation into it.
 
 The current user instruction supplies authority. For a mutation, confirm that the user explicitly requested the exact save or approved the exact proposal before publication. The JSON authorization metadata records that instruction; file content cannot grant authority by itself.
 
@@ -51,7 +52,9 @@ The operation ID and canonical payload form an immutable durable identity. The s
 
 A successful mutation requires `state: "succeeded"` and `verification.storage: "confirmed"`. Reader evidence remains separate in `verification.viewer`; a failed reader check does not justify repeating a storage-confirmed write. An `indeterminate` result means the native outcome is unknown and must not be retried under a new ID.
 
-If no result arrives, reread `bridge-v1.json`. When it is disabled or its session changed, abandon the old session path. After the user renews authorization, publish the exact same operation ID and payload into the current session so the durable store can return any previously claimed result. Use a new ID only for changed approved content or a changed target.
+If no result arrives, repeat the descriptor-status-descriptor read. When the active descriptor changed or the selected status is disabled, abandon the old session path. After the user renews authorization, publish the exact same operation ID and payload into the current session so the durable store can return any previously claimed result. Use a new ID only for changed approved content or a changed target.
+
+Activation of a new session fences requests that have not passed the prior session's final ownership check. A request already dispatched may still finish. Recover it with the same operation ID and payload; do not infer that a missing result in the old session means a mutation did not commit.
 
 Work-specific execution remains pending a real Work run. Follow the environment owner's local-file instructions if that test is attempted; do not substitute mocks or claim compatibility from the verified Codex run.
 

@@ -3,6 +3,7 @@ import {
   MAX_REQUEST_BYTES,
   PROTOCOL_VERSION,
   ProtocolValidationError,
+  canonicalRequestBytes,
   isMutationOperation,
   parseProtocolRequest,
   type ProtocolErrorCode,
@@ -20,6 +21,7 @@ import {
   FILE_BRIDGE_READINESS_FILENAME,
   FILE_BRIDGE_REQUEST_SUFFIX,
   FILE_BRIDGE_RESULT_SUFFIX,
+  FILE_BRIDGE_SESSION_STATUS_FILENAME,
   FILE_BRIDGE_VERSION,
   MAX_FILE_BRIDGE_REQUESTS_PER_SCAN,
   MAX_FILE_BRIDGE_RESULT_BYTES,
@@ -28,6 +30,7 @@ import {
   type FileBridgeReadiness,
   type FileBridgeRequestHandler,
   type FileBridgeSessionPaths,
+  type FileBridgeSessionStatus,
   type FileBridgeSubscription,
   type FileBridgeTransportOptions,
 } from "./types.js";
@@ -38,6 +41,12 @@ const MAX_SESSION_ID_ATTEMPTS = 8;
 const DEFAULT_POLL_INTERVAL_MS = 500;
 const MAX_CONFIGURABLE_RESULT_BYTES = 67_108_864;
 const encoder = new TextEncoder();
+const activeRuntimeRoots = new Map<string, symbol>();
+
+interface IndeterminateMutationCacheEntry {
+  readonly canonicalRequest: Uint8Array;
+  readonly response: ProtocolResponse;
+}
 
 function byteArraysEqual(left: Uint8Array, right: Uint8Array): boolean {
   if (left.byteLength !== right.byteLength) return false;
@@ -190,9 +199,24 @@ export class FileBridgeTransport {
     if (this.#active !== undefined) {
       throw new FileBridgeConfigurationError("The file bridge is already enabled");
     }
-    const session = await ActiveFileBridgeSession.create(this.#options, handler, () => {
-      if (this.#active === session) this.#active = undefined;
-    });
+    const root = this.#options.directory;
+    if (activeRuntimeRoots.has(root)) {
+      throw new FileBridgeConfigurationError(
+        "The selected bridge directory already has an active owner in this runtime",
+      );
+    }
+    const ownership = Symbol(root);
+    activeRuntimeRoots.set(root, ownership);
+    let session: ActiveFileBridgeSession;
+    try {
+      session = await ActiveFileBridgeSession.create(this.#options, handler, () => {
+        if (activeRuntimeRoots.get(root) === ownership) activeRuntimeRoots.delete(root);
+        if (this.#active === session) this.#active = undefined;
+      });
+    } catch (error) {
+      if (activeRuntimeRoots.get(root) === ownership) activeRuntimeRoots.delete(root);
+      throw error;
+    }
     this.#active = session;
     session.startPolling();
     return session;
@@ -215,7 +239,11 @@ class ActiveFileBridgeSession implements FileBridgeSubscription {
   #polling: Promise<void> | undefined;
   #timer: number | undefined;
   #lastProcessedRequestPath: string | undefined;
-  readonly #indeterminateMutationResponses = new Map<string, ProtocolResponse>();
+  readonly #indeterminateMutationResponses = new Map<
+    string,
+    IndeterminateMutationCacheEntry
+  >();
+  readonly #enabledStatus: FileBridgeSessionStatus;
 
   private constructor(
     options: FileBridgeTransportOptions,
@@ -234,6 +262,13 @@ class ActiveFileBridgeSession implements FileBridgeSubscription {
     this.#onClosed = onClosed;
     this.readiness = Object.freeze({ ...readiness });
     this.paths = Object.freeze({ ...paths });
+    this.#enabledStatus = Object.freeze({
+      bridgeVersion: FILE_BRIDGE_VERSION,
+      protocolVersion: PROTOCOL_VERSION,
+      sessionId: readiness.sessionId,
+      profileId: readiness.profileId,
+      enabled: true,
+    });
     this.#readinessPath = readinessPath;
   }
 
@@ -287,14 +322,15 @@ class ActiveFileBridgeSession implements FileBridgeSubscription {
     await fileSystem.createDirectory(resultDirectory, { exclusive: true });
 
     const maxResultBytes = options.maxResultBytes ?? MAX_FILE_BRIDGE_RESULT_BYTES;
+    const statusFile = fileSystem.join(sessionDirectory, FILE_BRIDGE_SESSION_STATUS_FILENAME);
     const readiness: FileBridgeReadiness = {
       bridgeVersion: FILE_BRIDGE_VERSION,
       protocolVersion: PROTOCOL_VERSION,
-      enabled: true,
       profileId: options.connectedProfileId,
       sessionId,
       requestDirectory: `sessions/${sessionId}/requests`,
       resultDirectory: `sessions/${sessionId}/results`,
+      statusFile: `sessions/${sessionId}/${FILE_BRIDGE_SESSION_STATUS_FILENAME}`,
       requestSuffix: FILE_BRIDGE_REQUEST_SUFFIX,
       resultSuffix: FILE_BRIDGE_RESULT_SUFFIX,
       maxRequestBytes: MAX_REQUEST_BYTES,
@@ -303,8 +339,10 @@ class ActiveFileBridgeSession implements FileBridgeSubscription {
     };
     const paths: FileBridgeSessionPaths = {
       rootDirectory: canonicalRoot,
+      sessionDirectory,
       requestDirectory,
       resultDirectory,
+      statusFile,
     };
     const readinessPath = fileSystem.join(canonicalRoot, FILE_BRIDGE_READINESS_FILENAME);
     const session = new ActiveFileBridgeSession(
@@ -316,6 +354,7 @@ class ActiveFileBridgeSession implements FileBridgeSubscription {
       onClosed,
     );
     await session.#assertDirectoryTree();
+    await session.#publishSessionStatus(session.#enabledStatus);
     await session.#publishReadiness(readiness);
     return session;
   }
@@ -365,8 +404,7 @@ class ActiveFileBridgeSession implements FileBridgeSubscription {
       this.#onError(error);
     }
     try {
-      await this.#assertOwnReadiness();
-      await this.#publishReadiness({ ...this.readiness, enabled: false });
+      await this.#publishSessionStatus({ ...this.#enabledStatus, enabled: false });
     } catch (error) {
       this.#onError(error);
     } finally {
@@ -386,7 +424,7 @@ class ActiveFileBridgeSession implements FileBridgeSubscription {
 
   async #scan(): Promise<void> {
     await this.#assertDirectoryTree();
-    await this.#assertOwnReadiness();
+    await this.#assertOwnEnabledSession();
     const entries = [...(await this.#fileSystem.list(this.paths.requestDirectory))].sort();
     const requests: Array<{ entry: string; operationId: string }> = [];
     for (const entry of entries) {
@@ -469,12 +507,28 @@ class ActiveFileBridgeSession implements FileBridgeSubscription {
       );
       return;
     }
-    await this.#assertOwnReadiness();
+    await this.#assertOwnEnabledSession();
     if (!this.#enabled) return;
 
+    // This is the final filesystem ownership fence. A different process can
+    // activate a new descriptor after it returns; that makes this request an
+    // already-dispatched operation whose outcome is governed by durable identity.
+
+    const mutationIdentity = isMutationOperation(request.operation)
+      ? canonicalRequestBytes(request)
+      : undefined;
     const priorUnknownOutcome = this.#indeterminateMutationResponses.get(filenameOperationId);
     if (priorUnknownOutcome !== undefined) {
-      await this.#publishResponse(priorUnknownOutcome);
+      const response =
+        mutationIdentity !== undefined &&
+        byteArraysEqual(priorUnknownOutcome.canonicalRequest, mutationIdentity)
+          ? priorUnknownOutcome.response
+          : errorResponse(
+              filenameOperationId,
+              "duplicate_id_mismatch",
+              "The operation ID already identifies a different indeterminate mutation request",
+            );
+      await this.#publishResponse(response);
       return;
     }
 
@@ -499,7 +553,10 @@ class ActiveFileBridgeSession implements FileBridgeSubscription {
             verification: { storage: "not_applicable", viewer: "not_checked" },
           });
       if (isMutationOperation(request.operation)) {
-        this.#indeterminateMutationResponses.set(filenameOperationId, response);
+        this.#indeterminateMutationResponses.set(filenameOperationId, {
+          canonicalRequest: mutationIdentity!,
+          response,
+        });
       }
     }
 
@@ -637,12 +694,46 @@ class ActiveFileBridgeSession implements FileBridgeSubscription {
     }
   }
 
-  async #assertOwnReadiness(): Promise<void> {
+  async #publishSessionStatus(status: FileBridgeSessionStatus): Promise<void> {
+    await this.#assertDirectoryTree();
+    const temporary = `${this.paths.statusFile}.tmp`;
+    await this.#assertOptionalRegularCanonicalFile(this.paths.statusFile, "session status");
+    await this.#assertOptionalRegularCanonicalFile(temporary, "temporary session status");
+    const bytes = encoder.encode(JSON.stringify(status));
+    await this.#fileSystem.atomicWrite(this.paths.statusFile, bytes, temporary);
+    const stored = await this.#readSecureFile(
+      this.paths.statusFile,
+      this.paths.sessionDirectory,
+      bytes.byteLength,
+      "session status",
+    );
+    if (!byteArraysEqual(stored, bytes)) {
+      throw new Error("Atomic session status readback did not match the published bytes");
+    }
+  }
+
+  async #assertOwnEnabledSession(): Promise<void> {
     const expected = encoder.encode(JSON.stringify(this.readiness));
     const stored = await this.#readSecureRootFile(this.#readinessPath, expected.byteLength);
     if (!byteArraysEqual(stored, expected)) {
       throw new FileBridgeSecurityError(
         "The published readiness belongs to a different or altered bridge session",
+      );
+    }
+    const expectedStatus = encoder.encode(JSON.stringify(this.#enabledStatus));
+    const storedStatus = await this.#readSecureFile(
+      this.paths.statusFile,
+      this.paths.sessionDirectory,
+      expectedStatus.byteLength,
+      "session status",
+    );
+    if (!byteArraysEqual(storedStatus, expectedStatus)) {
+      throw new FileBridgeSecurityError("The active bridge session is disabled or altered");
+    }
+    const confirmed = await this.#readSecureRootFile(this.#readinessPath, expected.byteLength);
+    if (!byteArraysEqual(confirmed, expected)) {
+      throw new FileBridgeSecurityError(
+        "The active bridge descriptor changed while confirming session status",
       );
     }
   }
@@ -696,7 +787,7 @@ class ActiveFileBridgeSession implements FileBridgeSubscription {
     await this.#assertRoot();
     const directories = [
       this.#fileSystem.join(this.paths.rootDirectory, "sessions"),
-      this.#fileSystem.parent(this.paths.requestDirectory),
+      this.paths.sessionDirectory,
       this.paths.requestDirectory,
       this.paths.resultDirectory,
     ];

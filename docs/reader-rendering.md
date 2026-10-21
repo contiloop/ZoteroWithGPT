@@ -26,9 +26,16 @@ Inline and fenced code stays literal. Invalid or unsupported TeX is displayed as
 instead of being dropped. A failure of the Markdown engine falls back to escaped, line-preserving
 plain content. Neither fallback changes the native annotation comment.
 
+Rendering has deterministic work limits. Source longer than 512 KiB, more than 4,096 potential math
+delimiters, or a single math expression longer than 64 KiB uses that complete escaped fallback. Math
+delimiter lookup is indexed in linear passes with an internal scan budget, so repeated unmatched
+delimiters do not repeatedly scan the remainder of a long comment. These limits affect only the
+preview; the complete native comment remains stored and editable.
+
 KaTeX emits MathML only. The adapter therefore does not fetch KaTeX fonts or a remote stylesheet.
 Long prose is not line-clamped or vertically truncated. Wide preformatted text and display equations
-can scroll horizontally inside the reader sidebar.
+can scroll horizontally inside the reader sidebar. Preview-scoped list padding keeps numbered and
+bulleted proof steps visible even when the reader's native list styles remove their indentation.
 
 ## Security boundary
 
@@ -37,7 +44,9 @@ All annotation content is untrusted. Rendering applies these boundaries in order
 1. Markdown-it runs with raw HTML disabled and no image element output.
 2. KaTeX runs with `trust: false`, `strict: "error"`, `maxExpand: 1000`, `maxSize: 20`, and
    MathML-only output.
-3. DOMPurify applies a final explicit HTML and MathML tag and attribute allowlist.
+3. DOMPurify applies a final explicit HTML and MathML tag and attribute allowlist. KaTeX's semantic
+   MathML attributes are retained only when their values match bounded grammars, preserving such
+   meaning as cancellation notation and aligned-equation column layout.
 4. Resource-loading elements and attributes, SVG, event handlers, inline styles, `javascript:`,
    `data:`, `file:`, and unknown protocols are absent from the result.
 5. Only absolute HTTP and HTTPS links remain actionable. The reader adapter prevents the iframe's

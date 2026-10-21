@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Worker } from "node:worker_threads";
 
 import { JSDOM } from "jsdom";
 
@@ -77,6 +78,89 @@ test("supports bracket math while leaving code spans literal", async () => {
   assert.equal(container.querySelector("code")?.textContent, "$literal$");
 });
 
+test("preserves validated MathML attributes that carry formula meaning and layout", async () => {
+  const { dom, renderer } = createRenderer();
+  const source = [
+    "$$\\cancel{x}$$",
+    "",
+    "$$\\begin{aligned} a&=b+c\\\\ d&=e \\end{aligned}$$",
+  ].join("\n");
+
+  const result = await renderer.render({
+    content: source,
+    source: "annotation",
+    requestedFormat: "sanitized_html",
+  });
+  const container = dom.window.document.createElement("div");
+  container.innerHTML = result.content;
+
+  assert.equal(container.querySelector("menclose")?.getAttribute("notation"), "updiagonalstrike");
+  const aligned = container.querySelector("mtable");
+  assert.equal(aligned?.getAttribute("columnalign"), "right left");
+  assert.equal(aligned?.getAttribute("columnspacing"), "0em");
+  assert.equal(aligned?.getAttribute("rowspacing"), "0.25em");
+});
+
+test("uses complete readable fallback when math delimiter work exceeds its fixed budget", async () => {
+  const { dom, renderer } = createRenderer();
+  const source = `${"\\[".repeat(5_000)}끝\n둘째 줄`;
+
+  const result = await renderer.render({
+    content: source,
+    source: "annotation",
+    requestedFormat: "sanitized_html",
+  });
+  const container = dom.window.document.createElement("div");
+  container.innerHTML = result.content;
+
+  assert.equal(container.textContent, source.replace("\n", ""));
+  assert.equal(container.querySelectorAll("br").length, 1);
+  assert.equal(container.querySelector("math"), null);
+});
+
+test("handles a valid 512 KiB unmatched-delimiter comment without hanging the test process", async () => {
+  const worker = new Worker(new URL("./pathological-math-worker.mjs", import.meta.url));
+  let settled = false;
+  try {
+    const message = await new Promise((resolve, reject) => {
+      const guard = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        void worker.terminate();
+        reject(new Error("512 KiB render exceeded the worker guard"));
+      }, 5_000);
+      worker.once("message", (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(guard);
+        resolve(value);
+      });
+      worker.once("error", (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(guard);
+        reject(error);
+      });
+      worker.once("exit", (code) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(guard);
+        reject(new Error(`pathological render worker exited before reporting (${code})`));
+      });
+    });
+    assert.deepEqual(message, {
+      denseFormat: "sanitized_html",
+      denseSourceLength: 512 * 1024,
+      denseTextMatches: true,
+      sparseSourceLength: 512 * 1024,
+      sparseUsesMarkdownSemantics: true,
+    });
+  } finally {
+    settled = true;
+    await worker.terminate();
+  }
+});
+
 test("blocks markup, active protocols, remote resources, and KaTeX trust commands", async () => {
   const { dom, renderer } = createRenderer();
   const source = [
@@ -139,7 +223,8 @@ test("the final sanitizer rejects hostile markup emitted by a renderer dependenc
         return [
           '<img src="https://tracker.invalid/pixel" onerror="alert(1)">',
           '<a href="javascript:alert(1)" onclick="alert(2)">bad</a>',
-          '<math><mi xlink:href="data:text/html,boom">x</mi></math>',
+          '<math><menclose notation="updiagonalstrike javascript"><mi xlink:href="data:text/html,boom">x</mi></menclose></math>',
+          '<math><a href="https://example.org/math-link">math link</a></math>',
           '<a href="https://example.org/good">good</a>',
         ].join("");
       },
@@ -156,6 +241,8 @@ test("the final sanitizer rejects hostile markup emitted by a renderer dependenc
 
   assert.equal(container.querySelector("img, script, style, iframe"), null);
   assert.equal(container.querySelector("[onerror], [onclick], [xlink\\:href]"), null);
+  assert.equal(container.querySelector("menclose")?.hasAttribute("notation"), false);
+  assert.equal(container.querySelector("math a[href]"), null);
   assert.equal(container.querySelector('a[href^="javascript:"]'), null);
   assert.equal(container.querySelector("a[href]")?.getAttribute("href"), "https://example.org/good");
 });

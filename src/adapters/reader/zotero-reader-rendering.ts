@@ -425,6 +425,24 @@ function ensureStyle(document: Document): void {
       padding: 0;
       text-decoration: underline;
     }
+    [${PREVIEW_ATTRIBUTE}] [${PREVIEW_BODY_ATTRIBUTE}] > p {
+      margin-block: 0.65em;
+    }
+    [${PREVIEW_ATTRIBUTE}] [${PREVIEW_BODY_ATTRIBUTE}] > :first-child { margin-block-start: 0; }
+    [${PREVIEW_ATTRIBUTE}] [${PREVIEW_BODY_ATTRIBUTE}] > :last-child { margin-block-end: 0; }
+    [${PREVIEW_ATTRIBUTE}] [${PREVIEW_BODY_ATTRIBUTE}] ol,
+    [${PREVIEW_ATTRIBUTE}] [${PREVIEW_BODY_ATTRIBUTE}] ul {
+      list-style-position: outside !important;
+      margin-block: 0.65em;
+      margin-inline: 0;
+      padding-inline-start: 2em !important;
+    }
+    [${PREVIEW_ATTRIBUTE}] [${PREVIEW_BODY_ATTRIBUTE}] ol { list-style-type: decimal !important; }
+    [${PREVIEW_ATTRIBUTE}] [${PREVIEW_BODY_ATTRIBUTE}] ul { list-style-type: disc !important; }
+    [${PREVIEW_ATTRIBUTE}] [${PREVIEW_BODY_ATTRIBUTE}] li {
+      display: list-item !important;
+      margin-block: 0.25em;
+    }
     [${PREVIEW_ATTRIBUTE}] > :first-child { margin-top: 0; }
     [${PREVIEW_ATTRIBUTE}] > :last-child { margin-bottom: 0; }
     [${PREVIEW_ATTRIBUTE}] a { color: var(--accent-blue); text-decoration: underline; }

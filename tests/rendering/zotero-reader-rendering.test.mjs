@@ -101,6 +101,16 @@ function givePreviewLayout(fixture, bodyRect) {
 
 test("adds a full formatted preview beside the native editor and preserves passage navigation", async () => {
   const fixture = readerFixture();
+  const nativeReaderStyle = fixture.document.createElement("style");
+  nativeReaderStyle.textContent = `
+    .annotation .comment ol {
+      list-style-type: none !important;
+      padding-inline-start: 0 !important;
+    }
+    .annotation .comment li { display: block !important; }
+    .annotation .comment p { margin-block: 0; }
+  `;
+  fixture.document.head.append(nativeReaderStyle);
   const source = [
     "질문: 이 귀납 단계가 왜 성립하나요?",
     "",
@@ -124,6 +134,14 @@ test("adds a full formatted preview beside the native editor and preserves passa
   assert.equal(preview.querySelector("a")?.getAttribute("href"), "https://example.org/paper");
   assert.equal(preview.style.maxHeight, "none");
   assert.equal(preview.style.overflowY, "visible");
+  const orderedListStyle = fixture.dom.window.getComputedStyle(preview.querySelector("ol"));
+  assert.equal(orderedListStyle.listStylePosition, "outside");
+  assert.equal(orderedListStyle.listStyleType, "decimal");
+  assert.equal(orderedListStyle.paddingInlineStart, "2em");
+  assert.equal(
+    fixture.dom.window.getComputedStyle(preview.querySelector("p")).marginBlock,
+    "0.65em",
+  );
   assert.equal(fixture.editor.getAttribute("contenteditable"), "true");
   assert.equal(fixture.editor.hidden, false);
   const comment = fixture.document.querySelector(".comment");

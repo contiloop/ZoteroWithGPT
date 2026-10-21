@@ -42,6 +42,8 @@ After Enable, the important paths are:
    to be unchanged. Stop if it changed or the selected status became disabled.
 4. Build one complete request with an operation ID that matches
    `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` and the packaged request schema.
+   Use a fresh ID for every new observation, including reads, status checks,
+   and verification. Reusing an ID returns its recorded historical result.
 5. Publish it with a create-only atomic write at exactly:
 
    ```text

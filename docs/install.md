@@ -111,7 +111,9 @@ setup has all of the following:
 - the request and result directories are relative to the selected root; and
 - no API key, tunnel key, or credential appears in the directory.
 
-Use a new operation ID for new approved content. When recovering an uncertain
+Use a fresh operation ID for every new operation, including reads, status
+checks, verification, and new approved content. Reusing an ID returns its
+recorded historical result. When recovering an uncertain
 or interrupted operation, reuse the exact same operation ID and payload. The
 durable identity journal prevents a completed native write from being repeated
 after an ordinary reconnect, update, or reinstall.

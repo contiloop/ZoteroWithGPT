@@ -36,8 +36,12 @@ function onMainWindowUnload({ window }) {
 }
 
 async function shutdown() {
-  await companionScope?.ResearchCompanion?.stop?.();
-  companionScope = undefined;
+  const stoppingScope = companionScope;
+  try {
+    await stoppingScope?.ResearchCompanion?.stop?.();
+  } finally {
+    if (companionScope === stoppingScope) companionScope = undefined;
+  }
 }
 
 function install() {}

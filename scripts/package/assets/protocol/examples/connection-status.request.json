@@ -1,0 +1,6 @@
+{
+  "protocolVersion": 1,
+  "operationId": "example.connection-status-1",
+  "operation": "connection_status",
+  "payload": {}
+}

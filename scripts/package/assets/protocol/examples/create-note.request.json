@@ -1,0 +1,15 @@
+{
+  "protocolVersion": 1,
+  "operationId": "example.create-note-1",
+  "operation": "create_note",
+  "profileId": "replace-with-published-profile-id",
+  "authorization": {
+    "kind": "approved_proposal",
+    "scope": "Create this separate synthesis note under item ITEM1234."
+  },
+  "payload": {
+    "libraryId": "1",
+    "itemKey": "ITEM1234",
+    "content": "A separate note is created only because the user approved this note operation."
+  }
+}

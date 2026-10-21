@@ -189,6 +189,47 @@ test("reconnect closes the old connection and starts a fresh session in the same
   assert.equal(setup.status.sessionId, "session-2");
 });
 
+test("shutdown retains setup so a new adapter starts a fresh reinstall session", async () => {
+  const setup = fixture({ enabled: true, directory: "/Users/alice/Research Companion" });
+
+  await setup.settings.initialize();
+  await setup.settings.shutdown();
+  const replacement = new ResearchCompanionSettings({
+    host: {
+      getPreference: (name) => setup.preferences.get(name),
+      setPreference: (name, value) => setup.preferences.set(name, value),
+      normalizeDirectory: (value) => value,
+      chooseDirectory: async () => undefined,
+      addToolsMenu: () => () => {},
+      promptAction: async () => "close",
+      showError: () => {},
+    },
+    runtime: {
+      async startConnection(directory) {
+        setup.events.push(["replacement-start", directory]);
+        return { state: "ready", directory, sessionId: "replacement-session" };
+      },
+      async stopConnection() {},
+      getConnectionStatus: () => ({ state: "disabled" }),
+    },
+  });
+  await replacement.initialize();
+
+  assert.equal(setup.preferences.get(SETTINGS_PREFERENCE_NAMES.enabled), true);
+  assert.equal(
+    setup.preferences.get(SETTINGS_PREFERENCE_NAMES.bridgeDirectory),
+    "/Users/alice/Research Companion",
+  );
+  assert.deepEqual(
+    setup.events.filter(([name]) => name === "start" || name === "replacement-start"),
+    [
+      ["start", "/Users/alice/Research Companion"],
+      ["replacement-start", "/Users/alice/Research Companion"],
+    ],
+  );
+  assert.equal(replacement.snapshot().status.sessionId, "replacement-session");
+});
+
 test("a failed enable is readable and does not persist an enabled startup state", async () => {
   const window = { id: "main" };
   const preferences = new Map([

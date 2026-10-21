@@ -1,0 +1,356 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zoterowithgpt.local/schemas/protocol-v1-request.json",
+  "title": "Zotero AI Research Companion protocol-v1 request",
+  "description": "Strict request shapes. The runtime additionally enforces documented UTF-8 byte limits and cross-field geometry constraints.",
+  "oneOf": [
+    { "$ref": "#/$defs/connectionStatusRequest" },
+    { "$ref": "#/$defs/searchPapersRequest" },
+    { "$ref": "#/$defs/readPdfRequest" },
+    { "$ref": "#/$defs/listAnnotationsRequest" },
+    { "$ref": "#/$defs/listNotesRequest" },
+    { "$ref": "#/$defs/readNoteRequest" },
+    { "$ref": "#/$defs/resolveAnchorRequest" },
+    { "$ref": "#/$defs/createAnnotationRequest" },
+    { "$ref": "#/$defs/updateAnnotationRequest" },
+    { "$ref": "#/$defs/createNoteRequest" },
+    { "$ref": "#/$defs/updateNoteRequest" },
+    { "$ref": "#/$defs/verifyAnnotationRequest" }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "x-maxUtf8Bytes": 512
+    },
+    "operationId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "scope"],
+      "properties": {
+        "kind": { "enum": ["explicit_request", "approved_proposal"] },
+        "scope": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16384,
+          "x-maxUtf8Bytes": 16384
+        }
+      }
+    },
+    "envelope": {
+      "type": "object",
+      "required": ["protocolVersion", "operationId", "operation", "payload"],
+      "properties": {
+        "protocolVersion": { "const": 1 },
+        "operationId": { "$ref": "#/$defs/operationId" },
+        "operation": { "type": "string" },
+        "profileId": { "$ref": "#/$defs/identifier" },
+        "authorization": { "$ref": "#/$defs/authorization" },
+        "payload": { "type": "object" }
+      }
+    },
+    "profiledRead": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "required": ["profileId"],
+          "properties": { "authorization": false }
+        }
+      ]
+    },
+    "authorizedMutation": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        { "required": ["profileId", "authorization"] }
+      ]
+    },
+    "rectangle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x1", "y1", "x2", "y2"],
+      "description": "Coordinates are finite and nonnegative; the runtime also requires x2 > x1 and y2 > y1.",
+      "properties": {
+        "x1": { "type": "number", "minimum": 0 },
+        "y1": { "type": "number", "minimum": 0 },
+        "x2": { "type": "number", "exclusiveMinimum": 0 },
+        "y2": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "rectangles": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 512,
+      "items": { "$ref": "#/$defs/rectangle" }
+    },
+    "matchEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "exact"],
+      "properties": {
+        "method": { "enum": ["exact_quote", "quote_with_context", "inspected_region"] },
+        "matchedText": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536,
+          "x-maxUtf8Bytes": 65536
+        },
+        "exact": { "type": "boolean" }
+      }
+    },
+    "resolvedAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "libraryId",
+        "itemKey",
+        "attachmentKey",
+        "attachmentFingerprint",
+        "pageIndex",
+        "pageLabel",
+        "rectangles",
+        "matchEvidence"
+      ],
+      "properties": {
+        "libraryId": { "$ref": "#/$defs/identifier" },
+        "itemKey": { "$ref": "#/$defs/identifier" },
+        "attachmentKey": { "$ref": "#/$defs/identifier" },
+        "attachmentFingerprint": { "$ref": "#/$defs/identifier" },
+        "pageIndex": { "type": "integer", "minimum": 0 },
+        "pageLabel": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "rectangles": { "$ref": "#/$defs/rectangles" },
+        "selectedText": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536,
+          "x-maxUtf8Bytes": 65536
+        },
+        "matchEvidence": { "$ref": "#/$defs/matchEvidence" }
+      }
+    },
+    "pageRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startPageIndex", "endPageIndex"],
+      "description": "Both indexes are inclusive. The runtime requires end >= start and a span of at most 200 pages.",
+      "properties": {
+        "startPageIndex": { "type": "integer", "minimum": 0 },
+        "endPageIndex": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "quote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exact"],
+      "properties": {
+        "exact": { "type": "string", "minLength": 1, "maxLength": 65536, "x-maxUtf8Bytes": 65536 },
+        "prefix": { "type": "string", "maxLength": 65536, "x-maxUtf8Bytes": 65536 },
+        "suffix": { "type": "string", "maxLength": 65536, "x-maxUtf8Bytes": 65536 }
+      }
+    },
+    "inspectedRegion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rectangles"],
+      "properties": {
+        "rectangles": { "$ref": "#/$defs/rectangles" },
+        "selectedText": { "type": "string", "minLength": 1, "maxLength": 65536, "x-maxUtf8Bytes": 65536 }
+      }
+    },
+    "annotationColor": {
+      "enum": ["#ffd400", "#ff6666", "#5fb236", "#2ea8e5", "#a28ae5", "#e56eee", "#f19837", "#aaaaaa"]
+    },
+    "connectionStatusPayload": { "type": "object", "additionalProperties": false },
+    "searchPapersPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query"],
+      "properties": {
+        "query": { "type": "string", "minLength": 1, "maxLength": 4096, "x-maxUtf8Bytes": 4096 },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 100 }
+      }
+    },
+    "readPdfPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["libraryId", "itemKey", "attachmentKey", "pageRange"],
+      "properties": {
+        "libraryId": { "$ref": "#/$defs/identifier" },
+        "itemKey": { "$ref": "#/$defs/identifier" },
+        "attachmentKey": { "$ref": "#/$defs/identifier" },
+        "pageRange": { "$ref": "#/$defs/pageRange" }
+      }
+    },
+    "listAnnotationsPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["libraryId", "attachmentKey"],
+      "properties": {
+        "libraryId": { "$ref": "#/$defs/identifier" },
+        "attachmentKey": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "listNotesPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["libraryId", "itemKey"],
+      "properties": {
+        "libraryId": { "$ref": "#/$defs/identifier" },
+        "itemKey": { "$ref": "#/$defs/identifier" },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 100 }
+      }
+    },
+    "readNotePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["libraryId", "itemKey", "noteKey"],
+      "properties": {
+        "libraryId": { "$ref": "#/$defs/identifier" },
+        "itemKey": { "$ref": "#/$defs/identifier" },
+        "noteKey": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "resolveAnchorPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["libraryId", "attachmentKey", "fingerprint", "pageIndex"],
+      "properties": {
+        "libraryId": { "$ref": "#/$defs/identifier" },
+        "attachmentKey": { "$ref": "#/$defs/identifier" },
+        "fingerprint": { "$ref": "#/$defs/identifier" },
+        "pageIndex": { "type": "integer", "minimum": 0 },
+        "quote": { "$ref": "#/$defs/quote" },
+        "inspectedRegion": { "$ref": "#/$defs/inspectedRegion" }
+      },
+      "oneOf": [
+        { "required": ["quote"], "not": { "required": ["inspectedRegion"] } },
+        { "required": ["inspectedRegion"], "not": { "required": ["quote"] } }
+      ]
+    },
+    "createAnnotationPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchor", "type", "comment"],
+      "properties": {
+        "anchor": { "$ref": "#/$defs/resolvedAnchor" },
+        "type": { "enum": ["highlight", "note"] },
+        "comment": { "type": "string", "maxLength": 524288, "x-maxUtf8Bytes": 524288 },
+        "color": { "$ref": "#/$defs/annotationColor" }
+      }
+    },
+    "updateAnnotationPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["libraryId", "attachmentKey", "annotationKey", "expectedRevision", "mode", "comment"],
+      "properties": {
+        "libraryId": { "$ref": "#/$defs/identifier" },
+        "attachmentKey": { "$ref": "#/$defs/identifier" },
+        "annotationKey": { "$ref": "#/$defs/identifier" },
+        "expectedRevision": { "$ref": "#/$defs/identifier" },
+        "mode": { "enum": ["append", "replace"] },
+        "comment": { "type": "string", "maxLength": 524288, "x-maxUtf8Bytes": 524288 }
+      }
+    },
+    "createNotePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["libraryId", "itemKey", "content"],
+      "properties": {
+        "libraryId": { "$ref": "#/$defs/identifier" },
+        "itemKey": { "$ref": "#/$defs/identifier" },
+        "content": { "type": "string", "maxLength": 524288, "x-maxUtf8Bytes": 524288 }
+      }
+    },
+    "updateNotePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["libraryId", "itemKey", "noteKey", "expectedRevision", "mode", "content"],
+      "properties": {
+        "libraryId": { "$ref": "#/$defs/identifier" },
+        "itemKey": { "$ref": "#/$defs/identifier" },
+        "noteKey": { "$ref": "#/$defs/identifier" },
+        "expectedRevision": { "$ref": "#/$defs/identifier" },
+        "mode": { "enum": ["append", "replace"] },
+        "content": { "type": "string", "maxLength": 524288, "x-maxUtf8Bytes": 524288 }
+      }
+    },
+    "verifyAnnotationPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["libraryId", "attachmentKey", "annotationKey"],
+      "properties": {
+        "libraryId": { "$ref": "#/$defs/identifier" },
+        "attachmentKey": { "$ref": "#/$defs/identifier" },
+        "annotationKey": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "connectionStatusRequest": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "properties": {
+            "operation": { "const": "connection_status" },
+            "authorization": false,
+            "payload": { "$ref": "#/$defs/connectionStatusPayload" }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "searchPapersRequest": { "$ref": "#/$defs/readOperationSearch" },
+    "readPdfRequest": { "$ref": "#/$defs/readOperationPdf" },
+    "listAnnotationsRequest": { "$ref": "#/$defs/readOperationAnnotations" },
+    "listNotesRequest": { "$ref": "#/$defs/readOperationNotes" },
+    "readNoteRequest": { "$ref": "#/$defs/readOperationNote" },
+    "resolveAnchorRequest": { "$ref": "#/$defs/readOperationResolve" },
+    "verifyAnnotationRequest": { "$ref": "#/$defs/readOperationVerify" },
+    "readOperationSearch": {
+      "allOf": [{ "$ref": "#/$defs/profiledRead" }, { "properties": { "operation": { "const": "search_papers" }, "payload": { "$ref": "#/$defs/searchPapersPayload" } } }],
+      "unevaluatedProperties": false
+    },
+    "readOperationPdf": {
+      "allOf": [{ "$ref": "#/$defs/profiledRead" }, { "properties": { "operation": { "const": "read_pdf" }, "payload": { "$ref": "#/$defs/readPdfPayload" } } }],
+      "unevaluatedProperties": false
+    },
+    "readOperationAnnotations": {
+      "allOf": [{ "$ref": "#/$defs/profiledRead" }, { "properties": { "operation": { "const": "list_annotations" }, "payload": { "$ref": "#/$defs/listAnnotationsPayload" } } }],
+      "unevaluatedProperties": false
+    },
+    "readOperationNotes": {
+      "allOf": [{ "$ref": "#/$defs/profiledRead" }, { "properties": { "operation": { "const": "list_notes" }, "payload": { "$ref": "#/$defs/listNotesPayload" } } }],
+      "unevaluatedProperties": false
+    },
+    "readOperationNote": {
+      "allOf": [{ "$ref": "#/$defs/profiledRead" }, { "properties": { "operation": { "const": "read_note" }, "payload": { "$ref": "#/$defs/readNotePayload" } } }],
+      "unevaluatedProperties": false
+    },
+    "readOperationResolve": {
+      "allOf": [{ "$ref": "#/$defs/profiledRead" }, { "properties": { "operation": { "const": "resolve_anchor" }, "payload": { "$ref": "#/$defs/resolveAnchorPayload" } } }],
+      "unevaluatedProperties": false
+    },
+    "readOperationVerify": {
+      "allOf": [{ "$ref": "#/$defs/profiledRead" }, { "properties": { "operation": { "const": "verify_annotation" }, "payload": { "$ref": "#/$defs/verifyAnnotationPayload" } } }],
+      "unevaluatedProperties": false
+    },
+    "createAnnotationRequest": {
+      "allOf": [{ "$ref": "#/$defs/authorizedMutation" }, { "properties": { "operation": { "const": "create_annotation" }, "payload": { "$ref": "#/$defs/createAnnotationPayload" } } }],
+      "unevaluatedProperties": false
+    },
+    "updateAnnotationRequest": {
+      "allOf": [{ "$ref": "#/$defs/authorizedMutation" }, { "properties": { "operation": { "const": "update_annotation" }, "payload": { "$ref": "#/$defs/updateAnnotationPayload" } } }],
+      "unevaluatedProperties": false
+    },
+    "createNoteRequest": {
+      "allOf": [{ "$ref": "#/$defs/authorizedMutation" }, { "properties": { "operation": { "const": "create_note" }, "payload": { "$ref": "#/$defs/createNotePayload" } } }],
+      "unevaluatedProperties": false
+    },
+    "updateNoteRequest": {
+      "allOf": [{ "$ref": "#/$defs/authorizedMutation" }, { "properties": { "operation": { "const": "update_note" }, "payload": { "$ref": "#/$defs/updateNotePayload" } } }],
+      "unevaluatedProperties": false
+    }
+  }
+}

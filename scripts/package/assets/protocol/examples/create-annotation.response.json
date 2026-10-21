@@ -1,0 +1,24 @@
+{
+  "protocolVersion": 1,
+  "operationId": "example.create-annotation-1",
+  "state": "succeeded",
+  "data": {
+    "annotationKey": "ANN00001",
+    "revision": "replace-with-returned-revision",
+    "deepLink": "zotero://open-pdf/library/items/ATTACH01?page=1&annotation=ANN00001",
+    "saved": {
+      "pageIndex": 0,
+      "pageLabel": "1",
+      "rectangles": [
+        { "x1": 12, "y1": 30, "x2": 140, "y2": 45 }
+      ],
+      "selectedText": "replace with an exactly resolved passage",
+      "comment": "A user-approved explanation saved as the native annotation comment."
+    }
+  },
+  "error": null,
+  "verification": {
+    "storage": "confirmed",
+    "viewer": "not_checked"
+  }
+}

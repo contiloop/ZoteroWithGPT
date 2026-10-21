@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zoterowithgpt.local/schemas/protocol-v1-response.json",
+  "title": "Zotero AI Research Companion protocol-v1 response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocolVersion",
+    "operationId",
+    "state",
+    "data",
+    "error",
+    "verification"
+  ],
+  "properties": {
+    "protocolVersion": { "const": 1 },
+    "operationId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "state": {
+      "enum": ["queued", "running", "succeeded", "rejected", "failed", "indeterminate"]
+    },
+    "data": {
+      "description": "The operation-specific result object, or null when no result data is available.",
+      "type": ["object", "null"]
+    },
+    "error": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "retryable"],
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_request",
+                "unsupported_version",
+                "unsupported_operation",
+                "permission_denied",
+                "not_connected",
+                "not_found",
+                "ambiguous_target",
+                "unresolved_anchor",
+                "stale_attachment",
+                "conflict",
+                "duplicate_id_mismatch",
+                "unsupported_capability",
+                "too_large",
+                "storage_error",
+                "verification_failed",
+                "unknown_outcome"
+              ]
+            },
+            "message": { "type": "string" },
+            "retryable": { "type": "boolean" }
+          }
+        }
+      ]
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["storage", "viewer"],
+      "properties": {
+        "storage": { "enum": ["not_applicable", "not_checked", "confirmed", "failed"] },
+        "viewer": { "enum": ["not_applicable", "not_checked", "confirmed", "failed"] }
+      }
+    }
+  }
+}

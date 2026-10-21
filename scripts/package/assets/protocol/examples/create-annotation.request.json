@@ -1,0 +1,32 @@
+{
+  "protocolVersion": 1,
+  "operationId": "example.create-annotation-1",
+  "operation": "create_annotation",
+  "profileId": "replace-with-published-profile-id",
+  "authorization": {
+    "kind": "explicit_request",
+    "scope": "Save this explanation on the selected passage in attachment ATTACH01."
+  },
+  "payload": {
+    "anchor": {
+      "libraryId": "1",
+      "itemKey": "ITEM1234",
+      "attachmentKey": "ATTACH01",
+      "attachmentFingerprint": "replace-with-current-fingerprint",
+      "pageIndex": 0,
+      "pageLabel": "1",
+      "rectangles": [
+        { "x1": 12, "y1": 30, "x2": 140, "y2": 45 }
+      ],
+      "selectedText": "replace with an exactly resolved passage",
+      "matchEvidence": {
+        "method": "exact_quote",
+        "matchedText": "replace with an exactly resolved passage",
+        "exact": true
+      }
+    },
+    "type": "highlight",
+    "comment": "A user-approved explanation saved as the native annotation comment.",
+    "color": "#ffd400"
+  }
+}

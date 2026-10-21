@@ -1,0 +1,15 @@
+{
+  "protocolVersion": 1,
+  "operationId": "example.read-pdf-1",
+  "operation": "read_pdf",
+  "profileId": "replace-with-published-profile-id",
+  "payload": {
+    "libraryId": "1",
+    "itemKey": "ITEM1234",
+    "attachmentKey": "ATTACH01",
+    "pageRange": {
+      "startPageIndex": 0,
+      "endPageIndex": 2
+    }
+  }
+}

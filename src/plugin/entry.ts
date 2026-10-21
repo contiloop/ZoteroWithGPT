@@ -49,13 +49,19 @@ const previewLifecycle = new OwnedStartupLifecycle<ChromeWindow, ZoteroReaderRen
 );
 
 const connectionLifecycle = new SerializedConnectionLifecycle<string, ProductionConnection>(
-  directory => openProductionConnection({
-    Zotero, IOUtils, PathUtils, Cc, Ci, crypto,
-    cloneInto: (value, target) => Cu.cloneInto(value, target), reportError,
-  }, pluginVersion, directory, {
-    verifyVisiblePreview: request =>
-      previewLifecycle.resource?.verifyVisiblePreview(request) ?? Promise.resolve(false),
-  }),
+  directory => {
+    const noteWindow = Zotero.getMainWindow();
+    if (noteWindow === null || noteWindow.closed) {
+      throw new Error("A live Zotero main window is required to validate native child-note content");
+    }
+    return openProductionConnection({
+      Zotero, IOUtils, PathUtils, Cc, Ci, crypto, noteWindow,
+      cloneInto: (value, target) => Cu.cloneInto(value, target), reportError,
+    }, pluginVersion, directory, {
+      verifyVisiblePreview: request =>
+        previewLifecycle.resource?.verifyVisiblePreview(request) ?? Promise.resolve(false),
+    });
+  },
 );
 
 async function attachReader(window: ChromeWindow): Promise<void> {

@@ -177,6 +177,7 @@ export async function runZoteroOwnedFixtureMutationChecks(
   const digest = new WebCryptoPayloadDigest(environment.crypto);
   const library = new ZoteroLibraryAdapter({
     native,
+    noteContent: environment.noteContent,
     digest,
     profileId: "developer-owned-native-fixture",
     pluginVersion: "developer-native-runner",

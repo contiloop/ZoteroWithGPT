@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
+import { JSDOM } from "jsdom";
 
 import { CoreOperationError } from "../../dist/core/index.js";
 import {
   ZoteroLibraryAdapter,
   ZoteroOperationRecovery,
+  DomPurifyNativeNoteContentPolicy,
   operationIdentityMarker,
 } from "../../dist/adapters/zotero/index.js";
 import { MAX_TEXT_BYTES } from "../../dist/protocol/index.js";
@@ -244,14 +246,30 @@ class NativeApiDouble {
 }
 
 function adapter(native = new NativeApiDouble()) {
+  const noteContent = new DomPurifyNativeNoteContentPolicy({ window: new JSDOM("").window });
   return new ZoteroLibraryAdapter({
     native,
+    noteContent,
     digest: new Sha256Digest(),
     profileId: "profile-A",
     pluginVersion: "0.1.0",
     enabled: true,
     transport: { kind: "custom", description: "Test transport" },
   });
+}
+
+function windowLikeWithDocument(window, document) {
+  return {
+    document,
+    DocumentFragment: window.DocumentFragment,
+    HTMLTemplateElement: window.HTMLTemplateElement,
+    Node: window.Node,
+    Element: window.Element,
+    NodeFilter: window.NodeFilter,
+    NamedNodeMap: window.NamedNodeMap,
+    HTMLFormElement: window.HTMLFormElement,
+    DOMParser: window.DOMParser,
+  };
 }
 
 test("paper discovery returns ambiguous titles and every PDF candidate", async () => {
@@ -565,6 +583,55 @@ test("child-note creation stores remote-resource and executable markup as inert 
   assert.equal(native.notesCreated, 1);
 });
 
+test("native note policy parses through a detached HTML document for a XUL-like owner", () => {
+  const window = new JSDOM("").window;
+  const xulDocument = new window.DOMParser().parseFromString(
+    '<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"/>',
+    "application/xml",
+  );
+  const policy = new DomPurifyNativeNoteContentPolicy({
+    window: windowLikeWithDocument(window, xulDocument),
+  });
+
+  assert.equal(
+    policy.sanitize('<p>Detached <a href="https://references.example/paper">reference</a></p>'),
+    '<p>Detached <a href="https://references.example/paper" rel="noopener noreferrer">reference</a></p>',
+  );
+  assert.equal(xulDocument.documentElement.childNodes.length, 0);
+});
+
+test("native note policy fails closed without a trusted DOM implementation", () => {
+  assert.throws(
+    () => new DomPurifyNativeNoteContentPolicy({ window: {} }),
+    /trusted Zotero DOM window/u,
+  );
+});
+
+test("child-note creation preserves malformed source in an inert readable fallback", async () => {
+  const native = new NativeApiDouble();
+  const result = await adapter(native).createNote(
+    {
+      protocolVersion: 1,
+      operationId: "op-create-malformed-note",
+      operation: "create_note",
+      profileId: "profile-A",
+      authorization: { kind: "explicit_request", scope: "Save the complete study text" },
+      payload: {
+        libraryId: "1",
+        itemKey: "ITEM0001",
+        content: "Study x<y",
+      },
+    },
+    { operationId: "op-create-malformed-note", requestDigest: "sha256:create-malformed" },
+  );
+
+  assert.equal(
+    result.content,
+    '<pre class="research-companion-note-source">Study x&lt;y</pre>',
+  );
+  assert.equal(native.notesCreated, 1);
+});
+
 test("child-note replacement sanitizes active HTML before native mutation", async () => {
   const native = new NativeApiDouble();
   native.notes.set("NOTE0001", {
@@ -605,22 +672,72 @@ test("child-note replacement sanitizes active HTML before native mutation", asyn
     { operationId: "op-safe-replace-note", requestDigest: "sha256:safe-replace" },
   );
 
-  assert.doesNotMatch(result.content, /\sonclick=|<(?:object|script|iframe|img)\b/iu);
+  assert.doesNotMatch(result.content, /<p[^>]*\sonclick=|<(?:object|script|iframe|img)\b/iu);
   assert.match(result.content, /Replacement words/u);
   assert.match(result.content, /object words/u);
   assert.match(result.content, /https:\/\/example\.invalid\/object/u);
   assert.equal(native.notesUpdated, 1);
 });
 
-test("child-note append sanitizes existing and added HTML while preserving readable content", async () => {
+test("child-note replacement preserves an unfinished tag as inert readable source", async () => {
   const native = new NativeApiDouble();
   native.notes.set("NOTE0001", {
     libraryId: "1",
     itemKey: "ITEM0001",
     noteKey: "NOTE0001",
     title: "Existing note",
-    content:
-      '<p>Manual study words</p><img src="https://example.invalid/existing.png" alt="existing diagram"><script>manual script words</script>',
+    content: "<p>Existing body</p>",
+    version: 1,
+    dateModified: "2026-10-21 10:00:00",
+    operationMarkers: [],
+  });
+  const library = adapter(native);
+  const current = await library.readNote({
+    protocolVersion: 1,
+    operationId: "op-read-note-before-malformed-replace",
+    operation: "read_note",
+    profileId: "profile-A",
+    payload: { libraryId: "1", itemKey: "ITEM0001", noteKey: "NOTE0001" },
+  });
+  const result = await library.updateNote(
+    {
+      protocolVersion: 1,
+      operationId: "op-malformed-replace-note",
+      operation: "update_note",
+      profileId: "profile-A",
+      authorization: { kind: "explicit_request", scope: "Replace NOTE0001 completely" },
+      payload: {
+        libraryId: "1",
+        itemKey: "ITEM0001",
+        noteKey: "NOTE0001",
+        expectedRevision: current.revision,
+        mode: "replace",
+        content: "Proof <unfinished",
+      },
+    },
+    {
+      operationId: "op-malformed-replace-note",
+      requestDigest: "sha256:malformed-replace",
+    },
+  );
+
+  assert.equal(
+    result.content,
+    '<pre class="research-companion-note-source">Proof &lt;unfinished</pre>',
+  );
+  assert.equal(native.notesUpdated, 1);
+});
+
+test("child-note append preserves safe existing HTML and sanitizes only added HTML", async () => {
+  const native = new NativeApiDouble();
+  const existingContent =
+    '<p>Manual study words <a href="https://references.example/paper?part=1&amp;view=full">existing reference</a></p><table><tr><td colspan="2">Grouped evidence</td></tr></table><pre class="math">$$x^2$$</pre>';
+  native.notes.set("NOTE0001", {
+    libraryId: "1",
+    itemKey: "ITEM0001",
+    noteKey: "NOTE0001",
+    title: "Existing note",
+    content: existingContent,
     version: 1,
     dateModified: "2026-10-21 10:00:00",
     operationMarkers: [],
@@ -647,20 +764,278 @@ test("child-note append sanitizes existing and added HTML while preserving reada
         expectedRevision: current.revision,
         mode: "append",
         content:
-          '<p>New approved question</p><iframe src="https://example.invalid/new-frame">new frame words</iframe>',
+          '<p>New approved question <a href="https://new.example/reference?part=2&amp;view=full">web reference</a> <a href="zotero://select/library/items/ITEM0001">library reference</a> <a href="zotero://open-pdf/library/items/ATTACH01?page=1&amp;annotation=ANN00001">PDF reference</a> <a href="javascript:alert(1)">unsafe destination</a> <a href="java&#x73;cript:alert(2)">entity destination</a> <a href="java&#x0A;script:alert(3)">control destination</a> <a href="data:text/html,unsafe">data destination</a> <a href="file:///tmp/private">file destination</a> <a href="zotero://debug/log">unsupported Zotero action</a></p><iframe src="https://example.invalid/new-frame">new frame words</iframe>',
       },
     },
     { operationId: "op-safe-append-note", requestDigest: "sha256:safe-append" },
   );
 
   assert.doesNotMatch(result.content, /<(?:img|script|iframe)\b/iu);
+  assert.ok(result.content.startsWith(`${existingContent}\n\n`));
   assert.match(result.content, /Manual study words/u);
-  assert.match(result.content, /existing diagram/u);
-  assert.match(result.content, /manual script words/u);
+  assert.match(result.content, /<td colspan="2">Grouped evidence<\/td>/u);
+  assert.match(result.content, /<pre class="math">\$\$x\^2\$\$<\/pre>/u);
   assert.match(result.content, /New approved question/u);
   assert.match(result.content, /new frame words/u);
-  assert.match(result.content, /https:\/\/example\.invalid\/existing\.png/u);
+  assert.match(
+    result.content,
+    /<a href="https:\/\/references\.example\/paper\?part=1&amp;view=full">existing reference<\/a>/u,
+  );
+  assert.match(
+    result.content,
+    /<a href="https:\/\/new\.example\/reference\?part=2&amp;view=full" rel="noopener noreferrer">web reference<\/a>/u,
+  );
+  assert.match(
+    result.content,
+    /<a href="zotero:\/\/select\/library\/items\/ITEM0001">library reference<\/a>/u,
+  );
+  assert.match(
+    result.content,
+    /<a href="zotero:\/\/open-pdf\/library\/items\/ATTACH01\?page=1&amp;annotation=ANN00001">PDF reference<\/a>/u,
+  );
+  assert.doesNotMatch(
+    result.content,
+    /<[A-Za-z][^>]*\s(?:on[A-Za-z]+|href=["'](?:javascript|data|file):)/iu,
+  );
+  assert.doesNotMatch(result.content, /<a href="zotero:\/\/debug/iu);
+  assert.match(result.content, /javascript:alert\(1\)/u);
+  assert.match(result.content, /unsafe destination/u);
+  assert.match(result.content, /entity destination/u);
+  assert.match(result.content, /control destination/u);
+  assert.match(result.content, /data destination/u);
+  assert.match(result.content, /file destination/u);
+  assert.match(result.content, /unsupported Zotero action/u);
   assert.equal(native.notesUpdated, 1);
+});
+
+test("child-note append preserves duplicate-link source without activating either destination", async () => {
+  const native = new NativeApiDouble();
+  const existingContent = '<p><a href="https://references.example/original">Original reference</a></p>';
+  native.notes.set("NOTE0001", {
+    libraryId: "1",
+    itemKey: "ITEM0001",
+    noteKey: "NOTE0001",
+    title: "Existing note",
+    content: existingContent,
+    version: 1,
+    dateModified: "2026-10-21 10:00:00",
+    operationMarkers: [],
+  });
+  const library = adapter(native);
+  const current = await library.readNote({
+    protocolVersion: 1,
+    operationId: "op-read-before-ambiguous-addition",
+    operation: "read_note",
+    profileId: "profile-A",
+    payload: { libraryId: "1", itemKey: "ITEM0001", noteKey: "NOTE0001" },
+  });
+  const addition =
+    '<a href="https://references.example/safe" href="javascript:alert(1)">Ambiguous reference</a>';
+  const result = await library.updateNote(
+    {
+      protocolVersion: 1,
+      operationId: "op-append-ambiguous-addition",
+      operation: "update_note",
+      profileId: "profile-A",
+      authorization: { kind: "explicit_request", scope: "Append source to NOTE0001" },
+      payload: {
+        libraryId: "1",
+        itemKey: "ITEM0001",
+        noteKey: "NOTE0001",
+        expectedRevision: current.revision,
+        mode: "append",
+        content: addition,
+      },
+    },
+    {
+      operationId: "op-append-ambiguous-addition",
+      requestDigest: "sha256:append-ambiguous-addition",
+    },
+  );
+
+  assert.ok(result.content.startsWith(`${existingContent}\n\n`));
+  assert.match(result.content, /https:\/\/references\.example\/safe/u);
+  assert.match(result.content, /javascript:alert\(1\)/u);
+  assert.match(result.content, /Ambiguous reference/u);
+  assert.doesNotMatch(result.content.slice(existingContent.length), /<a\b/iu);
+  assert.equal(native.notesUpdated, 1);
+});
+
+test("child-note append rejects incompatible existing active HTML without mutation", async () => {
+  const native = new NativeApiDouble();
+  const existingContent =
+    '<p>Manual study words</p><img src="https://example.invalid/existing.png" alt="existing diagram">';
+  native.notes.set("NOTE0001", {
+    libraryId: "1",
+    itemKey: "ITEM0001",
+    noteKey: "NOTE0001",
+    title: "Existing note",
+    content: existingContent,
+    version: 1,
+    dateModified: "2026-10-21 10:00:00",
+    operationMarkers: [],
+  });
+  const library = adapter(native);
+  const current = await library.readNote({
+    protocolVersion: 1,
+    operationId: "op-read-incompatible-note",
+    operation: "read_note",
+    profileId: "profile-A",
+    payload: { libraryId: "1", itemKey: "ITEM0001", noteKey: "NOTE0001" },
+  });
+
+  await assert.rejects(
+    () =>
+      library.updateNote(
+        {
+          protocolVersion: 1,
+          operationId: "op-append-incompatible-note",
+          operation: "update_note",
+          profileId: "profile-A",
+          authorization: { kind: "explicit_request", scope: "Append to NOTE0001" },
+          payload: {
+            libraryId: "1",
+            itemKey: "ITEM0001",
+            noteKey: "NOTE0001",
+            expectedRevision: current.revision,
+            mode: "append",
+            content: "<p>Approved addition</p>",
+          },
+        },
+        {
+          operationId: "op-append-incompatible-note",
+          requestDigest: "sha256:append-incompatible",
+        },
+      ),
+    (error) => error instanceof CoreOperationError && error.code === "unsupported_capability",
+  );
+  assert.equal(native.notesUpdated, 0);
+  assert.equal(native.notes.get("NOTE0001").content, existingContent);
+  assert.deepEqual(native.notes.get("NOTE0001").operationMarkers, []);
+});
+
+test("child-note append rejects unsafe existing link schemes including obfuscation", async () => {
+  const cases = [
+    ["javascript", "javascript:alert(1)"],
+    ["data", "data:text/html,unsafe"],
+    ["file", "file:///tmp/private"],
+    ["entity", "java&colon;script:alert(2)"],
+    ["control", "java&#x0A;script:alert(3)"],
+    ["zotero-action", "zotero://debug/log"],
+  ];
+  for (const [label, href] of cases) {
+    const native = new NativeApiDouble();
+    const existingContent = `<p>Manual reference <a href="${href}">${label}</a></p>`;
+    native.notes.set("NOTE0001", {
+      libraryId: "1",
+      itemKey: "ITEM0001",
+      noteKey: "NOTE0001",
+      title: "Existing note",
+      content: existingContent,
+      version: 1,
+      dateModified: "2026-10-21 10:00:00",
+      operationMarkers: [],
+    });
+    const library = adapter(native);
+    const current = await library.readNote({
+      protocolVersion: 1,
+      operationId: `op-read-unsafe-link-${label}`,
+      operation: "read_note",
+      profileId: "profile-A",
+      payload: { libraryId: "1", itemKey: "ITEM0001", noteKey: "NOTE0001" },
+    });
+
+    await assert.rejects(
+      () =>
+        library.updateNote(
+          {
+            protocolVersion: 1,
+            operationId: `op-append-unsafe-link-${label}`,
+            operation: "update_note",
+            profileId: "profile-A",
+            authorization: { kind: "explicit_request", scope: "Append to NOTE0001" },
+            payload: {
+              libraryId: "1",
+              itemKey: "ITEM0001",
+              noteKey: "NOTE0001",
+              expectedRevision: current.revision,
+              mode: "append",
+              content: "<p>Approved addition</p>",
+            },
+          },
+          {
+            operationId: `op-append-unsafe-link-${label}`,
+            requestDigest: `sha256:append-unsafe-link-${label}`,
+          },
+        ),
+      (error) => error instanceof CoreOperationError && error.code === "unsupported_capability",
+      label,
+    );
+    assert.equal(native.notesUpdated, 0, label);
+    assert.equal(native.notes.get("NOTE0001").content, existingContent, label);
+    assert.deepEqual(native.notes.get("NOTE0001").operationMarkers, [], label);
+  }
+});
+
+test("child-note append rejects duplicate or malformed existing attributes", async () => {
+  const cases = [
+    [
+      "duplicate",
+      '<p><a href="https://references.example/safe" href="javascript:alert(1)">ambiguous link</a></p>',
+    ],
+    ["malformed", '<p><a href="https://references.example/unterminated>ambiguous link</a></p>'],
+  ];
+  for (const [label, existingContent] of cases) {
+    const native = new NativeApiDouble();
+    native.notes.set("NOTE0001", {
+      libraryId: "1",
+      itemKey: "ITEM0001",
+      noteKey: "NOTE0001",
+      title: "Existing note",
+      content: existingContent,
+      version: 1,
+      dateModified: "2026-10-21 10:00:00",
+      operationMarkers: [],
+    });
+    const library = adapter(native);
+    const current = await library.readNote({
+      protocolVersion: 1,
+      operationId: `op-read-ambiguous-attribute-${label}`,
+      operation: "read_note",
+      profileId: "profile-A",
+      payload: { libraryId: "1", itemKey: "ITEM0001", noteKey: "NOTE0001" },
+    });
+
+    await assert.rejects(
+      () =>
+        library.updateNote(
+          {
+            protocolVersion: 1,
+            operationId: `op-append-ambiguous-attribute-${label}`,
+            operation: "update_note",
+            profileId: "profile-A",
+            authorization: { kind: "explicit_request", scope: "Append to NOTE0001" },
+            payload: {
+              libraryId: "1",
+              itemKey: "ITEM0001",
+              noteKey: "NOTE0001",
+              expectedRevision: current.revision,
+              mode: "append",
+              content: "<p>Approved addition</p>",
+            },
+          },
+          {
+            operationId: `op-append-ambiguous-attribute-${label}`,
+            requestDigest: `sha256:append-ambiguous-attribute-${label}`,
+          },
+        ),
+      (error) => error instanceof CoreOperationError && error.code === "unsupported_capability",
+      label,
+    );
+    assert.equal(native.notesUpdated, 0, label);
+    assert.equal(native.notes.get("NOTE0001").content, existingContent, label);
+    assert.deepEqual(native.notes.get("NOTE0001").operationMarkers, [], label);
+  }
 });
 
 test("child-note append enforces the final UTF-8 limit before the native writer", async () => {

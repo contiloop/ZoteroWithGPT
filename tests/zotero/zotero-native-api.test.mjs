@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
 import test from "node:test";
+import { JSDOM } from "jsdom";
 
 import { CoreOperationError } from "../../dist/core/index.js";
 import {
   MutableZoteroAccessGate,
+  DomPurifyNativeNoteContentPolicy,
   OPERATION_RELATION_PREDICATE,
   createZoteroNativeApi,
 } from "../../dist/adapters/zotero/index.js";
@@ -260,6 +262,7 @@ function fixtureEnvironment() {
     host,
     env: {
       Zotero,
+      noteContent: new DomPurifyNativeNoteContentPolicy({ window: new JSDOM("").window }),
       IOUtils: { async read() { return Uint8Array.from(host.diskBytes); } },
       crypto: webcrypto,
       cloneInto(value, target) {
@@ -804,14 +807,14 @@ test("native child-note updates use fresh content and preserve a concurrent manu
   const created = await native.createNote({
     libraryId: "1",
     itemKey: "ITEM0001",
-    content: '<div class="zotero-note znv1"><p>Initial fixture note</p></div>',
+    content: "<p>Initial fixture note</p>",
     operationMarker: "urn:note-create",
   });
   assert.deepEqual(created.operationMarkers, ["urn:note-create"]);
 
   const updated = await native.updateNote({
     expected: created,
-    content: '<div class="zotero-note znv1"><p>Updated fixture note</p></div>',
+    content: "<p>Updated fixture note</p>",
     operationMarker: "urn:note-update",
   });
   assert.match(updated.content, /Updated fixture note/);
@@ -823,7 +826,7 @@ test("native child-note updates use fresh content and preserve a concurrent manu
     () =>
       native.updateNote({
         expected: updated,
-        content: '<div class="zotero-note znv1"><p>Must not replace manual edit</p></div>',
+        content: "<p>Must not replace manual edit</p>",
         operationMarker: "urn:note-stale",
       }),
     (error) => error instanceof CoreOperationError && error.code === "conflict",
@@ -831,21 +834,29 @@ test("native child-note updates use fresh content and preserve a concurrent manu
   assert.match(item.note, /Manual edit/);
 });
 
-test("native child-note writes cannot bypass safe canonical content", async () => {
-  const { env } = fixtureEnvironment();
+test("native child-note writes reject noncanonical active content before save", async () => {
+  const { env, host } = fixtureEnvironment();
   const native = createZoteroNativeApi(env);
-  const created = await native.createNote({
-    libraryId: "1",
-    itemKey: "ITEM0001",
-    content:
-      '<p>Native safety words</p><img src="https://example.invalid/native.png" alt="native diagram"><script>native script words</script>\n',
-    operationMarker: "urn:native-safe-note",
-  });
-
-  assert.doesNotMatch(created.content, /<(?:img|script|iframe|object)\b/iu);
-  assert.match(created.content, /Native safety words/u);
-  assert.match(created.content, /native diagram/u);
-  assert.match(created.content, /native script words/u);
-  assert.match(created.content, /https:\/\/example\.invalid\/native\.png/u);
-  assert.match(created.content, /\n<\/div>$/u);
+  const cases = [
+    '<p>Native safety words</p><img src="https://example.invalid/native.png" alt="native diagram">',
+    '<p><a href="https://references.example/safe" href="javascript:alert(1)">duplicate</a></p>',
+    '<p><a href="https://references.example/unterminated>malformed</a></p>',
+    '<p><a href="zotero://debug/log">unsupported Zotero action</a></p>',
+  ];
+  for (const [index, content] of cases.entries()) {
+    await assert.rejects(
+      () =>
+        native.createNote({
+          libraryId: "1",
+          itemKey: "ITEM0001",
+          content,
+          operationMarker: `urn:native-unsafe-note-${index}`,
+        }),
+      (error) => error instanceof CoreOperationError && error.code === "invalid_request",
+    );
+  }
+  assert.equal(
+    [...host.items.values()].filter((candidate) => candidate.isNote()).length,
+    0,
+  );
 });

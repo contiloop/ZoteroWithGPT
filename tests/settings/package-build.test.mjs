@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { cp, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +12,8 @@ import { buildXpi } from "../../scripts/package/package-lib.mjs";
 import { verifyXpi } from "../../scripts/verify/package-lib.mjs";
 
 const PROJECT_ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+const MANUAL_UPDATE_SENTINEL =
+  "https://updates.invalid/zotero-ai-research-companion/updates.json";
 
 async function write(root, name, content) {
   const target = path.join(root, name);
@@ -27,6 +30,7 @@ async function fixture() {
     version: "1.2.3",
     applications: { zotero: {
       id: "research-companion@zoterowithgpt.local",
+      update_url: MANUAL_UPDATE_SENTINEL,
       strict_min_version: "10.0.6",
       strict_max_version: "10.0.*",
     } },
@@ -107,6 +111,7 @@ test("build produces a deterministic versioned XPI with a validated release surf
   );
   assert.equal(report.version, "1.2.3");
   assert.deepEqual(report.zoteroCompatibility, { minimum: "10.0.6", maximum: "10.0.*" });
+  assert.equal(report.updateURL, MANUAL_UPDATE_SENTINEL);
   assert.ok(report.members.includes("bootstrap.js"));
   assert.ok(report.members.includes("companion.js"));
   assert.ok(report.members.includes("protocol/v1-request.schema.json"));
@@ -146,6 +151,55 @@ test("packaging rejects a manifest version that differs from the artifact versio
   await assert.rejects(
     buildXpi({ projectRoot: root, outputDirectory: path.join(root, "out") }),
     /manifest version 9\.9\.9 does not match package version 1\.2\.3/u,
+  );
+});
+
+test("packaging requires the exact reserved no-service update sentinel", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const manifestPath = path.join(root, "addon/manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+
+  for (const updateUrl of [
+    undefined,
+    "https://example.com/updates.json",
+    "data:application/json,%7B%22addons%22%3A%7B%7D%7D",
+  ]) {
+    if (updateUrl === undefined) delete manifest.applications.zotero.update_url;
+    else manifest.applications.zotero.update_url = updateUrl;
+    await writeFile(manifestPath, JSON.stringify(manifest));
+
+    await assert.rejects(
+      buildXpi({ projectRoot: root, outputDirectory: path.join(root, "out") }),
+      /reserved manual-update sentinel/u,
+    );
+  }
+});
+
+test("package verification rejects a changed update sentinel", async (t) => {
+  const root = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const result = await buildXpi({ projectRoot: root, outputDirectory: path.join(root, "out") });
+  const extracted = path.join(root, "extracted");
+  const unzip = spawnSync("/usr/bin/unzip", ["-qq", result.outputPath, "-d", extracted], {
+    encoding: "utf8",
+  });
+  assert.equal(unzip.status, 0, unzip.stderr);
+  const manifestPath = path.join(extracted, "manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.applications.zotero.update_url = "https://example.com/updates.json";
+  await writeFile(manifestPath, JSON.stringify(manifest));
+  await rm(result.outputPath, { force: true });
+  const zip = spawnSync("/usr/bin/zip", ["-X", "-q", result.outputPath, "-@"], {
+    cwd: extracted,
+    encoding: "utf8",
+    input: `${result.members.join("\n")}\n`,
+  });
+  assert.equal(zip.status, 0, zip.stderr);
+
+  await assert.rejects(
+    verifyXpi(result.outputPath, { expectedProjectRoot: root }),
+    /reserved manual-update sentinel/u,
   );
 });
 

@@ -6,6 +6,8 @@ import path from "node:path";
 
 const UNZIP_PATH = "/usr/bin/unzip";
 const ARCHIVE_PREFIX = "zotero-ai-research-companion";
+const MANUAL_UPDATE_SENTINEL =
+  "https://updates.invalid/zotero-ai-research-companion/updates.json";
 const REQUIRED_MEMBERS = Object.freeze([
   "bootstrap.js",
   "BUILD_METADATA.json",
@@ -214,8 +216,10 @@ function validateManifest(manifest, expectedVersion) {
   if (zotero?.strict_min_version !== "10.0.6" || zotero?.strict_max_version !== "10.0.*") {
     throw new Error("manifest must target Zotero 10.0.6 through 10.0.*");
   }
-  if ("update_url" in manifest || "update_url" in zotero) {
-    throw new Error("manual distribution package declares an update URL");
+  if ("update_url" in manifest || zotero?.update_url !== MANUAL_UPDATE_SENTINEL) {
+    throw new Error(
+      `manifest must declare the reserved manual-update sentinel ${MANUAL_UPDATE_SENTINEL}`,
+    );
   }
 }
 
@@ -239,6 +243,12 @@ function validateThirdParty(metadata, notices, members) {
   }
   if (metadata.distribution !== "manual") {
     throw new Error("BUILD_METADATA.json must identify manual distribution");
+  }
+  if (
+    metadata.updatePolicy?.service !== false ||
+    metadata.updatePolicy?.manifestSentinel !== MANUAL_UPDATE_SENTINEL
+  ) {
+    throw new Error("BUILD_METADATA.json must identify the reserved no-service update sentinel");
   }
   if (!Array.isArray(metadata.runtimePackages)) {
     throw new Error("BUILD_METADATA.json lacks runtimePackages");
@@ -379,6 +389,7 @@ export async function verifyXpi(xpiPath, { expectedProjectRoot } = {}) {
         minimum: manifest.applications.zotero.strict_min_version,
         maximum: manifest.applications.zotero.strict_max_version,
       },
+      updateURL: manifest.applications.zotero.update_url,
       runtimePackages: metadata.runtimePackages,
     };
   } finally {

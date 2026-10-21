@@ -401,7 +401,7 @@ test("missing and hidden reader DOM never count as viewer evidence", async () =>
   assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
 });
 
-test("a current connected annotation in the native PDF page overlay is viewer evidence", async () => {
+test("an empty-comment PDF overlay alone is conservatively unconfirmed", async () => {
   const { env, host } = fixtureEnvironment();
   const native = createZoteroNativeApi(env);
   const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
@@ -417,81 +417,14 @@ test("a current connected annotation in the native PDF page overlay is viewer ev
     querySelector() { return null; },
   };
   const renderedRect = {
-    style: { cssText: "native-highlight-rect" },
     isConnected: true,
     getClientRects() { return { length: 1 }; },
     getBoundingClientRect() { return { left: 10, right: 17, top: 20, bottom: 30 }; },
   };
   const overlay = { querySelectorAll() { return [renderedRect]; } };
-  const annotation = {
-    id: created.annotationKey,
-    type: "highlight",
-    text: created.text,
-    comment: created.comment,
-    color: created.color,
-    position: { pageIndex: created.pageIndex, rects: [[10, 20, 17, 30]] },
-  };
-  const displayList = [{ kind: "rect", style: "native-highlight-rect" }];
-  const page = {
-    pageIndex: 0,
-    _lastSignature: JSON.stringify(displayList),
-    _buildDisplayList() { return displayList; },
-    _pushHighlight(items) { items.push(...displayList); },
-    _createRectElement(_document, item) { return { style: { cssText: item.style } }; },
-    originalPage: { div: { querySelector() { return overlay; } } },
-  };
   const view = host.reader._internalReader._primaryView;
   view._iframeWindow.document = viewDocument;
-  view._annotations = [annotation];
-  view._pages = [page];
-
-  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), true);
-  page._lastSignature = "stale-render-signature";
-  assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
-});
-
-test("a native PDF page overlay outside the viewport is not viewer evidence", async () => {
-  const { env, host } = fixtureEnvironment();
-  const native = createZoteroNativeApi(env);
-  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
-  const created = await native.createAnnotation({
-    anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
-    type: "highlight",
-    comment: "",
-    color: "#ffd400",
-    operationMarker: "urn:offscreen-dom",
-  });
-  const viewDocument = {
-    defaultView: { innerWidth: 800, innerHeight: 600 },
-    querySelector() { return null; },
-  };
-  const renderedRect = {
-    style: { cssText: "native-highlight-rect" },
-    isConnected: true,
-    getClientRects() { return { length: 1 }; },
-    getBoundingClientRect() { return { left: -300, right: -200, top: 20, bottom: 30 }; },
-  };
-  const overlay = { querySelectorAll() { return [renderedRect]; } };
-  const annotation = {
-    id: created.annotationKey,
-    type: "highlight",
-    text: created.text,
-    comment: created.comment,
-    color: created.color,
-    position: { pageIndex: created.pageIndex, rects: [[10, 20, 17, 30]] },
-  };
-  const displayList = [{ kind: "rect", style: "native-highlight-rect" }];
-  const view = host.reader._internalReader._primaryView;
-  view._iframeWindow.document = viewDocument;
-  view._annotations = [annotation];
-  view._pages = [{
-    pageIndex: 0,
-    _lastSignature: JSON.stringify(displayList),
-    _buildDisplayList() { return displayList; },
-    _pushHighlight(items) { items.push(...displayList); },
-    _createRectElement(_document, item) { return { style: { cssText: item.style } }; },
-    originalPage: { div: { querySelector() { return overlay; } } },
-  }];
+  view._pages = [{ originalPage: { div: { querySelector() { return overlay; } } } }];
 
   assert.equal(await native.annotationVisible("1", "ATTACH01", created.annotationKey), false);
 });

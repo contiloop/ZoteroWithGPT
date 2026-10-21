@@ -101,24 +101,6 @@ interface SelectionAnnotationLike {
   position?: { pageIndex?: unknown; rects?: unknown };
 }
 
-interface ReaderAnnotationLike {
-  id?: unknown;
-  type?: unknown;
-  text?: unknown;
-  comment?: unknown;
-  color?: unknown;
-  position?: { pageIndex?: unknown; rects?: unknown };
-}
-
-interface PdfRenderedPageLike {
-  pageIndex?: unknown;
-  _lastSignature?: unknown;
-  _buildDisplayList?(): unknown;
-  _pushHighlight?(items: unknown[], annotation: ReaderAnnotationLike): void;
-  _createRectElement?(document: object, item: unknown): QueryNodeLike;
-  originalPage?: { div?: QueryNodeLike };
-}
-
 interface ReaderPrimaryViewLike {
   initializedPromise?: Promise<unknown>;
   _iframeWindow?: {
@@ -126,8 +108,6 @@ interface ReaderPrimaryViewLike {
     document?: QueryDocumentLike;
   };
   _selectionRanges?: unknown[];
-  _annotations?: unknown;
-  _pages?: unknown;
   _getAnnotationFromSelectionRanges?(
     ranges: unknown[],
     type: "highlight",
@@ -215,12 +195,10 @@ interface QueryNodeLike {
   textContent?: string | null;
   innerText?: string;
   isConnected?: boolean;
-  style?: { cssText?: string };
   getClientRects?(): { length: number };
   getBoundingClientRect?(): QueryRectLike;
   parentElement?: QueryNodeLike | null;
   querySelector?(selector: string): QueryNodeLike | null;
-  querySelectorAll?(selector: string): ArrayLike<QueryNodeLike>;
 }
 
 interface QueryRectLike {
@@ -376,96 +354,6 @@ function clipsOverflow(value: string | undefined): boolean {
 
 function normalizedRenderedText(value: string): string {
   return value.replace(/\r\n?/gu, "\n").trim();
-}
-
-function readerAnnotationMatches(
-  value: unknown,
-  record: NativeAnnotationRecord,
-): value is ReaderAnnotationLike {
-  if (value === null || typeof value !== "object") return false;
-  const annotation = value as ReaderAnnotationLike;
-  if (
-    annotation.id !== record.annotationKey ||
-    annotation.type !== record.type ||
-    annotation.comment !== record.comment ||
-    optionalString(annotation.color) !== record.color ||
-    annotation.position?.pageIndex !== record.pageIndex ||
-    !Array.isArray(annotation.position.rects) ||
-    annotation.position.rects.length !== record.rectangles.length
-  ) {
-    return false;
-  }
-  if (record.type === "highlight" && annotation.text !== (record.text ?? "")) return false;
-  return annotation.position.rects.every((value, index) => {
-    const parsed = tuple(value);
-    const expected = record.rectangles[index];
-    return (
-      parsed !== undefined &&
-      expected !== undefined &&
-      parsed[0] === expected.x1 &&
-      parsed[1] === expected.y1 &&
-      parsed[2] === expected.x2 &&
-      parsed[3] === expected.y2
-    );
-  });
-}
-
-function renderedPdfHighlightVisible(
-  view: ReaderPrimaryViewLike,
-  record: NativeAnnotationRecord,
-): boolean {
-  if (record.type !== "highlight") return false;
-  const annotations = Array.isArray(view._annotations) ? view._annotations : [];
-  const annotation = annotations.find((value) => readerAnnotationMatches(value, record));
-  if (annotation === undefined) return false;
-  const pages = Array.isArray(view._pages) ? (view._pages as PdfRenderedPageLike[]) : [];
-  const page = pages.find((value) => value.pageIndex === record.pageIndex);
-  const document = view._iframeWindow?.document;
-  if (
-    page === undefined ||
-    document === undefined ||
-    typeof page._lastSignature !== "string" ||
-    page._buildDisplayList === undefined ||
-    page._pushHighlight === undefined ||
-    page._createRectElement === undefined
-  ) {
-    return false;
-  }
-  let currentItems: unknown;
-  let expectedItems: unknown[] = [];
-  try {
-    currentItems = page._buildDisplayList();
-    page._pushHighlight(expectedItems, annotation);
-  } catch {
-    return false;
-  }
-  if (
-    !Array.isArray(currentItems) ||
-    expectedItems.length === 0 ||
-    page._lastSignature !== JSON.stringify(currentItems)
-  ) {
-    return false;
-  }
-  const overlay = page.originalPage?.div?.querySelector?.(":scope > .annotationOverlay");
-  const renderedRects = Array.from(
-    overlay?.querySelectorAll?.(":scope > .overlayRect") ?? [],
-  );
-  for (const item of expectedItems) {
-    let expected: QueryNodeLike;
-    try {
-      expected = page._createRectElement(document, item);
-    } catch {
-      return false;
-    }
-    const style = expected.style?.cssText;
-    if (typeof style !== "string" || style.length === 0) return false;
-    const matchIndex = renderedRects.findIndex(
-      (node) => node.style?.cssText === style && isRenderedNode(node, document),
-    );
-    if (matchIndex < 0) return false;
-    renderedRects.splice(matchIndex, 1);
-  }
-  return true;
 }
 
 function isRenderedNode(
@@ -1031,7 +919,7 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     const record = await this.getAnnotation(requestedLibraryId, attachmentKey, annotationKey);
     if (record === undefined) return false;
     return (
-      (await this.#withReader(attachment.id, false, async (reader, view) => {
+      (await this.#withReader(attachment.id, false, async (reader, _view) => {
         const internal = reader._internalReader;
         const readerDocument = reader._iframeWindow?.document;
         const sidebar = readerDocument?.querySelector(
@@ -1067,8 +955,7 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
           return true;
         }
 
-        if (record.comment.length > 0) return false;
-        return renderedPdfHighlightVisible(view, record);
+        return false;
       })) ?? false
     );
   }

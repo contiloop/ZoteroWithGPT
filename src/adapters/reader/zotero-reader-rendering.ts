@@ -1,5 +1,17 @@
 import type { UntrustedContentRenderingPort } from "../../ports/rendering.js";
+import type {
+  FormattedPreviewVerificationPort,
+  VisiblePreviewFailureReason,
+  VisiblePreviewInspection,
+  VisiblePreviewRequest,
+} from "../../ports/zotero.js";
 import { isSafeReferenceUrl } from "../rendering/safe-markdown-renderer.js";
+
+export type {
+  VisiblePreviewFailureReason,
+  VisiblePreviewInspection,
+  VisiblePreviewRequest,
+} from "../../ports/zotero.js";
 
 const PREVIEW_ATTRIBUTE = "data-zotero-gpt-rendered-comment";
 const PREVIEW_BODY_ATTRIBUTE = "data-zotero-gpt-rendered-body";
@@ -33,12 +45,6 @@ export interface ZoteroReaderHostLike {
   Reader: { _readers: ZoteroReaderLike[] };
 }
 
-export interface VisiblePreviewRequest {
-  attachmentItemId: number;
-  annotationKey: string;
-  expectedNativeComment: string;
-}
-
 export interface ZoteroReaderRenderingAdapterOptions {
   host: ZoteroReaderHostLike;
   renderer: UntrustedContentRenderingPort;
@@ -61,7 +67,7 @@ interface AttachedReader {
  * Owns formatted preview nodes inside active Zotero readers. Native editor
  * nodes remain untouched and canonical throughout the adapter lifecycle.
  */
-export class ZoteroReaderRenderingAdapter {
+export class ZoteroReaderRenderingAdapter implements FormattedPreviewVerificationPort {
   readonly #host: ZoteroReaderHostLike;
   readonly #renderer: UntrustedContentRenderingPort;
   readonly #openLink: (url: string) => void;
@@ -128,35 +134,52 @@ export class ZoteroReaderRenderingAdapter {
   }
 
   async verifyVisiblePreview(request: VisiblePreviewRequest): Promise<boolean> {
-    if (!this.#active || !Number.isSafeInteger(request.attachmentItemId)) return false;
+    return (await this.inspectVisiblePreview(request)).visible;
+  }
+
+  /**
+   * Applies the same strict viewer checks as verifyVisiblePreview while
+   * returning a bounded, content-free reason when one of those checks fails.
+   */
+  async inspectVisiblePreview(request: VisiblePreviewRequest): Promise<VisiblePreviewInspection> {
+    if (!this.#active) return failedPreview("renderer_inactive");
+    if (!Number.isSafeInteger(request.attachmentItemId)) {
+      return failedPreview("attachment_id_invalid");
+    }
     await this.#syncReaders();
     const candidates = [...this.#attached.values()].filter(
       (candidate) => candidate.reader.itemID === request.attachmentItemId,
     );
-    if (candidates.length === 0) return false;
+    if (candidates.length === 0) return failedPreview("attachment_reader_missing");
     const rendered = await this.#renderer.render({
       content: request.expectedNativeComment,
       source: "annotation",
       requestedFormat: "sanitized_html",
     });
-    if (rendered.format !== "sanitized_html") return false;
+    if (rendered.format !== "sanitized_html") return failedPreview("render_format_mismatch");
+
+    let failure: VisiblePreviewFailureReason = "reader_not_visible";
 
     for (const attached of candidates) {
       await this.#renderAttached(attached);
       if (!isOwningReaderVisible(attached)) continue;
+      failure = moreSpecificFailure(failure, "annotation_surface_inactive");
       const expectedMarkup = normalizeMarkup(attached.document, rendered.content);
       const state = attached.reader._internalReader?._state;
 
       if (state?.sidebarOpen === true && state.sidebarView === "annotations") {
         const row = findAnnotationRow(attached.document, request.annotationKey);
         const preview = row?.querySelector<HTMLElement>(PREVIEW_SELECTOR);
-        if (
-          row !== undefined &&
-          row !== null &&
-          previewMatches(preview, request, expectedMarkup, attached.document) &&
-          isActuallyVisible(row, attached.document)
-        ) {
-          return true;
+        if (row === undefined || row === null) {
+          failure = moreSpecificFailure(failure, "annotation_surface_missing");
+        } else {
+          const inspection = inspectPreview(preview, request, expectedMarkup, attached.document);
+          if (inspection.visible) {
+            if (isActuallyVisible(row, attached.document)) return inspection;
+            failure = moreSpecificFailure(failure, "annotation_surface_not_visible");
+          } else {
+            failure = moreSpecificFailure(failure, inspection.reason);
+          }
         }
       }
 
@@ -168,18 +191,21 @@ export class ZoteroReaderRenderingAdapter {
       ) {
         const popup = attached.document.querySelector<HTMLElement>(".annotation-popup");
         const preview = popup?.querySelector<HTMLElement>(PREVIEW_SELECTOR);
-        if (
-          popup !== undefined &&
-          popup !== null &&
-          previewMatches(preview, request, expectedMarkup, attached.document) &&
-          isActuallyVisible(popup, attached.document)
-        ) {
-          return true;
+        if (popup === undefined || popup === null) {
+          failure = moreSpecificFailure(failure, "annotation_surface_missing");
+        } else {
+          const inspection = inspectPreview(preview, request, expectedMarkup, attached.document);
+          if (inspection.visible) {
+            if (isActuallyVisible(popup, attached.document)) return inspection;
+            failure = moreSpecificFailure(failure, "annotation_surface_not_visible");
+          } else {
+            failure = moreSpecificFailure(failure, inspection.reason);
+          }
         }
       }
     }
 
-    return false;
+    return failedPreview(failure);
   }
 
   async #syncReaders(): Promise<void> {
@@ -483,25 +509,60 @@ function findAnnotationRow(document: Document, annotationKey: string): HTMLEleme
   );
 }
 
-function previewMatches(
+function failedPreview(reason: VisiblePreviewFailureReason): VisiblePreviewInspection {
+  return { visible: false, reason };
+}
+
+const PREVIEW_FAILURE_PRIORITY: Readonly<Record<VisiblePreviewFailureReason, number>> = {
+  renderer_inactive: 0,
+  attachment_id_invalid: 0,
+  attachment_reader_missing: 0,
+  render_format_mismatch: 0,
+  reader_not_visible: 1,
+  annotation_surface_inactive: 2,
+  annotation_surface_missing: 3,
+  preview_missing: 4,
+  annotation_key_mismatch: 5,
+  attachment_id_mismatch: 5,
+  source_mode: 6,
+  body_missing: 7,
+  content_mismatch: 8,
+  preview_not_visible: 9,
+  body_not_visible: 10,
+  annotation_surface_not_visible: 11,
+};
+
+function moreSpecificFailure(
+  current: VisiblePreviewFailureReason,
+  candidate: VisiblePreviewFailureReason,
+): VisiblePreviewFailureReason {
+  return PREVIEW_FAILURE_PRIORITY[candidate] > PREVIEW_FAILURE_PRIORITY[current]
+    ? candidate
+    : current;
+}
+
+function inspectPreview(
   preview: HTMLElement | null | undefined,
   request: VisiblePreviewRequest,
   expectedMarkup: string,
   document: Document,
-): preview is HTMLElement {
-  const body = preview?.querySelector<HTMLElement>(`[${PREVIEW_BODY_ATTRIBUTE}]`);
-  return (
-    preview !== null &&
-    preview !== undefined &&
-    preview.getAttribute("data-zotero-annotation-key") === request.annotationKey &&
-    preview.getAttribute("data-zotero-attachment-item-id") === String(request.attachmentItemId) &&
-    preview.parentElement?.getAttribute(COMMENT_MODE_ATTRIBUTE) === "preview" &&
-    body?.innerHTML === expectedMarkup &&
-    isActuallyVisible(preview, document) &&
-    body !== null &&
-    body !== undefined &&
-    isActuallyVisible(body, document)
-  );
+): VisiblePreviewInspection {
+  if (preview === null || preview === undefined) return failedPreview("preview_missing");
+  if (preview.getAttribute("data-zotero-annotation-key") !== request.annotationKey) {
+    return failedPreview("annotation_key_mismatch");
+  }
+  if (preview.getAttribute("data-zotero-attachment-item-id") !== String(request.attachmentItemId)) {
+    return failedPreview("attachment_id_mismatch");
+  }
+  if (preview.parentElement?.getAttribute(COMMENT_MODE_ATTRIBUTE) !== "preview") {
+    return failedPreview("source_mode");
+  }
+  const body = preview.querySelector<HTMLElement>(`[${PREVIEW_BODY_ATTRIBUTE}]`);
+  if (body === null) return failedPreview("body_missing");
+  if (body.innerHTML !== expectedMarkup) return failedPreview("content_mismatch");
+  if (!isActuallyVisible(preview, document)) return failedPreview("preview_not_visible");
+  if (!isActuallyVisible(body, document)) return failedPreview("body_not_visible");
+  return { visible: true };
 }
 
 function nativeCommentForAnnotation(

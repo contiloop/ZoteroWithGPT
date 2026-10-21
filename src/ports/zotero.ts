@@ -80,3 +80,36 @@ export interface ZoteroViewerVerificationPort {
     request: RequestFor<"verify_annotation">,
   ): Promise<VerificationDetail>;
 }
+
+export interface VisiblePreviewRequest {
+  attachmentItemId: number;
+  annotationKey: string;
+  expectedNativeComment: string;
+}
+
+export type VisiblePreviewFailureReason =
+  | "renderer_inactive"
+  | "attachment_id_invalid"
+  | "attachment_reader_missing"
+  | "render_format_mismatch"
+  | "reader_not_visible"
+  | "annotation_surface_inactive"
+  | "annotation_surface_missing"
+  | "preview_missing"
+  | "annotation_key_mismatch"
+  | "attachment_id_mismatch"
+  | "source_mode"
+  | "body_missing"
+  | "content_mismatch"
+  | "preview_not_visible"
+  | "body_not_visible"
+  | "annotation_surface_not_visible";
+
+export type VisiblePreviewInspection =
+  | { visible: true }
+  | { visible: false; reason: VisiblePreviewFailureReason };
+
+/** Content-safe formatted-preview evidence supplied by a reader adapter. */
+export interface FormattedPreviewVerificationPort {
+  inspectVisiblePreview(request: VisiblePreviewRequest): Promise<VisiblePreviewInspection>;
+}

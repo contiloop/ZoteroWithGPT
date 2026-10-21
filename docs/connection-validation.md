@@ -63,7 +63,13 @@ The running plugin-container process reports parent build `20260922124338`,
 whereas the application on disk reports `20261007113827`. The installed version
 and a running process are insufficient to identify the running application's
 version. Native integration must query the actual host version once access is
-available, and may require an ordinary user-controlled restart.
+available, and required an ordinary restart.
+
+With the user’s authorization, Activity Monitor’s **Quit** action terminated the
+old Zotero process (PID 34560); its absence was confirmed. Reopening Zotero
+through the computer-use tool succeeded and exposed the paper reader and
+annotation sidebar. No **Force Quit** action was used. Native plugin runtime
+version and annotation behavior still require a loaded development build.
 
 ## Setup and removal evidence
 

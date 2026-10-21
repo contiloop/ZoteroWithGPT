@@ -3,12 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24 <27" },
+  "engines": {
+    "node": ">=24 <27"
+  },
   "scripts": {
     "build": "tsc --build",
     "typecheck": "tsc --noEmit --incremental --tsBuildInfoFile .cache/typecheck.tsbuildinfo",
     "test": "npm run build && node --test",
     "verify": "npm run typecheck && npm test && npm run build"
   },
-  "devDependencies": { "typescript": "7.0.2" }
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  }
 }

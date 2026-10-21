@@ -31,3 +31,7 @@ The owned native fixture has parent item `5JYKRIIT`, PDF attachment `XI9DWNHS`, 
 The fixture PDF SHA-256 remained `c2fbe4c5d2d2a372492278542b9aa4008dbf8407f8bc54335a3aaf30b990e336`. Shared MCP settings and unrelated Zotero plugins were not changed. The operation journal was retained as documented. No permanent deletion or Trash purge was performed.
 
 Actual ChatGPT Web study-session acceptance is a separate test; these installation results alone do not establish it.
+
+## Final source follow-up — 2026-10-22
+
+The integrated safety build at source `852e6af` passed 158 tests and a fresh dependency installation/build reproduced installed XPI SHA-256 `49b21211352f90846c34a2e029e8f5f554523c91a35380f8c421dce70882ee54`. Actual note preservation and aggregate-size checks passed on that installed artifact. A reproduced stale unrelated reader was subsequently isolated; source `97d75df950c8ad3fcb0b31867c0e2a6bef575c2a` passed all 160 tests, type checking, build, and package checks. Its XPI SHA-256 is `01975e560f477ac024d23ed29cd5a4c1da1bd9bd4ad61ac256901158e29cf152`. Normal Plugins Manager update accepted that artifact, its installed hash matched, and native storage plus strict formatted-reader verification passed without a restart. The connection now uses a dedicated ignored `.local/bridge` rather than a temporary test directory.

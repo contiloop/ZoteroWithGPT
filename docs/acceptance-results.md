@@ -1,6 +1,6 @@
 # Study-session acceptance
 
-Observed on 2026-10-21 with Zotero 10.0.6 on macOS arm64 and the packaged Research Companion 0.1.0. This record separates actual ChatGPT Web actions, direct Codex local actions, native UI observations, and automated checks. Final acceptance remains in progress while additional storage-safety review fixes are integrated.
+Observed on 2026-10-21–22 with Zotero 10.0.6 on macOS arm64 and the packaged Research Companion 0.1.0. This record separates actual ChatGPT Web actions, direct Codex local actions, native UI observations, and automated checks. The local study flow and integrated source verification passed; final independent release review is separate from public publication.
 
 ## Real paper and test ownership
 
@@ -57,3 +57,30 @@ The approved no-MCP alternative was exercised by Codex using local file operatio
 The real reader refreshed the formatted content, including the new paragraph. After opening **Edit native comment**, `codex-copy-verify-1` confirmed both storage and the visible native editor. Activating the other owned PDF tab caused `codex-copy-background-verify-1` to report storage `confirmed`, viewer `failed`, demonstrating that a background reader is not accepted as visible evidence.
 
 Independent ChatGPT Work availability and billing remain unverified. No public release, shared MCP reconfiguration, or user-library cleanup was performed.
+
+## Integrated package follow-up — 2026-10-22
+
+Source `852e6af` passed `npm run verify` (exit 0, 158 tests). Clean `git archive` extraction, `npm ci`, and the same command both exited 0 and reproduced installed XPI SHA-256 `49b21211352f90846c34a2e029e8f5f554523c91a35380f8c421dce70882ee54` exactly. This build includes aggregate saved-body limits, final cached-native-object access checks, bounded inert child-note safety processing, preservation of existing rich note bytes, and definitive non-writing rejection of interrupted queued operations.
+
+On that actual installed package, operations prefixed `final-1792594965692` created optional fixture notes `CW5FWIFE` and `6VBLSECS`. Safe reference HTML, preformatted mathematics, and a table survived create/readback; unsafe resource markup remained escaped readable source with no active image. Append preserved the exact existing rich-note body. An incoming fragment within its own limit but exceeding the combined 524,288-byte limit was rejected as `too_large` for both note and annotation; fresh reads proved no revision or content change. Original, copy, and synthetic fixture PDF hash assertions passed unchanged.
+
+The connection moved out of temporary test directories into the dedicated ignored `.local/bridge` directory, using the matching client kit. Actual Web requests `web-final-read-current-1`, `web-final-approved-append-1`, and `web-final-after-append-1` read the current revision, appended one newly authorized Korean question, and freshly read it back. The current comment has 1,906 characters, exactly one added question, and all manual edits, proofs, references, and prior questions. Revision: `sha256:9214977ab8eb63d622f2e32194c37805edd1990b3ba3f1acd1387a127ebfc60e`.
+
+The first hot-update viewer check, `web-final-verify-visible-1`, reported storage confirmed and viewer failed at `inspection_error`. Zotero's actual error console showed `can't access dead object`. An independent source probe reproduced a removed unrelated reader poisoning synchronization. Normal Quit/reopen on the identical installed XPI restored strict formatted verification: direct `final-restart-viewer-1792595288751` and actual Web `web-final-restart-verify-1` both confirmed storage and viewer. The Web also freshly read unchanged content with `web-final-restart-read-1`; no mutation was repeated.
+
+The reader lifecycle was then hardened in `d8008f3`, integrated at source `97d75df950c8ad3fcb0b31867c0e2a6bef575c2a`. Tests first reproduced the removed-reader and cleanup failures, then passed. Independent review ran typecheck and 15 focused tests plus a retained-dead-reader probe; strict viewer predicates remained unchanged. Full integrated `npm run verify` exited 0 with 160 tests.
+
+The resulting XPI SHA-256 is `01975e560f477ac024d23ed29cd5a4c1da1bd9bd4ad61ac256901158e29cf152`. It was installed through the normal Plugins Manager, and the installed profile artifact hash matched exactly. Without a restart, `release-160-1792595852486-viewer` confirmed storage and strict formatted preview; its fresh read confirmed the complete 1,906-character native comment and one annotation. The original paper still had zero annotations. The prior note-policy smoke is attributed to the preceding artifact because the only subsequent code change was reader lifecycle isolation.
+
+## Acceptance coverage
+
+| Group | Verified evidence |
+| --- | --- |
+| Web reading and contextual save | Actual Web/Mac MCP search, PDF read, resolved two-rectangle native highlight, Korean question/proof/references, actual reader |
+| Approval and conflict protection | Read-only proposal before approval; native manual edit; stale Web update rejected; separately approved Web append preserved content |
+| Identity and recovery | Historical replay without duplicates; real commit-boundary recovery; unresolved passage non-write; unchanged PDF hashes |
+| No-MCP local execution | Actual Codex local-file read, append, readback, native-reader evidence; approved alternative to independently unverified Work |
+| Local installation lifecycle | Packaged install, disable, remove, reinstall, native-content retention, stale-session nonexecution, historical identity retention |
+| Reproducible delivery | Clean dependency install, full verification, deterministic package comparison, compatibility/notice/path validation |
+
+Public publication, an independently tested Work route, and a public Mac Safe Files installer are not claimed. The owned test papers/notes remain in Zotero; their removal was not silently performed.

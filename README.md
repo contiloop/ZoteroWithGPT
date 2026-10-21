@@ -1,6 +1,6 @@
 # Zotero AI Research Companion
 
-An in-progress connection for recording ChatGPT Web study sessions as native Zotero PDF annotations. Long explanations, proofs, questions, and references belong beside their source passage in the paper reader.
+A local connection for recording ChatGPT Web study sessions as native Zotero PDF annotations. Long explanations, proofs, questions, and references belong beside their source passage in the paper reader.
 
 ## Development
 
@@ -11,3 +11,9 @@ The verification command covers strict TypeScript checking, the Node.js test sui
 Build the installable XPI and matching client instructions with `npm run package`. See [installation](docs/install.md), [removal and recovery](docs/uninstall.md), and [connection validation](docs/connection-validation.md).
 
 No OpenAI API key is required. Do not put personal credentials, Zotero libraries, transport secrets, or private study content in this repository.
+
+## Verified local use
+
+Actual ChatGPT Web with the existing Mac Safe Files connection searched/read Huginn, saved a Korean question with a multi-step mathematical explanation and references, protected a manual edit from a stale update, and appended approved follow-up questions to the same native annotation. Direct Codex local files also completed an independent save. The actual Zotero reader showed formatted mathematics beside the selected passage.
+
+The macOS Zotero 10.0.6 validation includes install/remove/reinstall retention, historical retry protection, 160 automated tests, and clean deterministic packaging. A public Mac Safe Files installer and independent ChatGPT Work execution are not supplied or claimed. Distribution is currently a local manual XPI; no public release has been published.

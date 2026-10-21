@@ -1,0 +1,29 @@
+# Native integration knowledge
+
+## Reader objects can outlive their windows
+
+After an extension update, a formatted comment remained visibly correct while verification reported an inspection error. Zotero's error console showed “can't access dead object”; a normal quit/reopen restored strict verification on the same package and comment. An independent probe reproduced the failure by removing an unrelated reader and making its old iframe getter throw. The old synchronization order read that getter before checking membership. Synchronization now checks removed-reader membership first and isolates inaccessible entries, with best-effort cleanup. A retained inaccessible reader is retried and may report again on later scans so a revived reader can reattach; repeated diagnostic messages alone are not a new write failure. Verify a healthy target alongside an unrelated destroyed reader, not only a single-reader fixture.
+
+## Native source and preview are different surfaces
+
+Formatted mode hides Zotero's source editor. A source-editor check can therefore fail while the rendered comment is visible. Conversely, an open background tab is insufficient viewer evidence. Inspect exact current markup and owner visibility; then switch between native edit and formatted preview and verify again. A failed viewer response is not grounds to repeat the saved write.
+
+## Plugin globals are not browser globals
+
+The Zotero plugin sandbox lacks some Window APIs. PDF worker calls also reject caller-realm objects with DataCloneError. Supply the validated JSON snapshot primitive at bootstrap and clone worker arguments into the owning realm. Verify in Zotero after changes; Node-only test globals conceal these failures.
+
+## Main documents may be XUL
+
+Creating HTML parsing containers against the main chrome document can produce the wrong namespace or MIME assumptions. Child-note safety processing uses a trusted live main window and a detached inert HTML document. New unsafe source remains readable as escaped text. Existing native note HTML is checked without rewriting it; otherwise a harmless append can destroy a user's table or reference.
+
+## Sanitizers and math need separate semantic checks
+
+A broad MathML tag allowlist can still erase cancellation or alignment if semantic attributes are removed. Restrict attributes by element and namespace while preserving the meaning of validated math. Inspect actual cancellation/aligned output, numbered steps, paragraph spacing, and a clicked safe reference. Preserve raw native notation for removal or renderer failure.
+
+## Request results are historical
+
+Reusing an observation ID returns old data even after the target changed. Use fresh IDs for new reads and verification. A missing result is not evidence of nonexecution: inspect the active session and recover a potentially running mutation using its original identity. Only an explicit queued-interruption non-write allows a newly approved mutation under a fresh identity.
+
+## Extension metadata has host-specific requirements
+
+Zotero 10.0.6 rejected an otherwise built XPI without a truthy update URL. The package uses a reserved .invalid URL to meet that host requirement without inventing an updater. Check installation and manual-update behavior in the actual Plugins Manager; archive inspection alone does not prove installability.

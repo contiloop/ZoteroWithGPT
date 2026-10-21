@@ -1,0 +1,14 @@
+# Engineering rules
+
+- Domain and protocol modules must not import Zotero, Gecko, filesystem, or DOM implementations. External dependencies enter through ports; plugin composition binds concrete adapters.
+- Every remotely reachable operation must be registered in strict validation, typed dispatch, and the distributed contract. Unknown fields and operations must fail before native mutation; there is no generic command or evaluation escape hatch.
+- Native writes must use the guarded native adapter and the serialized operation coordinator. Tests must cover current access-gate checks, stale target revisions, identity replay, and commit-boundary recovery. Direct SQLite writes and PDF-byte annotation writes are forbidden.
+- Reader previews must derive from canonical native comments and use the sanitizing renderer. Verification must inspect exact current content, attachment ownership, and actual visibility; it must not substitute stored JSON or weaken a failed predicate.
+- Saved-content changes must preserve the complete approved body or reject before mutation. Tests must exercise aggregate UTF-8 limits and rich-note preservation, not only incoming-fragment length.
+- Dependencies must have exact manifest versions, a committed lockfile, evaluated licenses, and matching bundled notices. A dependency or copied implementation that changes distribution obligations requires an explicit project decision before adoption.
+- Build/runtime prerequisites must be declared. Runtime paths come from selected settings and host APIs; developer home directories, credentials, profiles, and transport state must not enter packages.
+- Before integrating source changes, run meaningful affected tests; before presenting a release, capture exit 0 from `npm run verify`. This runs type checking, tests, build, deterministic packaging, and package validation. Assertions that never evaluated do not count.
+- Changes affecting native persistence, rendering, setup, or lifecycle require actual Zotero checks in addition to automated tests. A claimed Web or local-client route requires an observed run on that surface; evidence from Codex cannot establish Work.
+- Package changes must keep version, compatibility metadata, client kit, and schemas consistent. Distribution currently uses manual XPI installation and the exact reserved no-service update URL; replacing that URL with a real service is an access/distribution change.
+- Keep source, tests, packaging, integration instructions, and owned transient data separate. Record commits with their concrete behavior and verification. Do not discard unrelated user changes or publish/push a release without the user's instruction.
+- Project documents are English. Study comments follow the researcher’s language. Operational logs and screenshots must exclude personal credentials.

@@ -186,11 +186,40 @@ class NativeApiDouble {
   }
 
   async createNote() {
-    throw new Error("not used by this test");
+    const input = arguments[0];
+    const wrapper = input.content.match(
+      /^<div class="zotero-note znv[0-9]+">([\s\S]*)<\/div>$/u,
+    );
+    const record = {
+      libraryId: input.libraryId,
+      itemKey: input.itemKey,
+      noteKey: "NOTE0001",
+      title: "Requested note",
+      content: wrapper ? wrapper[1] : input.content,
+      version: 1,
+      dateModified: "2026-10-21 10:00:00",
+      operationMarkers: [input.operationMarker],
+    };
+    this.notes.set(record.noteKey, structuredClone(record));
+    return structuredClone(record);
   }
 
   async updateNote() {
-    throw new Error("not used by this test");
+    const input = arguments[0];
+    const current = this.notes.get(input.expected.noteKey);
+    if (!current) throw new Error("note missing");
+    const wrapper = input.content.match(
+      /^<div class="zotero-note znv[0-9]+">([\s\S]*)<\/div>$/u,
+    );
+    const record = {
+      ...current,
+      content: wrapper ? wrapper[1] : input.content,
+      version: current.version + 1,
+      dateModified: "2026-10-21 10:00:01",
+      operationMarkers: [...current.operationMarkers, input.operationMarker],
+    };
+    this.notes.set(record.noteKey, structuredClone(record));
+    return structuredClone(record);
   }
 
   async annotationVisible(_libraryId, _attachmentKey, annotationKey) {
@@ -372,4 +401,69 @@ test("operation markers bind both the operation ID and canonical request digest"
     operationIdentityMarker({ operationId: "same", requestDigest: "sha256:a" }),
     operationIdentityMarker({ operationId: "same", requestDigest: "sha256:b" }),
   );
+});
+
+test("child-note commit readback compares Zotero's wrapper-free note body", async () => {
+  const native = new NativeApiDouble();
+  const library = adapter(native);
+  const result = await library.createNote(
+    {
+      protocolVersion: 1,
+      operationId: "op-create-note",
+      operation: "create_note",
+      profileId: "profile-A",
+      authorization: { kind: "explicit_request", scope: "Create child note on ITEM0001" },
+      payload: {
+        libraryId: "1",
+        itemKey: "ITEM0001",
+        content: "<p>Explicit synthesis note</p>",
+      },
+    },
+    { operationId: "op-create-note", requestDigest: "sha256:note-request" },
+  );
+
+  assert.equal(result.content, "<p>Explicit synthesis note</p>");
+  assert.equal(native.notes.get(result.noteKey).content, result.content);
+});
+
+test("child-note replacement confirms the wrapper-free body returned by Zotero", async () => {
+  const native = new NativeApiDouble();
+  native.notes.set("NOTE0001", {
+    libraryId: "1",
+    itemKey: "ITEM0001",
+    noteKey: "NOTE0001",
+    title: "Existing note",
+    content: "<p>Existing body</p>",
+    version: 1,
+    dateModified: "2026-10-21 10:00:00",
+    operationMarkers: [],
+  });
+  const library = adapter(native);
+  const current = await library.readNote({
+    protocolVersion: 1,
+    operationId: "op-read-note",
+    operation: "read_note",
+    profileId: "profile-A",
+    payload: { libraryId: "1", itemKey: "ITEM0001", noteKey: "NOTE0001" },
+  });
+  const result = await library.updateNote(
+    {
+      protocolVersion: 1,
+      operationId: "op-replace-note",
+      operation: "update_note",
+      profileId: "profile-A",
+      authorization: { kind: "explicit_request", scope: "Replace NOTE0001" },
+      payload: {
+        libraryId: "1",
+        itemKey: "ITEM0001",
+        noteKey: "NOTE0001",
+        expectedRevision: current.revision,
+        mode: "replace",
+        content: '<div class="zotero-note znv1"><p>Replacement body</p></div>',
+      },
+    },
+    { operationId: "op-replace-note", requestDigest: "sha256:replace-note" },
+  );
+
+  assert.equal(result.content, "<p>Replacement body</p>");
 });

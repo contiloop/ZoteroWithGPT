@@ -23,7 +23,12 @@ class FakeItem {
     Object.assign(this, values);
   }
 
-  async loadAllData() {}
+  async loadAllData() {
+    if (this.isNote() && typeof this.note === "string") {
+      const match = this.note.match(/^<div class="zotero-note znv[0-9]+">([\s\S]*)<\/div>$/u);
+      if (match) this.note = match[1];
+    }
+  }
   get parentID() { return this.parentItemID; }
   set parentID(value) { this.parentItemID = value; }
   isPDFAttachment() { return this.itemType === "attachment"; }
@@ -68,7 +73,13 @@ class FakeItem {
 }
 
 function fixtureEnvironment() {
-  const host = { items: new Map(), nextId: 10, savedSnapshots: [] };
+  const host = {
+    items: new Map(),
+    nextId: 10,
+    savedSnapshots: [],
+    diskBytes: new Uint8Array([1, 2, 3, 4]),
+    readerBytes: new Uint8Array([1, 2, 3, 4]),
+  };
   const paper = new FakeItem(host, "journalArticle", {
     id: 1,
     key: "ITEM0001",
@@ -103,6 +114,7 @@ function fixtureEnvironment() {
           PDFViewerApplication: {
             pdfDocument: {
               numPages: 1,
+              async getData() { return Uint8Array.from(host.readerBytes); },
               async getPageLabels2() { return ["1"]; },
               async getPageData() { return structuredClone(pageData); },
             },
@@ -172,7 +184,7 @@ function fixtureEnvironment() {
     host,
     env: {
       Zotero,
-      IOUtils: { async read() { return new Uint8Array([1, 2, 3, 4]); } },
+      IOUtils: { async read() { return Uint8Array.from(host.diskBytes); } },
       crypto: webcrypto,
     },
   };
@@ -246,6 +258,28 @@ test("page extraction uses the initialized native reader document", async () => 
   assert.equal(page.pageLabel, "1");
   assert.deepEqual(page.viewBox, [0, 0, 600, 800]);
   assert.equal(page.chars[0].text, "A");
+});
+
+test("page discovery rejects an open reader whose loaded bytes differ from the attachment file", async () => {
+  const { env, host } = fixtureEnvironment();
+  const native = createZoteroNativeApi(env);
+  host.diskBytes = new Uint8Array([9, 8, 7, 6]);
+
+  await assert.rejects(
+    () => native.getPdfAttachment("1", "ATTACH01", "ITEM0001"),
+    (error) => error instanceof CoreOperationError && error.code === "stale_attachment",
+  );
+});
+
+test("page discovery rejects a reader that cannot expose its loaded PDF bytes", async () => {
+  const { env, host } = fixtureEnvironment();
+  const native = createZoteroNativeApi(env);
+  delete host.reader._internalReader._primaryView._iframeWindow.PDFViewerApplication.pdfDocument.getData;
+
+  await assert.rejects(
+    () => native.getPdfAttachment("1", "ATTACH01", "ITEM0001"),
+    (error) => error instanceof CoreOperationError && error.code === "stale_attachment",
+  );
 });
 
 test("a disabled live gate stops a dispatched mutation before native save", async () => {

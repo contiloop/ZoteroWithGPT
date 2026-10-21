@@ -69,14 +69,15 @@ export function noteDeepLink(record: NativeNoteRecord): string {
 }
 
 export function nativeNoteContent(content: string): string {
-  if (/^<div class="zotero-note znv[0-9]+">[\s\S]*<\/div>$/u.test(content)) return content;
-  return `<div class="zotero-note znv1">${content}</div>`;
+  const wrapper = content.match(
+    /^<div class="zotero-note znv[0-9]+">([\s\S]*)<\/div>$/u,
+  );
+  return wrapper?.[1] ?? content;
 }
 
 export function appendNoteContent(current: string, addition: string): string {
-  const closing = current.lastIndexOf("</div>");
-  if (closing >= 0 && closing === current.length - "</div>".length) {
-    return `${current.slice(0, closing)}\n${addition}${current.slice(closing)}`;
-  }
-  return `${current}\n\n${addition}`;
+  const body = nativeNoteContent(addition);
+  if (current.length === 0) return body;
+  if (body.length === 0) return current;
+  return `${current}\n\n${body}`;
 }

@@ -91,6 +91,7 @@ interface PdfPageDataLike {
 
 interface PdfDocumentLike {
   numPages?: unknown;
+  getData?(): Promise<Uint8Array | ArrayBuffer>;
   getPageLabels2?(): Promise<unknown>;
   getPageData(input: { pageIndex: number }): Promise<PdfPageDataLike>;
 }
@@ -444,18 +445,29 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     const parent = await this.#parentRecord(attachment);
     const parentKey = parent?.key ?? attachment.key;
     if (parentKey === undefined || (itemKey !== undefined && parentKey !== itemKey)) return undefined;
-    const fingerprint = await this.#fingerprint(attachment);
-    const pageCount = await this.#withReader(
+    const readerSnapshot = await this.#withReader(
       requiredNumber(attachment.id, "attachment ID"),
       true,
       async (_reader, view) => {
-        const count = view._iframeWindow?.PDFViewerApplication?.pdfDocument?.numPages;
+        const document = view._iframeWindow?.PDFViewerApplication?.pdfDocument;
+        if (document === undefined) throw new Error("The Zotero reader PDF document is unavailable");
+        const count = document.numPages;
         if (!Number.isSafeInteger(count) || (count as number) <= 0) {
           throw new Error("The initialized Zotero PDF reader did not expose a page count");
         }
-        return count as number;
+        return {
+          pageCount: count as number,
+          fingerprint: await this.#readerFingerprint(document),
+        };
       },
     );
+    const fingerprint = await this.#fingerprint(attachment);
+    if (readerSnapshot.fingerprint !== fingerprint) {
+      throw new CoreOperationError(
+        "stale_attachment",
+        "The open Zotero reader is displaying different PDF bytes; reload the reader and retry",
+      );
+    }
     return {
       libraryId: String(requiredNumber(attachment.libraryID, "library ID")),
       itemKey: parentKey,
@@ -470,7 +482,7 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
           dateModified: attachment.dateModified ?? "",
         }),
       ),
-      pageCount,
+      pageCount: readerSnapshot.pageCount,
     };
   }
 
@@ -491,6 +503,12 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
       async (_reader, view) => {
         const document = view._iframeWindow?.PDFViewerApplication?.pdfDocument;
         if (document === undefined) throw new Error("The Zotero reader PDF document is unavailable");
+        if ((await this.#readerFingerprint(document)) !== attachment.fingerprint) {
+          throw new CoreOperationError(
+            "stale_attachment",
+            "The open Zotero reader is displaying different PDF bytes; reload the reader and retry",
+          );
+        }
         const data = await document.getPageData({ pageIndex });
         const viewBox = tuple(data.viewBox);
         if (viewBox === undefined) throw new Error("The Zotero reader returned an invalid PDF view box");
@@ -888,6 +906,29 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
       throw new CoreOperationError("not_found", "The PDF attachment file is unavailable");
     }
     const bytes = await this.#io.read(path);
+    return this.#fingerprintBytes(bytes);
+  }
+
+  async #readerFingerprint(document: PdfDocumentLike): Promise<string> {
+    if (document.getData === undefined) {
+      throw new CoreOperationError(
+        "stale_attachment",
+        "The open Zotero reader cannot verify its loaded PDF bytes; reload the reader and retry",
+      );
+    }
+    let bytes: Uint8Array | ArrayBuffer;
+    try {
+      bytes = await document.getData();
+    } catch {
+      throw new CoreOperationError(
+        "stale_attachment",
+        "The open Zotero reader could not verify its loaded PDF bytes; reload the reader and retry",
+      );
+    }
+    return this.#fingerprintBytes(bytes);
+  }
+
+  async #fingerprintBytes(bytes: Uint8Array | ArrayBuffer): Promise<string> {
     const source = bytes instanceof Uint8Array ? Uint8Array.from(bytes) : new Uint8Array(bytes);
     const digest = await this.#crypto.subtle.digest("SHA-256", source);
     return `sha256:${[...new Uint8Array(digest)]

@@ -28,15 +28,15 @@ async function startup({ id, version, rootURI }) {
 }
 
 function onMainWindowLoad({ window }) {
-  companionScope?.ResearchCompanion.onMainWindowLoad?.(window);
+  companionScope?.ResearchCompanion?.onMainWindowLoad?.(window);
 }
 
 function onMainWindowUnload({ window }) {
-  companionScope?.ResearchCompanion.onMainWindowUnload?.(window);
+  companionScope?.ResearchCompanion?.onMainWindowUnload?.(window);
 }
 
 async function shutdown() {
-  await companionScope?.ResearchCompanion.stop();
+  await companionScope?.ResearchCompanion?.stop?.();
   companionScope = undefined;
 }
 

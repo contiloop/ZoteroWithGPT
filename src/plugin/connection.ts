@@ -14,8 +14,11 @@ import {
   FileBridgeTransport, GeckoFileBridgeFileSystem,
   type GeckoFileBridgeGlobals, type FileBridgeSubscription,
 } from "../adapters/file-bridge/index.js";
-import type { ZoteroReaderRenderingAdapter } from "../adapters/reader/index.js";
-import type { ZoteroViewerVerificationPort } from "../ports/zotero.js";
+import type {
+  FormattedPreviewVerificationPort,
+  VisiblePreviewFailureReason,
+  ZoteroViewerVerificationPort,
+} from "../ports/zotero.js";
 
 export interface ProductionConnectionEnvironment extends GeckoFileBridgeGlobals {
   Zotero: ZoteroNativeEnvironment["Zotero"] & { Profile: { dir: string } };
@@ -36,7 +39,7 @@ export interface ViewerVerificationDependencies {
     attachmentKey: string,
     annotationKey: string,
   ): Promise<{ comment: string } | undefined>;
-  formattedPreview: Pick<ZoteroReaderRenderingAdapter, "verifyVisiblePreview">;
+  formattedPreview: FormattedPreviewVerificationPort;
   nativeViewer: ZoteroViewerVerificationPort;
   reportError(error: unknown): void;
 }
@@ -50,24 +53,38 @@ export function createViewerVerificationPort(
       const { libraryId, attachmentKey, annotationKey } = request.payload;
       const item = await dependencies.findAttachment(Number(libraryId), attachmentKey);
       const record = await dependencies.readAnnotation(libraryId, attachmentKey, annotationKey);
+      let formattedFailure: VisiblePreviewFailureReason | "attachment_record_missing" |
+        "annotation_record_missing" | "inspection_error";
       if (item && item.id !== undefined && record) {
         try {
-          const visible = await dependencies.formattedPreview.verifyVisiblePreview({
+          const inspection = await dependencies.formattedPreview.inspectVisiblePreview({
             attachmentItemId: item.id,
             annotationKey,
             expectedNativeComment: record.comment,
           });
-          if (visible) {
+          if (inspection.visible) {
             return {
               confirmed: true,
               description: "Current native annotation content is visible in its formatted reader preview",
             };
           }
+          formattedFailure = inspection.reason;
         } catch (error) {
+          formattedFailure = "inspection_error";
           dependencies.reportError(error);
         }
+      } else if (!item || item.id === undefined) {
+        formattedFailure = "attachment_record_missing";
+      } else {
+        formattedFailure = "annotation_record_missing";
       }
-      return dependencies.nativeViewer.verifyAnnotationInViewer(request);
+      const nativeResult = await dependencies.nativeViewer.verifyAnnotationInViewer(request);
+      if (nativeResult.confirmed) return nativeResult;
+      return {
+        ...nativeResult,
+        description: `${nativeResult.description} Formatted preview check failed at gate ` +
+          `"${formattedFailure}".`,
+      };
     },
   };
 }
@@ -77,7 +94,7 @@ export async function openProductionConnection(
   environment: ProductionConnectionEnvironment,
   version: string,
   directory: string,
-  previews: Pick<ZoteroReaderRenderingAdapter, "verifyVisiblePreview">,
+  previews: FormattedPreviewVerificationPort,
 ): Promise<{ profileId: string; subscription: FileBridgeSubscription; close(): Promise<void> }> {
   const gate = new MutableZoteroAccessGate(true);
   const native = createZoteroNativeApi({ ...environment, accessGate: gate });

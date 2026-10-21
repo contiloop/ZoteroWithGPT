@@ -53,8 +53,9 @@ const connectionLifecycle = new SerializedConnectionLifecycle<string, Production
     Zotero, IOUtils, PathUtils, Cc, Ci, crypto,
     cloneInto: (value, target) => Cu.cloneInto(value, target), reportError,
   }, pluginVersion, directory, {
-    verifyVisiblePreview: request =>
-      previewLifecycle.resource?.verifyVisiblePreview(request) ?? Promise.resolve(false),
+    inspectVisiblePreview: request =>
+      previewLifecycle.resource?.inspectVisiblePreview(request) ??
+        Promise.resolve({ visible: false, reason: "renderer_inactive" }),
   }),
 );
 

@@ -244,6 +244,14 @@ test("verifies only a currently visible preview with exact attachment, annotatio
   await fixture.adapter.refresh();
   const preview = givePreviewLayout(fixture);
 
+  assert.deepEqual(
+    await fixture.adapter.inspectVisiblePreview({
+      attachmentItemId: fixture.attachmentItemId,
+      annotationKey: fixture.annotationKey,
+      expectedNativeComment: expected,
+    }),
+    { visible: true },
+  );
   assert.equal(
     await fixture.adapter.verifyVisiblePreview({
       attachmentItemId: fixture.attachmentItemId,
@@ -276,6 +284,14 @@ test("verifies only a currently visible preview with exact attachment, annotatio
     }),
     false,
   );
+  assert.deepEqual(
+    await fixture.adapter.inspectVisiblePreview({
+      attachmentItemId: fixture.attachmentItemId,
+      annotationKey: fixture.annotationKey,
+      expectedNativeComment: "stale native comment",
+    }),
+    { visible: false, reason: "content_mismatch" },
+  );
 
   fixture.reader._internalReader._state.sidebarOpen = false;
   assert.equal(
@@ -285,6 +301,14 @@ test("verifies only a currently visible preview with exact attachment, annotatio
       expectedNativeComment: expected,
     }),
     false,
+  );
+  assert.deepEqual(
+    await fixture.adapter.inspectVisiblePreview({
+      attachmentItemId: fixture.attachmentItemId,
+      annotationKey: fixture.annotationKey,
+      expectedNativeComment: expected,
+    }),
+    { visible: false, reason: "annotation_surface_missing" },
   );
   fixture.adapter.stop();
 });
@@ -321,6 +345,14 @@ test("does not count a visible toolbar when the formatted body is outside the vi
   await fixture.adapter.refresh();
   givePreviewLayout(fixture, { left: 10, right: 410, top: 900, bottom: 980 });
 
+  assert.deepEqual(
+    await fixture.adapter.inspectVisiblePreview({
+      attachmentItemId: fixture.attachmentItemId,
+      annotationKey: fixture.annotationKey,
+      expectedNativeComment: expected,
+    }),
+    { visible: false, reason: "body_not_visible" },
+  );
   assert.equal(
     await fixture.adapter.verifyVisiblePreview({
       attachmentItemId: fixture.attachmentItemId,
@@ -341,6 +373,14 @@ test("requires a visible owning reader browser in the selected Zotero tab", asyn
   givePreviewLayout(fixture);
 
   fixture.browser.style.display = "none";
+  assert.deepEqual(
+    await fixture.adapter.inspectVisiblePreview({
+      attachmentItemId: fixture.attachmentItemId,
+      annotationKey: fixture.annotationKey,
+      expectedNativeComment: expected,
+    }),
+    { visible: false, reason: "reader_not_visible" },
+  );
   assert.equal(
     await fixture.adapter.verifyVisiblePreview({
       attachmentItemId: fixture.attachmentItemId,

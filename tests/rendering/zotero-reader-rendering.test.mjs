@@ -56,6 +56,7 @@ function readerFixture({
     },
   };
   const links = [];
+  const errors = [];
   const host = { Reader: { _readers: [reader] } };
   const renderer = new SafeMarkdownRenderer({ window: dom.window });
   const adapter = new ZoteroReaderRenderingAdapter({
@@ -63,6 +64,7 @@ function readerFixture({
     renderer,
     openLink: (url) => links.push(url),
     scanIntervalMilliseconds: 60_000,
+    onError: (error) => errors.push(error),
   });
   const editor = document.querySelector(".comment .content");
   return {
@@ -73,6 +75,7 @@ function readerFixture({
     document,
     dom,
     editor,
+    errors,
     host,
     links,
     outerDom,
@@ -335,6 +338,71 @@ test("checks every open reader for the exact attachment instead of accepting a h
     true,
   );
   hidden.adapter.stop();
+});
+
+test("isolates removed and newly inaccessible readers from a healthy visible preview", async () => {
+  const healthy = readerFixture();
+  const removed = readerFixture({ attachmentItemId: 99, annotationKey: "REMOVED1" });
+  const expected = "정상 리더의 $q^2$ 설명";
+  setEditorText(healthy.editor, expected);
+  setEditorText(removed.editor, "곧 닫힐 리더");
+  healthy.host.Reader._readers.push(removed.reader);
+
+  await healthy.adapter.start();
+  assert.equal(removed.document.querySelectorAll("[data-zotero-gpt-rendered-comment]").length, 1);
+  givePreviewLayout(healthy);
+
+  healthy.host.Reader._readers.splice(1, 1);
+  let removedGetterReads = 0;
+  Object.defineProperty(removed.reader, "_iframeWindow", {
+    configurable: true,
+    get() {
+      removedGetterReads += 1;
+      throw new Error("can't access dead object");
+    },
+  });
+  const newlyDead = {};
+  Object.defineProperty(newlyDead, "_initPromise", {
+    get() {
+      throw new Error("new reader is already dead");
+    },
+  });
+  healthy.host.Reader._readers.push(newlyDead);
+
+  assert.deepEqual(
+    await healthy.adapter.inspectVisiblePreview({
+      attachmentItemId: healthy.attachmentItemId,
+      annotationKey: healthy.annotationKey,
+      expectedNativeComment: expected,
+    }),
+    { visible: true },
+  );
+  await healthy.adapter.refresh();
+
+  assert.equal(removed.document.querySelector("[data-zotero-gpt-rendered-comment]"), null);
+  assert.equal(removed.document.querySelector("style[data-zotero-gpt-reader-style]"), null);
+  assert.equal(removed.document.querySelector(".comment").hasAttribute("data-zotero-gpt-comment-mode"), false);
+  assert.equal(healthy.document.querySelectorAll("[data-zotero-gpt-rendered-comment]").length, 1);
+  assert.equal(removedGetterReads, 0, "removed readers are detached before dead wrapper access");
+  assert.deepEqual(
+    healthy.errors.map((error) => error.message),
+    ["new reader is already dead", "new reader is already dead"],
+  );
+  healthy.adapter.stop();
+});
+
+test("stop completes the remaining owned cleanup when one detach operation fails", async () => {
+  const fixture = readerFixture();
+  setEditorText(fixture.editor, "정리할 미리보기");
+  await fixture.adapter.start();
+  fixture.document.removeEventListener = () => {
+    throw new Error("can't access dead listener target");
+  };
+
+  assert.doesNotThrow(() => fixture.adapter.stop());
+  assert.equal(fixture.document.querySelector("[data-zotero-gpt-rendered-comment]"), null);
+  assert.equal(fixture.document.querySelector("style[data-zotero-gpt-reader-style]"), null);
+  assert.deepEqual(fixture.errors.map((error) => error.message), ["can't access dead listener target"]);
 });
 
 test("does not count a visible toolbar when the formatted body is outside the viewport", async () => {

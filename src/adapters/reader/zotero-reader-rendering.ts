@@ -216,23 +216,41 @@ export class ZoteroReaderRenderingAdapter implements FormattedPreviewVerificatio
     try {
       if (!this.#active) return;
       const currentReaders = new Set(this.#host.Reader._readers);
+      const inaccessibleReaders = new Set<ZoteroReaderLike>();
       for (const [reader, attached] of this.#attached) {
-        const currentDocument = reader._iframeWindow?.document;
-        if (!currentReaders.has(reader) || currentDocument !== attached.document) {
-          this.#detach(attached);
+        if (!currentReaders.has(reader)) {
           this.#attached.delete(reader);
+          this.#detach(attached);
+          continue;
         }
+        try {
+          if (reader._iframeWindow?.document === attached.document) continue;
+        } catch (error) {
+          inaccessibleReaders.add(reader);
+          this.#onError?.(error);
+        }
+        this.#attached.delete(reader);
+        this.#detach(attached);
       }
 
       for (const reader of currentReaders) {
-        if (this.#attached.has(reader)) continue;
-        await reader._initPromise;
-        await reader._internalReader?._primaryView?.initializedPromise;
-        if (!this.#active) return;
-        const document = reader._iframeWindow?.document;
-        if (document === undefined) continue;
-        const attached = this.#attach(reader, document);
-        this.#attached.set(reader, attached);
+        if (inaccessibleReaders.has(reader) || this.#attached.has(reader)) continue;
+        try {
+          await reader._initPromise;
+          await reader._internalReader?._primaryView?.initializedPromise;
+          if (!this.#active) return;
+          const document = reader._iframeWindow?.document;
+          if (document === undefined) continue;
+          const attached = this.#attach(reader, document);
+          this.#attached.set(reader, attached);
+        } catch (error) {
+          const attached = this.#attached.get(reader);
+          if (attached !== undefined) {
+            this.#attached.delete(reader);
+            this.#detach(attached);
+          }
+          this.#onError?.(error);
+        }
       }
     } finally {
       release?.();
@@ -248,23 +266,37 @@ export class ZoteroReaderRenderingAdapter implements FormattedPreviewVerificatio
       rendering: Promise.resolve(),
     };
     attached.clickHandler = (event) => this.#handleClick(attached, event);
-    document.addEventListener("click", attached.clickHandler, true);
+    try {
+      document.addEventListener("click", attached.clickHandler, true);
 
-    const Observer = document.defaultView?.MutationObserver;
-    const target = document.body ?? document.documentElement;
-    if (Observer !== undefined && target !== null) {
-      attached.observer = new Observer(() => {
-        void this.#renderAttached(attached).catch((error: unknown) => this.#onError?.(error));
-      });
-      attached.observer.observe(target, { childList: true, subtree: true, characterData: true });
+      const Observer = document.defaultView?.MutationObserver;
+      const target = document.body ?? document.documentElement;
+      if (Observer !== undefined && target !== null) {
+        attached.observer = new Observer(() => {
+          void this.#renderAttached(attached).catch((error: unknown) => this.#onError?.(error));
+        });
+        attached.observer.observe(target, { childList: true, subtree: true, characterData: true });
+      }
+      return attached;
+    } catch (error) {
+      this.#detach(attached);
+      throw error;
     }
-    return attached;
   }
 
   #detach(attached: AttachedReader): void {
-    attached.observer?.disconnect();
-    attached.document.removeEventListener("click", attached.clickHandler, true);
-    removeOwnedNodes(attached.document);
+    const cleanup = [
+      () => attached.observer?.disconnect(),
+      () => attached.document.removeEventListener("click", attached.clickHandler, true),
+      () => removeOwnedNodes(attached.document),
+    ];
+    for (const operation of cleanup) {
+      try {
+        operation();
+      } catch (error) {
+        this.#onError?.(error);
+      }
+    }
   }
 
   #renderAttached(attached: AttachedReader): Promise<void> {

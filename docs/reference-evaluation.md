@@ -60,3 +60,9 @@ License finding: current v0.16.2 is AGPL-3.0-or-later. The project states that r
 - Native Zotero JavaScript APIs and the authenticated Zotero 10 local API are both viable write mechanisms. Any local API route must preserve the real Zotero authorization prompt and keep its credential local and redacted.
 - `cookjohn/zotero-mcp` is the preferred MIT reference for native transactional writes. `54yyyu/zotero-mcp` is the strongest reference for local API authorization and annotation geometry, with mixed-license and PyMuPDF constraints. `qrkks/zotero-annotation-markdown` is the strongest rendering reference, with MIT use limited to v0.15.4 unless AGPL is accepted.
 - No AGPL or commercial rendering/geometry dependency may be installed or copied until the license choice is explicit. No reference removes the need for real Zotero 10.0.6 acceptance testing.
+
+## User-requested recheck
+
+On 2026-10-21, the user explicitly requested reconsidering `54yyyu/zotero-mcp` while resuming implementation. `git ls-remote` confirmed its current `main` remains `eb016b1b746d183d19ba746249262cd0395f926c`, the commit evaluated above. Its current README and [getting-started guide](https://github.com/54yyyu/zotero-mcp/blob/eb016b1b746d183d19ba746249262cd0395f926c/docs/getting-started.md) were reread. The annotation geometry, dry-run and local-authorization patterns remain useful references. Its ChatGPT recipe requires a separately exposed HTTP MCP transport and tunnel; that recipe does not establish this account's Web access or replace the approved authenticated file bridge. No additional server, tunnel, credential or reference plugin was installed.
+
+The runtime observations earlier in this document describe the initial preflight. Subsequent development-extension installation and real native-reader results are recorded in [native host validation](native-host-validation.md); they do not constitute acceptance of the reference projects themselves.

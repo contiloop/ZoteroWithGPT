@@ -1,8 +1,10 @@
 # Connection validation
 
-Status: **BLOCKED — the required ChatGPT Work local file test has not yet run.**
+Status: **PASSED for the approved T1 scope — both the connected MCP route and the direct Codex local fallback completed bounded real-file round trips.**
 
-This record covers T1 preflight evidence collected on 2026-10-21. It distinguishes the surface that performed each action. A successful call from Codex to a connected MCP server is not evidence that the same tool is installed or usable in ChatGPT Web or that a Work local task can access the same files.
+This record covers T1 preflight evidence collected on 2026-10-21. It distinguishes the surface that performed each action. A successful call from Codex to a connected MCP server is not evidence that the same tool is installed or usable in ChatGPT Web. A direct Codex local file test is likewise not evidence of independent ChatGPT Work availability.
+
+The approved execution-route amendment for this cycle accepts either real Codex local execution or Work local execution for the no-MCP fallback. The user accepted Codex or Work for this purpose, and the Codex route was available and tested. Work remains unverified and is no longer a T1 gate for this cycle.
 
 ## Evidence matrix
 
@@ -10,9 +12,10 @@ This record covers T1 preflight evidence collected on 2026-10-21. It distinguish
 | --- | --- | --- | --- | --- | --- | --- |
 | Codex desktop agent → connected **Mac Safe Files** server | Server reported `direct-macos`, first-party local Node structured tools, Node `v26.5.0`; transport reported outbound OpenAI Secure MCP Tunnel | 2026-10-21 | Read server policy and host information | Allowed root `/Users/USER`; canonical-path enforcement; UTF-8 text operations and bounded file sizes; no shell, GUI, browser, or network tools. Host reported macOS 15.7.9 build 24G830 on arm64. | MCP | None appeared in this Codex call. The server policy says the ChatGPT app should remain **Always ask**. |
 | Codex desktop agent → connected **Mac Safe Files** server | Same connection | 2026-10-21 | Create the dedicated probe directory, write one 88-byte text file, read it, stat it, delete it, confirm the directory empty, and remove the owned empty directory | Read content matched exactly. SHA-256 was `01340a02d49f058ea4b91b79dfb8907737ca0888e2a8c2ee46d5af80d6af2ac3`; canonical file path was `/Users/USER/Desktop/ZoteroWithGPT/.dryforge/connection-probe/t1-roundtrip-20261021.txt`; stat reported 88 bytes and mtime `2026-10-21T07:54:23.166Z`. Delete succeeded; final directory listing was empty; directory removal succeeded. | MCP | None appeared. This proves the Codex-originated MCP round trip only. |
+| Codex desktop local task → macOS filesystem through `exec_command` | zsh 5.9 on macOS 15.7.9 arm64 | 2026-10-21 | Create a dedicated directory; write and read `request.json`; write and read `result.json`; assert both exact readbacks; record canonical paths, byte counts, and SHA-256 values; delete both owned files and the directory | `request.json` was 51 bytes with SHA-256 `b9a3af155ec695c47d9f9b7b90bd84cd242b03318decec64947f413c786eb3c0`. `result.json` was 127 bytes with SHA-256 `4d8c5339b8f7c2c8c9f39b0ce50731c04eed1b0fc5d2affbec0d43ea580454dd`. Both exact-content assertions passed; cleanup was confirmed. | Neither MCP nor Work; direct Codex local route | None appeared. This satisfies the approved no-MCP fallback for this cycle. |
 | Codex → plugin permission inspector | Installed app identity **Mac Safe Files** | 2026-10-21 | Read current app permission policy | Global default was `Allow low-risk actions`; the app-specific override was `Allow all actions`. | Neither Work nor the file MCP action; connector metadata read | None appeared because this was a read-only inspection. The observed override conflicts with the server policy requirement that ChatGPT remain **Always ask**. |
 | Local macOS shell → installed Zotero application | Zotero 10.0.6, build ID `20261007113827`, Gecko compatibility 140.0–140.99.*; macOS 15.7.9 arm64 | 2026-10-21 | Read application metadata and list running processes | `/Applications/Zotero.app` reported bundle versions 10.0.6; the Zotero main process and plugin container were running. | Neither | None; read-only local inspection. |
-| ChatGPT Work local task without Mac Safe Files | Not yet observed | 2026-10-21 | Use direct local file access to create, read, and report a dedicated `request.json` / `result.json` pair | **Pending. No Work-originated files or result exist in the evidence available to this task.** | Work | Unknown until the real run. |
+| ChatGPT Work local task without Mac Safe Files | Not observed | 2026-10-21 | Optional future parity test using a dedicated `request.json` / `result.json` pair | No Work-originated files or result exist in the evidence available to this task. Work support remains unverified and is not claimed. | Work | Unknown until a real Work run. |
 | ChatGPT Web study → installed plugin → Zotero viewer | No plugin package exists yet | 2026-10-21 | End-to-end study/comment delivery | Not run. This belongs to the later end-to-end gate after the plugin exists; it is not substituted by the Codex MCP probe. | Intended MCP/Web path | Unknown until that later run. |
 
 No credentials, API keys, tunnel keys, profile contents, or Zotero local API authorization tokens were read or recorded.
@@ -31,6 +34,22 @@ The server exposed `policy_status`, `fs_stat`, `fs_list`, `fs_read_text`, `fs_wr
 
 The file and its dedicated empty directory were deleted after verification. This leaves no retained probe artifact in the main project.
 
+## Direct Codex local round trip
+
+The no-MCP fallback used direct Codex local filesystem execution in `/Users/USER/Desktop/ZoteroWithGPT/.dryforge/local-connection-probe`. The command first required the directory not to exist, created it with a restrictive umask, and wrote these exact one-line JSON documents:
+
+```json
+{"probe":"zotero-with-gpt-t1","date":"2026-10-21"}
+```
+
+```json
+{"request":{"probe":"zotero-with-gpt-t1","date":"2026-10-21"},"executionSurface":"Codex local exec","permissionPrompt":"none"}
+```
+
+`cat` readback matched both in-memory expected strings. `request.json` resolved to `/Users/USER/Desktop/ZoteroWithGPT/.dryforge/local-connection-probe/request.json` and measured 51 bytes; `result.json` resolved to `/Users/USER/Desktop/ZoteroWithGPT/.dryforge/local-connection-probe/result.json` and measured 127 bytes. The hashes are recorded in the evidence matrix. Both files and the owned directory were deleted, and a final absence assertion passed.
+
+This proves that the accepted Codex local alternative can use the dedicated request/result file convention. It does not prove that ChatGPT Work can use the files, and it does not substitute for the later ChatGPT Web-to-plugin-to-Zotero viewer test.
+
 ## Setup and removal evidence
 
 OpenAI's [Secure MCP Tunnel setup documentation](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels#set-up-tunnel-client) supports this reproducible path without copying another user's secrets:
@@ -47,13 +66,13 @@ For removal, disconnect or remove the installed ChatGPT plugin through plugin ma
 
 Before production use, the owner or administrator must reconcile the observed **Allow all actions** override with the server's stated **Always ask** requirement. This preflight deliberately did not change account, plugin, MCP, or organization permissions.
 
-## Required Work local test
+## Optional future Work verification
 
-The remaining T1 gate is a real user-started Work local task. Use this non-secret prompt verbatim:
+Work parity can be established later with a real user-started Work local task. Use this non-secret prompt verbatim:
 
 > Use only direct local file access (no Mac MCP, no shell network, no Zotero writes). In `/Users/USER/Desktop/ZoteroWithGPT/.dryforge/work-connection-probe` create `request.json` containing `{"probe":"zotero-with-gpt-t1","date":"2026-10-21"}`; read it back; write `result.json` with the exact request object plus your execution surface and whether any permission prompt appeared; then read `result.json` and report both canonical paths and byte counts. Do not inspect other files or credentials. Leave both files for verification.
 
-T1 can pass this gate only after the two files are inspected from the project host and the Work response records the real surface, action, observed result, and permission-prompt behavior. The run must use Work's direct local file capability without Mac Safe Files. If Work cannot create the files, record the exact error and prompt behavior; a Codex run or mock files do not replace this evidence.
+Any future Work claim requires inspecting the two files from the project host and recording the Work response's real surface, action, observed result, and permission-prompt behavior. The run must use Work's direct local file capability without Mac Safe Files. If Work cannot create the files, record the exact error and prompt behavior. The successful Codex test satisfies the amended cycle scope but must continue to be labeled as Codex rather than Work.
 
-OpenAI's [Work local security documentation](https://learn.chatgpt.com/docs/enterprise/chatgpt-work-local-security#files-and-device-access) explains that local tasks can access supported local files and authorized systems within the user's existing privileges and configured controls. It does not establish that this account has the capability, so the real run remains necessary. If it succeeds, the same dedicated request/result file convention is supported for the Work fallback. Until then, that compatibility is unverified.
+OpenAI's [Work local security documentation](https://learn.chatgpt.com/docs/enterprise/chatgpt-work-local-security#files-and-device-access) explains that local tasks can access supported local files and authorized systems within the user's existing privileges and configured controls. It does not establish that this account has the capability. Until a real Work run succeeds, Work compatibility with this request/result convention remains unverified.
 

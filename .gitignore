@@ -1,4 +1,5 @@
 .dryforge/
+.local/
 node_modules
 dist/
 .cache/

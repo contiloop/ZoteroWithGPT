@@ -6,6 +6,8 @@ An in-progress connection for recording ChatGPT Web study sessions as native Zot
 
 Requires Node.js 24–26 and npm. Recreate dependencies with `npm ci`, then run `npm run verify`.
 
-The verification command currently covers strict TypeScript checking, the Node.js test suite, and compilation. Plugin packaging and real ChatGPT Web/Work/Zotero acceptance checks are required before a release; passing the core command alone does not establish an installable or working end-to-end product.
+The verification command covers strict TypeScript checking, the Node.js test suite, compilation, deterministic XPI packaging, and package validation. Real ChatGPT Web and Zotero reader acceptance remain separate checks; passing this command alone does not establish a working end-to-end connection. ChatGPT Work access has not been independently verified; direct Codex local files are the validated alternative route for this cycle.
+
+Build the installable XPI and matching client instructions with `npm run package`. See [installation](docs/install.md), [removal and recovery](docs/uninstall.md), and [connection validation](docs/connection-validation.md).
 
 No OpenAI API key is required. Do not put personal credentials, Zotero libraries, transport secrets, or private study content in this repository.

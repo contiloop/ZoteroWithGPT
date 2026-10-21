@@ -22,13 +22,10 @@ manual-only XPI. The package therefore uses
 manual **Check for Updates** can report a download error or unavailable update.
 That result is expected and does not indicate a bridge or Zotero-library error.
 
-Package verification requires that exact value. An arbitrary HTTPS host is
-rejected because it would claim an update service, and a self-contained `data:`
-URL is rejected by the installed Gecko manifest URL check: the manifest schema
-normalizes `update_url` as a URL through `Schemas.sys.mjs`, while
-`ExtensionCommon.sys.mjs` applies `DISALLOW_INHERIT_PRINCIPAL`, which covers
-`data:` URLs. Install newer versions manually from the same trusted source as
-the original XPI.
+Package verification requires that exact value as this release's audited
+manual-distribution policy. Other values are rejected by the release tooling;
+that policy does not claim Zotero rejects every other URI form. Install newer
+versions manually from the same trusted source as the original XPI.
 
 ## The connection is Disabled
 

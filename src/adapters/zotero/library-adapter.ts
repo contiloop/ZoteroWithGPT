@@ -553,8 +553,8 @@ export class ZoteroLibraryAdapter
     return {
       confirmed: visible,
       description: visible
-        ? "The initialized Zotero reader contains the annotation in its native annotation state"
-        : "The initialized Zotero reader did not expose the annotation in its native annotation state",
+        ? "The current native annotation comment is visible in an active Zotero reader"
+        : "Could not confirm the current native annotation comment in an active Zotero reader",
     };
   }
 

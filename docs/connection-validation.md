@@ -50,6 +50,21 @@ The no-MCP fallback used direct Codex local filesystem execution in `/Users/USER
 
 This proves that the accepted Codex local alternative can use the dedicated request/result file convention. It does not prove that ChatGPT Work can use the files, and it does not substitute for the later ChatGPT Web-to-plugin-to-Zotero viewer test.
 
+## Later host-access check
+
+The native-app inventory lists Zotero as running. Three attempts to bind its
+window through the computer-use tool timed out (`timeoutReached -10005`), while
+the same tool successfully read Finder. Opening the installed Zotero app through
+Finder did not resolve the binding failure. A loopback connector ping on port
+23119 returned connection refused; this alone does not establish why the service
+is unavailable. No process was force-quit and no preference was changed.
+
+The running plugin-container process reports parent build `20260922124338`,
+whereas the application on disk reports `20261007113827`. The installed version
+and a running process are insufficient to identify the running application's
+version. Native integration must query the actual host version once access is
+available, and may require an ordinary user-controlled restart.
+
 ## Setup and removal evidence
 
 OpenAI's [Secure MCP Tunnel setup documentation](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels#set-up-tunnel-client) supports this reproducible path without copying another user's secrets:

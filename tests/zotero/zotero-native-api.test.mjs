@@ -74,12 +74,15 @@ class FakeItem {
 
 function fixtureEnvironment() {
   const readerRealmRequest = Symbol("readerRealmRequest");
+  const readerRealmPosition = Symbol("readerRealmPosition");
   const host = {
     items: new Map(),
     nextId: 10,
     savedSnapshots: [],
     diskBytes: new Uint8Array([1, 2, 3, 4]),
     readerBytes: new Uint8Array([1, 2, 3, 4]),
+    requireClonedAnnotationMeta: false,
+    annotationMetaClones: 0,
   };
   const paper = new FakeItem(host, "journalArticle", {
     id: 1,
@@ -104,12 +107,22 @@ function fixtureEnvironment() {
   };
   const reader = {
     itemID: 2,
+    _iframeWindow: {},
     _initPromise: Promise.resolve(),
     _internalReader: {
       _state: { annotations: [] },
       _primaryView: {
         initializedPromise: Promise.resolve(),
-        getAnnotationMeta() { return { sortIndex: "00000|000001|00020", pageLabel: "1" }; },
+        getAnnotationMeta(position) {
+          const pageIndex =
+            !host.requireClonedAnnotationMeta || position?.[readerRealmPosition] === true
+              ? position?.pageIndex
+              : undefined;
+          return {
+            sortIndex: `${pageIndex.toString().padStart(5, "0")}|000001|00020`,
+            pageLabel: "1",
+          };
+        },
         _selectionRanges: [],
         _iframeWindow: {
           PDFViewerApplication: {
@@ -195,12 +208,14 @@ function fixtureEnvironment() {
       IOUtils: { async read() { return Uint8Array.from(host.diskBytes); } },
       crypto: webcrypto,
       cloneInto(value, target) {
-        assert.equal(
-          target,
-          reader._internalReader._primaryView._iframeWindow,
-          "worker-bound data must be cloned into the PDF frame realm",
-        );
-        return { ...structuredClone(value), [readerRealmRequest]: true };
+        if (target === reader._internalReader._primaryView._iframeWindow) {
+          return { ...structuredClone(value), [readerRealmRequest]: true };
+        }
+        if (target === reader._iframeWindow) {
+          host.annotationMetaClones += 1;
+          return { ...structuredClone(value), [readerRealmPosition]: true };
+        }
+        assert.fail("native data was cloned into an unrelated realm");
       },
     },
   };
@@ -241,6 +256,24 @@ test("native annotation create commits content and durable identity in one Zoter
   const recovered = await native.findByOperationMarker(marker);
   assert.equal(recovered.length, 1);
   assert.equal(recovered[0].annotationKey, "ANN00001");
+});
+
+test("annotation metadata clones native geometry into the outer reader realm", async () => {
+  const { env, host } = fixtureEnvironment();
+  host.requireClonedAnnotationMeta = true;
+  const native = createZoteroNativeApi(env);
+  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+
+  const record = await native.createAnnotation({
+    anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
+    type: "highlight",
+    comment: "Reader-realm metadata fixture",
+    color: "#ffd400",
+    operationMarker: "urn:reader-realm-meta",
+  });
+
+  assert.equal(record.annotationKey, "ANN00001");
+  assert.equal(host.annotationMetaClones, 1);
 });
 
 test("native update re-reads the item and rejects a concurrent manual edit", async () => {

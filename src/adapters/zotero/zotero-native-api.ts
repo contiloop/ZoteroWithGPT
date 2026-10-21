@@ -715,7 +715,11 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     const meta = await this.#withReader(
       requiredNumber(attachment.id, "attachment ID"),
       true,
-      async (_reader, view) => view.getAnnotationMeta?.(position) ?? null,
+      async (reader, view) => {
+        const frame = reader._iframeWindow;
+        if (frame === undefined) throw new Error("The Zotero reader frame is unavailable");
+        return view.getAnnotationMeta?.(this.#cloneInto(position, frame)) ?? null;
+      },
     );
     const sortIndex = optionalString(meta?.sortIndex);
     const pageLabel = optionalString(meta?.pageLabel) ?? input.anchor.pageLabel;

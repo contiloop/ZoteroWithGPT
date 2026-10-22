@@ -343,6 +343,16 @@ test("inspect_arxiv accepts bounded official arXiv URLs without read authorizati
     arxivId: "hep-th/9901001",
     version: 3,
   });
+  assert.deepEqual(parseArxivUrl("http://www.arxiv.org/abs/2401.01234.pdf?download=1#page=2"), {
+    arxivId: "2401.01234",
+  });
+  assert.deepEqual(parseArxivUrl("https://arxiv.org/abs/math/0211159v4.pdf?context=study"), {
+    arxivId: "math/0211159",
+    version: 4,
+  });
+  assert.deepEqual(parseArxivUrl("http://arxiv.org:80/pdf/2401.01234.pdf"), {
+    arxivId: "2401.01234",
+  });
 
   expectCode(
     () => validateProtocolRequest({ ...modern, authorization: {
@@ -360,12 +370,19 @@ test("inspect_arxiv rejects malformed, non-arXiv, and oversized URLs", () => {
     profileId: "profile-A",
   };
   for (const url of [
-    "http://arxiv.org/abs/2401.01234",
     "https://example.com/abs/2401.01234",
+    "https://arxiv.org.evil.example/abs/2401.01234",
+    "https://user:secret@arxiv.org/abs/2401.01234",
+    "https://arxiv.org:8443/abs/2401.01234",
+    "https://127.0.0.1/abs/2401.01234",
+    "https://arxiv.org/html/2401.01234",
+    " https://arxiv.org/abs/2401.01234",
+    "https://arxiv.org/abs/../pdf/2401.01234",
+    "https://arxiv.org/abs/%2e%2e/pdf/2401.01234",
+    "https://arxiv.org\\evil.example/abs/2401.01234",
     "https://arxiv.org/abs/2413.01234",
     "https://arxiv.org/abs/2401.00000",
     "https://arxiv.org/abs/2401.01234v0",
-    "https://arxiv.org/abs/2401.01234v2?download=1",
     "https://arxiv.org/abs/hep-th/9913001",
     "https://arxiv.org/abs/hep-th/9901000",
   ]) {

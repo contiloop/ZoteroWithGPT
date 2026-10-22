@@ -148,10 +148,18 @@ function validateArticleIdentity(value: unknown, path: string): Record<string, u
   return identity;
 }
 
-/** Parses only official HTTPS arXiv abstract/PDF URLs; it performs no network access. */
+/** Parses official arXiv article links and discards non-identity URL decoration. */
 export function parseArxivUrl(value: string): ArxivUrlReference {
   if (utf8Length(value) > MAX_URL_BYTES) {
     fail("too_large", `arXiv URL exceeds ${MAX_URL_BYTES} UTF-8 bytes`);
+  }
+  const undecorated = value.split(/[?#]/u, 1)[0] ?? "";
+  if (
+    value.trim() !== value ||
+    undecorated.includes("\\") ||
+    /(?:^|\/)(?:\.|%2e)(?:\.|%2e)?(?:\/|$)/iu.test(undecorated)
+  ) {
+    fail("invalid_request", "arXiv URL contains unsupported path normalization");
   }
   let parsed: URL;
   try {
@@ -160,15 +168,13 @@ export function parseArxivUrl(value: string): ArxivUrlReference {
     return fail("invalid_request", "arXiv URL is malformed");
   }
   if (
-    parsed.protocol !== "https:" ||
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
     (parsed.hostname !== "arxiv.org" && parsed.hostname !== "www.arxiv.org") ||
     parsed.port !== "" ||
     parsed.username !== "" ||
-    parsed.password !== "" ||
-    parsed.search !== "" ||
-    parsed.hash !== ""
+    parsed.password !== ""
   ) {
-    fail("invalid_request", "arXiv URL must be an uncredentialed official HTTPS URL");
+    fail("invalid_request", "arXiv URL must be an uncredentialed official HTTP(S) URL");
   }
 
   const pathMatch = /^\/(abs|pdf)\/(.+?)\/?$/u.exec(parsed.pathname);
@@ -176,10 +182,8 @@ export function parseArxivUrl(value: string): ArxivUrlReference {
     fail("invalid_request", "arXiv URL must identify an abstract or PDF");
   }
   let reference = pathMatch[2];
-  if (pathMatch[1] === "pdf" && reference.endsWith(".pdf")) {
+  if (reference.endsWith(".pdf")) {
     reference = reference.slice(0, -4);
-  } else if (pathMatch[1] === "abs" && reference.endsWith(".pdf")) {
-    fail("invalid_request", "An arXiv abstract URL must not use a PDF suffix");
   }
 
   const versionMatch = /v([1-9][0-9]*)$/u.exec(reference);

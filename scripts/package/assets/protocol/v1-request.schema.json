@@ -347,8 +347,8 @@
           "minLength": 1,
           "maxLength": 4096,
           "x-maxUtf8Bytes": 4096,
-          "description": "Official uncredentialed HTTPS arXiv abs/PDF URL. Runtime validation rejects query, fragment, invalid numeric components, zero versions, and all-zero serials.",
-          "pattern": "^https://(?:www\\.)?arxiv\\.org/(?:abs|pdf)/.+$"
+          "description": "Official uncredentialed HTTP(S) arXiv abs/PDF article URL. Runtime validation retains only the identifier and optional positive version, ignores query and fragment decoration, and rejects nonstandard ports, invalid numeric components, zero versions, and all-zero serials.",
+          "pattern": "^(?:http://(?:www\\.)?arxiv\\.org(?::80)?|https://(?:www\\.)?arxiv\\.org(?::443)?)/(?:abs|pdf)/[^?#]+(?:\\?[^#]*)?(?:#.*)?$"
         }
       }
     },

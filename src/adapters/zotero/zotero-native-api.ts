@@ -1016,6 +1016,7 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
             "The native arXiv parent transaction ended before commit",
           );
         }
+        this.#assertPreparedArxivFiles(fileEvidence);
         commitBoundaryReached = true;
         return { kind: "saved", value: parent };
       });
@@ -1157,6 +1158,7 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
             "The native arXiv attachment transaction ended before commit",
           );
         }
+        this.#assertPreparedArxivFiles(fileEvidence);
         commitBoundaryReached = true;
         return { kind: "saved", value: { parent, attachment } };
       });

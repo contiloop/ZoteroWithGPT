@@ -139,6 +139,7 @@ class FakeItem {
   getNoteTitle() { return "Fixture note"; }
   async save() {
     assert.equal(this.host.db.inTransaction(), true);
+    await this.host.onItemSave?.(this);
     if (!this.id) this.id = this.host.nextId++;
     if (!this.key) this.key = `KEY${String(this.id).padStart(5, "0")}`;
     this.version += 1;
@@ -174,6 +175,7 @@ function fixtureEnvironment() {
     clientVersion: 1,
     transactionWaiters: 0,
     onItemsGetAll: undefined,
+    onItemSave: undefined,
     afterTransactionCommit: undefined,
   };
   let transactionTail = Promise.resolve();
@@ -192,11 +194,21 @@ function fixtureEnvironment() {
       if (queued) host.transactionWaiters -= 1;
       this.active = true;
       transactionVersionIncremented = false;
+      const itemIdsBefore = new Set(host.items.keys());
+      const snapshotsBefore = host.savedSnapshots.length;
+      const clientVersionBefore = host.clientVersion;
       let result;
       let committed = false;
       try {
         result = await work();
         committed = true;
+      } catch (error) {
+        for (const itemId of host.items.keys()) {
+          if (!itemIdsBefore.has(itemId)) host.items.delete(itemId);
+        }
+        host.savedSnapshots.length = snapshotsBefore;
+        host.clientVersion = clientVersionBefore;
+        throw error;
       } finally {
         this.active = false;
         transactionCount -= 1;
@@ -1150,6 +1162,64 @@ test("actual native importer keeps post-file-create access loss uncertain", asyn
     [...host.diskByPath.keys()].filter((path) => path.endsWith("arxiv-2401.01234-v2.pdf")).length,
     1,
   );
+});
+
+test("actual native importer rolls back an attachment when PDF bytes change during save", async () => {
+  const canonicalBytes = new Uint8Array([37, 80, 68, 70, 45, 121, 122, 123]);
+  const originalBytes = new Uint8Array([37, 80, 68, 70, 45, 31, 32, 33]);
+  const { env, host } = fixtureEnvironment();
+  const gate = new MutableZoteroAccessGate(true);
+  env.accessGate = gate;
+  const parent = new FakeItem(host, "journalArticle", {
+    key: "SAVEAWAITPARENT",
+    fields: {
+      title: "Canonical parent with an older PDF",
+      extra: "arXiv:2401.01234v2",
+    },
+  });
+  await parent.saveTx();
+  const existingPath = "/race/save-await-existing.pdf";
+  host.diskByPath.set(existingPath, Uint8Array.from(originalBytes));
+  const existingPdf = new FakeItem(host, "attachment", {
+    key: "SAVEAWAITOLD",
+    parentItemID: parent.id,
+    attachmentContentType: "application/pdf",
+    filePath: existingPath,
+    fields: {
+      title: "Older-version manual PDF",
+      url: "https://arxiv.org/pdf/2401.01234v1",
+    },
+  });
+  await existingPdf.saveTx();
+  const native = createZoteroNativeApi(env);
+  const inspection = await native.inspectArxiv(arxivSource);
+  const { adapter } = arxivImporter(native, inspection, canonicalBytes);
+  host.onItemSave = async (item) => {
+    if (!item.isPDFAttachment() || item.key === existingPdf.key) return;
+    host.onItemSave = undefined;
+    await Promise.resolve();
+    host.diskByPath.set(existingPath, Uint8Array.from(canonicalBytes));
+  };
+
+  const outcome = await adapter.ensure({
+    source: arxivSource,
+    selection: {
+      kind: "attach",
+      itemKey: parent.key,
+      expectedItemRevision: inspection.candidates[0].itemRevision,
+    },
+    inspectionToken: "postcommit-token",
+    accessFence: adapter.captureAccessFence(),
+    identity: {
+      operationId: "attachment-save-byte-race",
+      requestDigest: "digest-attachment-save-byte-race",
+    },
+  });
+
+  assert.equal(outcome.kind, "rejected");
+  assert.equal(outcome.error.code, "conflict");
+  assert.deepEqual(host.diskByPath.get(existingPath), canonicalBytes);
+  assert.deepEqual(parent.getAttachments(), [existingPdf.id]);
 });
 
 test("native arXiv inspection finds every canonical manual parent and keeps missing PDFs conservative", async () => {

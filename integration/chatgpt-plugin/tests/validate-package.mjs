@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = path.resolve(testDirectory, "..");
-const TARGET_PLUGIN_VERSION = "0.2.0";
+const TARGET_PLUGIN_VERSION = "0.2.1";
 
 const REQUIRED_SCENARIOS = [
   "direct-save",

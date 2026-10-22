@@ -76,7 +76,7 @@ The actual private result was:
 | Native API presence | Passed | Item lookup/read APIs, HTTP request, item constructor, and attachment import API were present; constructor and import were not invoked. |
 | Owned parent item | Passed | Found, regular, not deleted. |
 | Owned PDF attachment | Passed | Found, `application/pdf`, not deleted, with both parent-to-child and child-to-parent relationships confirmed. No file path or paper content was recorded. |
-| Concrete-version abstract HTML | Passed | HTTP 200, `text/html`, 44,244 bytes, version and title matched. |
+| Concrete-version abstract HTML | Passed | HTTP 200, `text/html`, 44,244 bytes. The title and versionless article ID appeared in the body, and the requested URL named v7; the response metadata did not independently establish the concrete version. |
 | Fixed arXiv API metadata query | **Failed** | `get_request_failed`; no status or more specific cause was available in the retained result or focused existing logs. No retry, alternate endpoint, or operating-system result was substituted. |
 | Concrete-version PDF retrieval | Passed | HTTP 200, `application/pdf`, 2,215,244 bytes after one observed redirect, within the declared cap. The first five bytes matched `%PDF-`. This is bounded retrieval and a PDF signature check, not proof of full PDF parsing. |
 | Overall probe | **Failed** | One required check failed. The result remained failed rather than being widened from the partial successes. |
@@ -109,6 +109,6 @@ All commands below ran from the repository root unless stated otherwise.
 
 ## Blocking decision
 
-The personal ChatGPT plugin lifecycle and one-time private configuration mechanism are feasible in this account. Native Zotero item and attachment reads, the versioned abstract page, and the bounded versioned PDF retrieval are also feasible on this host.
+The personal ChatGPT plugin lifecycle and one-time private configuration mechanism are feasible in this account. Native Zotero item and attachment reads, the requested versioned abstract-page route, and bounded PDF retrieval are also feasible on this host. The HTML substring check did not independently prove the response metadata version.
 
 The fixed arXiv API metadata endpoint is not yet feasible evidence: its Zotero-host request failed with an unresolved cause. Production work must not treat the abstract HTML or an operating-system request as a silent replacement. Resolve the required metadata source or the host access failure before approving this preflight. Independently, T7 must still prove implicit activation and the normal save behavior in a fresh ordinary Web chat.

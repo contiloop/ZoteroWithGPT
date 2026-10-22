@@ -13,6 +13,7 @@ import {
   validateProtocolRequest,
   validateProtocolResponse,
 } from "../../dist/protocol/index.js";
+import { decideArxivImport } from "../../dist/core/arxiv-selection.js";
 
 const connectionRequest = {
   protocolVersion: 1,
@@ -343,6 +344,16 @@ test("inspect_arxiv accepts bounded official arXiv URLs without read authorizati
     arxivId: "hep-th/9901001",
     version: 3,
   });
+  assert.deepEqual(parseArxivUrl("http://www.arxiv.org/abs/2401.01234.pdf?download=1#page=2"), {
+    arxivId: "2401.01234",
+  });
+  assert.deepEqual(parseArxivUrl("https://arxiv.org/abs/math/0211159v4.pdf?context=study"), {
+    arxivId: "math/0211159",
+    version: 4,
+  });
+  assert.deepEqual(parseArxivUrl("http://arxiv.org:80/pdf/2401.01234.pdf"), {
+    arxivId: "2401.01234",
+  });
 
   expectCode(
     () => validateProtocolRequest({ ...modern, authorization: {
@@ -360,12 +371,21 @@ test("inspect_arxiv rejects malformed, non-arXiv, and oversized URLs", () => {
     profileId: "profile-A",
   };
   for (const url of [
-    "http://arxiv.org/abs/2401.01234",
     "https://example.com/abs/2401.01234",
+    "https://arxiv.org.evil.example/abs/2401.01234",
+    "https://user:secret@arxiv.org/abs/2401.01234",
+    "https://arxiv.org:8443/abs/2401.01234",
+    "https://127.0.0.1/abs/2401.01234",
+    "https://arxiv.org/html/2401.01234",
+    " https://arxiv.org/abs/2401.01234",
+    "https://arxiv.org/abs/../pdf/2401.01234",
+    "https://arxiv.org/abs/%2e%2e/pdf/2401.01234",
+    "https://arxiv.org/abs/.\n./pdf/2401.01234v2",
+    "https://arxiv.org/abs/%2e%2e\t/pdf/2401.01234v2",
+    "https://arxiv.org\\evil.example/abs/2401.01234",
     "https://arxiv.org/abs/2413.01234",
     "https://arxiv.org/abs/2401.00000",
     "https://arxiv.org/abs/2401.01234v0",
-    "https://arxiv.org/abs/2401.01234v2?download=1",
     "https://arxiv.org/abs/hep-th/9913001",
     "https://arxiv.org/abs/hep-th/9901000",
   ]) {
@@ -375,6 +395,20 @@ test("inspect_arxiv rejects malformed, non-arXiv, and oversized URLs", () => {
     () => validateProtocolRequest({ ...base, payload: { url: "가".repeat(1_366) } }),
     "too_large",
   );
+
+  const requestSchema = JSON.parse(readFileSync(new URL(
+    "../../scripts/package/assets/protocol/v1-request.schema.json",
+    import.meta.url,
+  ), "utf8"));
+  const schemaPattern = new RegExp(
+    requestSchema.$defs.inspectArxivPayload.properties.url.pattern,
+    "u",
+  );
+  assert.equal(schemaPattern.test("https://arxiv.org/abs/.\n./pdf/2401.01234v2"), false);
+  assert.equal(schemaPattern.test("https://arxiv.org/abs/../pdf/2401.01234v2"), false);
+  assert.equal(schemaPattern.test("https://arxiv.org/abs/%2e%2e/pdf/2401.01234v2"), false);
+  assert.equal(schemaPattern.test("https://arxiv.org\\evil/abs/2401.01234v2"), false);
+  assert.equal(schemaPattern.test("https://arxiv.org/abs/2401.01234v2?download=1#page=2"), true);
 });
 
 test("ensure_arxiv_pdf requires scoped mutation authorization and strict identity and selection", () => {
@@ -494,6 +528,41 @@ test("inspect_arxiv response validation enforces the complete strict result shap
     },
   };
   assert.deepEqual(validateProtocolResponse("inspect_arxiv", timestampOffset), timestampOffset);
+});
+
+test("a fingerprint conflict remains a schema-valid conservative needs_choice decision", () => {
+  const candidates = inspectData.candidates;
+  const decision = decideArxivImport(
+    { arxivId: arxivSource.arxivId, version: arxivSource.version },
+    candidates,
+    { expectedPdfFingerprint: "sha256:newly-downloaded" },
+  );
+  assert.equal(decision.decision, "needs_choice");
+  const data = {
+    source: arxivSource,
+    libraryId: "1",
+    candidates,
+    ...decision,
+    inspectionToken: "inspection:2401.01234:v2:fingerprint-conflict",
+  };
+  const response = responseEnvelope(
+    "op.inspect-conflict-1",
+    "succeeded",
+    data,
+    null,
+    { storage: "not_applicable", viewer: "not_applicable" },
+  );
+  assert.deepEqual(validateProtocolResponse("inspect_arxiv", response), response);
+
+  const schema = JSON.parse(readFileSync(new URL(
+    "../../scripts/package/assets/protocol/v1-response.schema.json",
+    import.meta.url,
+  ), "utf8"));
+  const branch = schema.$defs.inspectArxivResult.allOf.find(
+    (entry) => entry.if?.properties?.decision?.const === "needs_choice",
+  );
+  assert.equal(branch.then.properties.candidates.minItems, 1);
+  assert.equal(branch.then.properties.selection, false);
 });
 
 test("ensure_arxiv_pdf validates complete success, bounded retained failure, and indeterminate shapes", () => {

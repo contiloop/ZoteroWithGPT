@@ -116,7 +116,7 @@ Only operations wired in the running build appear in `capabilities.operations`. 
 
 ### `inspect_arxiv`
 
-Payload: `{ "url": "https://arxiv.org/abs/2401.01234v2" }`. The URL is nonempty, limited to 4,096 UTF-8 bytes, and must be an uncredentialed official HTTPS arXiv abstract or PDF URL without a query or fragment. Modern identifiers use `YYMM.NNNN` or `YYMM.NNNNN`; legacy identifiers use `archive/YYMMNNN`. Numeric months and serials must be valid. A URL may include a positive version suffix, but `ArticleIdentity.arxivId` never includes that suffix.
+Payload: `{ "url": "https://arxiv.org/abs/2401.01234v2" }`. The URL is nonempty, limited to 4,096 UTF-8 bytes, and must be an uncredentialed official HTTP or HTTPS arXiv abstract or PDF article URL. Raw ASCII control characters and path-normalization forms are rejected before URL parsing. Modern identifiers use `YYMM.NNNN` or `YYMM.NNNNN`; legacy identifiers use `archive/YYMMNNN`. Numeric months and serials must be valid. A URL may include a positive version suffix and an optional terminal `.pdf`; harmless query and fragment decoration does not change identity. The host retains only the recognized identifier and optional version, and constructs canonical HTTPS URLs itself. `ArticleIdentity.arxivId` never includes the version suffix.
 
 This is a profiled read. Authorization is forbidden, and the host selects the profile's personal library. The result has this shape:
 
@@ -162,7 +162,7 @@ type InspectArxivData = {
 
 The source comes from one matching metadata entry and names a concrete version. The extension constructs `abstractUrl` and `pdfUrl`; a client cannot provide a download URL or trusted metadata. All returned strings are nonempty except `metadata.abstract`, and optional fields are omitted rather than set to `null`.
 
-Candidate URL or title similarity cannot override conflicting evidence. `identity: "verified"` requires trustworthy native provenance or a demonstrated matching PDF fingerprint. A different existing version or a competing unverified PDF yields `needs_choice`. `selection` is present only for an unambiguous matching `create`, `attach`, or `reuse` decision and is omitted for `needs_choice`; `create` is available only when there is no canonical parent candidate.
+Candidate URL or title similarity cannot override conflicting evidence. `identity: "verified"` requires trustworthy native provenance or a demonstrated matching PDF fingerprint. A different existing version, a competing unverified PDF, or a same-version attachment whose fingerprint conflicts with acquired bytes yields `needs_choice`. `selection` is present only for an unambiguous matching `create`, `attach`, or `reuse` decision and is omitted for `needs_choice`; `create` is available only when there is no canonical parent candidate.
 
 The inspection token binds the source identity and version, selected library, and complete relevant native candidate snapshot. It is optimistic conflict evidence, not a credential or mutation authority. A later ensure rejects the token with `conflict` if any bound source, library, item revision, attachment identity, version, or fingerprint changed.
 

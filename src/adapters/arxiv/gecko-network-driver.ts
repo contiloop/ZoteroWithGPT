@@ -81,34 +81,49 @@ function streamedBody(
     [Symbol.asyncIterator]() {
       if (claimed) throw new Error("The privileged arXiv response stream was already consumed");
       claimed = true;
-      let finished = false;
+      let closed = false;
+      let cleanupPromise: Promise<void> | undefined;
       let total = 0;
+      const cleanup = (reason: string): Promise<void> => {
+        cleanupPromise ??= Promise.resolve()
+          .then(() => cancelReader(reader, reason))
+          .finally(() => {
+            closed = true;
+          });
+        return cleanupPromise;
+      };
       return {
         async next(): Promise<IteratorResult<Uint8Array>> {
-          if (finished) return { done: true, value: undefined };
+          if (cleanupPromise !== undefined) {
+            await cleanupPromise;
+            return { done: true, value: undefined };
+          }
+          if (closed) return { done: true, value: undefined };
           let result: { done: boolean; value?: unknown };
           try {
             result = await reader.read();
           } catch (error) {
-            finished = true;
-            await cancelReader(reader, "arXiv response read failed");
+            await cleanup("arXiv response read failed");
             throw error;
           }
+          if (cleanupPromise !== undefined) {
+            await cleanupPromise;
+            return { done: true, value: undefined };
+          }
+          if (closed) return { done: true, value: undefined };
           if (result.done) {
-            finished = true;
+            closed = true;
             releaseReader(reader);
             return { done: true, value: undefined };
           }
           const length = chunkByteLength(result.value);
           if (!Number.isSafeInteger(length) || length < 0) {
-            finished = true;
-            await cancelReader(reader, "invalid arXiv response chunk");
+            await cleanup("invalid arXiv response chunk");
             throw new Error("The privileged arXiv fetch returned a non-binary response chunk");
           }
           total += length;
           if (!Number.isSafeInteger(total) || total > byteLimit) {
-            finished = true;
-            await cancelReader(reader, "arXiv response byte limit exceeded");
+            await cleanup("arXiv response byte limit exceeded");
             throw new ArxivNetworkLimitError(
               `The privileged arXiv response exceeded its ${String(byteLimit)} byte limit`,
             );
@@ -116,16 +131,13 @@ function streamedBody(
           try {
             return { done: false, value: normalizeChunk(result.value) };
           } catch (error) {
-            finished = true;
-            await cancelReader(reader, "invalid arXiv response chunk");
+            await cleanup("invalid arXiv response chunk");
             throw error;
           }
         },
         async return(): Promise<IteratorResult<Uint8Array>> {
-          if (!finished) {
-            finished = true;
-            await cancelReader(reader, "arXiv response consumer stopped");
-          }
+          if (!closed) await cleanup("arXiv response consumer stopped");
+          else if (cleanupPromise !== undefined) await cleanupPromise;
           return { done: true, value: undefined };
         },
       };

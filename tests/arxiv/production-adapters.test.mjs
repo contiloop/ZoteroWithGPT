@@ -7,6 +7,7 @@ import {
   BoundedArxivHttpAdapter,
   DigestArxivInspectionTokens,
   GeckoArxivNetworkDriver,
+  PoliteArxivRequestAdmission,
 } from '../../dist/adapters/arxiv/index.js';
 import {
   GeckoArxivFileStore,
@@ -213,6 +214,154 @@ test('composed Gecko streaming preserves nonretryable too_large for metadata and
     assert.equal(cancelled, 1);
     assert.equal(released, 1);
   }
+});
+
+test('declared oversize retains the shared request lane until Gecko reader cancellation finishes', async () => {
+  const url = 'https://arxiv.org/pdf/2401.01234v2';
+  const admission = new PoliteArxivRequestAdmission();
+  let fetchCalls = 0;
+  let firstCancelled = 0;
+  let firstReleased = 0;
+  let markCancelStarted;
+  const cancelStarted = new Promise(resolve => { markCancelStarted = resolve; });
+  let finishCancel;
+  const cancelFinished = new Promise(resolve => { finishCancel = resolve; });
+  const driver = new GeckoArxivNetworkDriver({
+    async fetch(requestUrl) {
+      fetchCalls += 1;
+      if (fetchCalls === 1) {
+        return {
+          url: requestUrl,
+          status: 200,
+          headers: { get: name => name.toLowerCase() === 'content-length' ? '9' : null },
+          body: { getReader: () => ({
+            async read() { throw new Error('declared oversize body must not be read'); },
+            async cancel() {
+              firstCancelled += 1;
+              markCancelStarted();
+              await cancelFinished;
+            },
+            releaseLock() { firstReleased += 1; },
+          }) },
+        };
+      }
+      let sent = false;
+      return {
+        url: requestUrl,
+        status: 200,
+        headers: { get: () => null },
+        body: { getReader: () => ({
+          async read() {
+            if (sent) return { done: true };
+            sent = true;
+            return { done: false, value: new Uint8Array([1]) };
+          },
+          async cancel() {},
+          releaseLock() {},
+        }) },
+      };
+    },
+  });
+  const adapter = new BoundedArxivHttpAdapter(driver, { admission, pdfByteLimit: 8 });
+  const first = adapter.retrieve({
+    kind: 'pdf', source: { arxivId: '2401.01234', version: 2 },
+  }).then(
+    () => undefined,
+    error => error,
+  );
+  await cancelStarted;
+  const second = adapter.retrieve({
+    kind: 'pdf', source: { arxivId: '2401.01234', version: 2 },
+  });
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(fetchCalls, 1, 'the next fetch must wait for declared-length cleanup');
+  } finally {
+    finishCancel();
+  }
+  const error = await first;
+  assert.equal(error?.code, 'too_large');
+  assert.equal(firstCancelled, 1);
+  assert.equal(firstReleased, 1);
+  assert.deepEqual((await second).body, new Uint8Array([1]));
+  assert.equal(fetchCalls, 2);
+});
+
+test('abort during oversized Gecko reader cleanup awaits the same cancellation before releasing', async () => {
+  const url = 'https://arxiv.org/pdf/2401.01234v2';
+  const admission = new PoliteArxivRequestAdmission();
+  const oldOwner = new AbortController();
+  let fetchCalls = 0;
+  let firstCancelled = 0;
+  let firstReleased = 0;
+  let markCancelStarted;
+  const cancelStarted = new Promise(resolve => { markCancelStarted = resolve; });
+  let finishCancel;
+  const cancelFinished = new Promise(resolve => { finishCancel = resolve; });
+  const driver = new GeckoArxivNetworkDriver({
+    async fetch(requestUrl) {
+      fetchCalls += 1;
+      if (fetchCalls === 1) {
+        return {
+          url: requestUrl,
+          status: 200,
+          headers: { get: () => null },
+          body: { getReader: () => ({
+            async read() { return { done: false, value: new Uint8Array(9) }; },
+            async cancel() {
+              firstCancelled += 1;
+              markCancelStarted();
+              await cancelFinished;
+            },
+            releaseLock() { firstReleased += 1; },
+          }) },
+        };
+      }
+      let sent = false;
+      return {
+        url: requestUrl,
+        status: 200,
+        headers: { get: () => null },
+        body: { getReader: () => ({
+          async read() {
+            if (sent) return { done: true };
+            sent = true;
+            return { done: false, value: new Uint8Array([2]) };
+          },
+          async cancel() {},
+          releaseLock() {},
+        }) },
+      };
+    },
+  });
+  const oldAdapter = new BoundedArxivHttpAdapter(driver, {
+    admission,
+    lifecycleSignal: oldOwner.signal,
+    pdfByteLimit: 8,
+  });
+  const first = oldAdapter.retrieve({
+    kind: 'pdf', source: { arxivId: '2401.01234', version: 2 },
+  }).then(
+    () => undefined,
+    error => error,
+  );
+  await cancelStarted;
+  const second = new BoundedArxivHttpAdapter(driver, { admission, pdfByteLimit: 8 }).retrieve({
+    kind: 'pdf', source: { arxivId: '2401.01234', version: 2 },
+  });
+  oldOwner.abort();
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(fetchCalls, 1, 'abort must join the oversized reader cleanup already in progress');
+  } finally {
+    finishCancel();
+  }
+  const error = await first;
+  assert.match(error?.message ?? '', /cancel/u);
+  assert.equal(firstCancelled, 1);
+  assert.equal(firstReleased, 1);
+  assert.deepEqual((await second).body, new Uint8Array([2]));
+  assert.equal(fetchCalls, 2);
 });
 
 test('PDF readability transfers an owner-realm clone and reports the worker total page count', async () => {

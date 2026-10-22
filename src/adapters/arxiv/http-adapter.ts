@@ -317,7 +317,7 @@ async function readBoundedBody(
         // The acquisition error remains authoritative; cleanup is best effort.
       }
     } else if (!streamFinished && iterator === undefined) {
-      closeStreamingBody(body);
+      await closeStreamingBody(body);
     }
   }
 

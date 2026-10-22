@@ -58,9 +58,11 @@ function laidOutNode(ownerDocument, rect = { left: 0, right: 800, top: 0, bottom
 }
 
 class FakeItem {
-  constructor(host, itemType, values = {}) {
+  constructor(host, itemType, values = {}, requireProspectivePrimaryData = false) {
     this.host = host;
     this.itemType = itemType;
+    this.requireProspectivePrimaryData = requireProspectivePrimaryData;
+    this.prospectivePrimaryDataLoaded = !requireProspectivePrimaryData;
     this.id = values.id;
     this.key = values.key;
     this.libraryID = values.libraryID ?? 1;
@@ -71,6 +73,17 @@ class FakeItem {
     Object.assign(this, values);
   }
 
+  async loadPrimaryData() {
+    assert.equal(typeof this.libraryID, "number");
+    assert.equal(typeof this.key, "string");
+    await this.host.onLoadPrimaryData?.(this);
+    const existing = [...this.host.items.values()].find(
+      (item) => item !== this && item.libraryID === this.libraryID && item.key === this.key,
+    );
+    if (existing) this.id = existing.id;
+    this.prospectivePrimaryDataLoaded = true;
+    this.host.primaryDataLoads.push({ itemType: this.itemType, key: this.key });
+  }
   async loadAllData() {
     await this.host.onLoadAllData?.(this);
     if (this.isNote() && typeof this.note === "string") {
@@ -78,8 +91,24 @@ class FakeItem {
       if (match) this.note = match[1];
     }
   }
+  assertPrimaryDataLoaded() {
+    if (
+      this.requireProspectivePrimaryData &&
+      typeof this.key === "string" &&
+      !this.prospectivePrimaryDataLoaded
+    ) {
+      const error = new Error(
+        `'primaryData' not loaded for item (${String(this.id ?? null)}/${String(this.libraryID)}/${this.key})`,
+      );
+      error.name = "Zotero.Exception.UnloadedDataException";
+      throw error;
+    }
+  }
   get parentID() { return this.parentItemID; }
-  set parentID(value) { this.parentItemID = value; }
+  set parentID(value) {
+    this.assertPrimaryDataLoaded();
+    this.parentItemID = value;
+  }
   isPDFAttachment() { return this.itemType === "attachment"; }
   isRegularItem() { return this.itemType === "journalArticle" || this.itemType === "preprint"; }
   isAnnotation() { return this.itemType === "annotation"; }
@@ -87,12 +116,16 @@ class FakeItem {
   isEditable() { return true; }
   getField(field) { return this.fields?.[field] ?? ""; }
   setField(field, value) {
+    this.assertPrimaryDataLoaded();
     this.fields ??= {};
     this.fields[field] = value;
   }
   getDisplayTitle() { return this.fields?.title ?? ""; }
   getCreators() { return structuredClone(this.creators ?? []); }
-  setCreators(creators) { this.creators = structuredClone(creators); }
+  setCreators(creators) {
+    this.assertPrimaryDataLoaded();
+    this.creators = structuredClone(creators);
+  }
   getCollections() { return [...(this.collections ?? [])]; }
   getAttachments(includeTrashed = false) {
     return [...this.host.items.values()]
@@ -126,6 +159,7 @@ class FakeItem {
   }
   getRelationsByPredicate(predicate) { return [...(this.relations.get(predicate) ?? [])]; }
   addRelation(predicate, value) {
+    this.assertPrimaryDataLoaded();
     const values = this.relations.get(predicate) ?? [];
     if (!values.includes(value)) values.push(value);
     this.relations.set(predicate, values);
@@ -142,6 +176,7 @@ class FakeItem {
     await this.host.onItemSave?.(this);
     if (!this.id) this.id = this.host.nextId++;
     if (!this.key) this.key = `KEY${String(this.id).padStart(5, "0")}`;
+    this.prospectivePrimaryDataLoaded = true;
     this.version += 1;
     this.host.bumpClientVersion();
     this.host.items.set(this.id, this);
@@ -169,6 +204,8 @@ function fixtureEnvironment() {
     requireClonedAnnotationMeta: false,
     annotationMetaClones: 0,
     onLoadAllData: undefined,
+    onLoadPrimaryData: undefined,
+    primaryDataLoads: [],
     generatedKeyNumber: 1,
     diskByPath: new Map(),
     stagedBytes: new Map(),
@@ -376,7 +413,7 @@ function fixtureEnvironment() {
       },
     },
     Item: class extends FakeItem {
-      constructor(type) { super(host, type); }
+      constructor(type) { super(host, type, {}, true); }
     },
   };
 
@@ -1373,6 +1410,196 @@ test("native arXiv parent commit rejects a library change during its awaited sna
   assert.equal([...host.items.values()].some((item) => item.key === "PARENTRACE"), true);
 });
 
+test("native arXiv parent initialization preserves an item resolved at the planned key", async () => {
+  const { env, host } = fixtureEnvironment();
+  const gate = new MutableZoteroAccessGate(true);
+  env.accessGate = gate;
+  const native = createZoteroNativeApi(env);
+  const fence = native.captureArxivAccessFence();
+  const before = await native.inspectArxiv(arxivSource);
+  const plan = await native.planArxivImportKeys(true);
+  let resolvedItem;
+  host.onLoadPrimaryData = async (item) => {
+    host.onLoadPrimaryData = undefined;
+    item.id = 900;
+    item.fields = { title: "Existing manual item" };
+    item.creators = [{ name: "Manual Author", creatorType: "author" }];
+    resolvedItem = item;
+  };
+
+  await assert.rejects(
+    native.createArxivParent({
+      source: arxivSource,
+      itemKey: plan.itemKey,
+      operationMarker: "urn:zotero-ai-research-companion:operation:resolved-parent-key",
+      parentProvenance: arxivParentProvenance(arxivSource),
+      expectedCandidates: before.candidates,
+      accessFence: fence,
+    }),
+    (error) =>
+      error instanceof CoreOperationError &&
+      error.code === "conflict" &&
+      /parent key became occupied during native initialization/i.test(error.message),
+  );
+  assert.deepEqual(resolvedItem.fields, { title: "Existing manual item" });
+  assert.deepEqual(resolvedItem.creators, [
+    { name: "Manual Author", creatorType: "author" },
+  ]);
+  assert.equal([...host.items.values()].some((item) => item.key === plan.itemKey), false);
+});
+
+test("native arXiv parent initialization rechecks authority and library revision after key loading", async (t) => {
+  for (const scenario of [
+    {
+      name: "access cancellation",
+      expectedCode: "permission_denied",
+      mutate({ gate }) { gate.setEnabled(false); },
+    },
+    {
+      name: "library revision change",
+      expectedCode: "conflict",
+      mutate({ host }) { host.bumpClientVersion(); },
+    },
+  ]) {
+    await t.test(scenario.name, async () => {
+      const { env, host } = fixtureEnvironment();
+      const gate = new MutableZoteroAccessGate(true);
+      env.accessGate = gate;
+      const native = createZoteroNativeApi(env);
+      const fence = native.captureArxivAccessFence();
+      const before = await native.inspectArxiv(arxivSource);
+      const plan = await native.planArxivImportKeys(true);
+      let prospectiveItem;
+      host.onLoadPrimaryData = async (item) => {
+        host.onLoadPrimaryData = undefined;
+        prospectiveItem = item;
+        scenario.mutate({ gate, host });
+      };
+
+      await assert.rejects(
+        native.createArxivParent({
+          source: arxivSource,
+          itemKey: plan.itemKey,
+          operationMarker: `urn:zotero-ai-research-companion:operation:${scenario.name.replaceAll(" ", "-")}`,
+          parentProvenance: arxivParentProvenance(arxivSource),
+          expectedCandidates: before.candidates,
+          accessFence: fence,
+        }),
+        (error) =>
+          error instanceof CoreOperationError && error.code === scenario.expectedCode,
+      );
+      assert.equal(prospectiveItem.fields, undefined);
+      assert.equal([...host.items.values()].some((item) => item.key === plan.itemKey), false);
+    });
+  }
+});
+
+test("native arXiv parent initialization rechecks relevant PDF bytes after key loading", async () => {
+  const { env, host } = fixtureEnvironment();
+  const gate = new MutableZoteroAccessGate(true);
+  env.accessGate = gate;
+  const parent = new FakeItem(host, "journalArticle", {
+    key: "LOADBYTEPARENT",
+    fields: {
+      title: "Canonical parent with an existing PDF",
+      extra: "arXiv:2401.01234v1",
+    },
+  });
+  await parent.saveTx();
+  const existingPath = "/race/load-primary-existing.pdf";
+  const originalBytes = new Uint8Array([37, 80, 68, 70, 45, 41, 42, 43]);
+  const replacementBytes = new Uint8Array([37, 80, 68, 70, 45, 51, 52, 53]);
+  host.diskByPath.set(existingPath, originalBytes);
+  const existingPdf = new FakeItem(host, "attachment", {
+    key: "LOADBYTEPDF",
+    parentItemID: parent.id,
+    attachmentContentType: "application/pdf",
+    filePath: existingPath,
+    fields: {
+      title: "Existing version PDF",
+      url: "https://arxiv.org/pdf/2401.01234v1",
+    },
+  });
+  await existingPdf.saveTx();
+  const native = createZoteroNativeApi(env);
+  const fence = native.captureArxivAccessFence();
+  const before = await native.inspectArxiv(arxivSource);
+  const plan = await native.planArxivImportKeys(true);
+  let prospectiveItem;
+  host.onLoadPrimaryData = async (item) => {
+    host.onLoadPrimaryData = undefined;
+    prospectiveItem = item;
+    host.diskByPath.set(existingPath, replacementBytes);
+  };
+
+  await assert.rejects(
+    native.createArxivParent({
+      source: arxivSource,
+      itemKey: plan.itemKey,
+      operationMarker: "urn:zotero-ai-research-companion:operation:load-primary-byte-change",
+      parentProvenance: arxivParentProvenance(arxivSource),
+      expectedCandidates: before.candidates,
+      accessFence: fence,
+    }),
+    (error) =>
+      error instanceof CoreOperationError &&
+      error.code === "conflict" &&
+      /PDF bytes changed during native arXiv preparation/i.test(error.message),
+  );
+  assert.equal(prospectiveItem.fields, undefined);
+  assert.deepEqual(host.diskByPath.get(existingPath), replacementBytes);
+  assert.equal([...host.items.values()].some((item) => item.key === plan.itemKey), false);
+});
+
+test("native arXiv attachment initialization preserves an item resolved at the planned key", async () => {
+  const { env, host } = fixtureEnvironment();
+  const gate = new MutableZoteroAccessGate(true);
+  env.accessGate = gate;
+  const native = createZoteroNativeApi(env);
+  const fence = native.captureArxivAccessFence();
+  const empty = await native.inspectArxiv(arxivSource);
+  const plan = await native.planArxivImportKeys(true);
+  await native.createArxivParent({
+    source: arxivSource,
+    itemKey: plan.itemKey,
+    operationMarker: "urn:zotero-ai-research-companion:operation:resolved-attachment-parent",
+    parentProvenance: arxivParentProvenance(arxivSource),
+    expectedCandidates: empty.candidates,
+    accessFence: fence,
+  });
+  const beforeAttachment = await native.inspectArxiv(arxivSource);
+  let resolvedAttachment;
+  host.onLoadPrimaryData = async (item) => {
+    host.onLoadPrimaryData = undefined;
+    item.id = 901;
+    item.fields = { title: "Existing manual attachment" };
+    item.attachmentContentType = "application/octet-stream";
+    resolvedAttachment = item;
+  };
+
+  await assert.rejects(
+    native.createArxivAttachment({
+      source: arxivSource,
+      itemKey: plan.itemKey,
+      attachmentKey: plan.attachmentKey,
+      operationMarker: "urn:zotero-ai-research-companion:operation:resolved-attachment-key",
+      attachmentProvenance: arxivAttachmentProvenance(
+        arxivSource,
+        "sha256:resolved-attachment-key",
+      ),
+      expectedCandidates: beforeAttachment.candidates,
+      accessFence: fence,
+    }),
+    (error) =>
+      error instanceof CoreOperationError &&
+      error.code === "conflict" &&
+      /attachment key became occupied during native initialization/i.test(error.message),
+  );
+  assert.deepEqual(resolvedAttachment.fields, { title: "Existing manual attachment" });
+  assert.equal(resolvedAttachment.attachmentContentType, "application/octet-stream");
+  assert.equal([...host.items.values()].some((item) => item.key === plan.attachmentKey), false);
+});
+
 test("native arXiv attachment commit rejects a digest-time manual edit without losing it", async () => {
   const { env, host } = fixtureEnvironment();
   const gate = new MutableZoteroAccessGate(true);
@@ -1749,6 +1976,9 @@ test("native arXiv creation commits prospective identities, installs create-only
   assert.deepEqual(parentItem.getCollections(), []);
   assert.equal(parentItem.getField("title"), arxivSource.metadata.title);
   assert.deepEqual(parentItem.getCreators().map((creator) => creator.name), arxivSource.metadata.authors);
+  assert.deepEqual(host.primaryDataLoads, [
+    { itemType: "preprint", key: plan.itemKey },
+  ]);
 
   const afterParent = await native.inspectArxiv(arxivSource);
   await native.createArxivAttachment({
@@ -1760,6 +1990,10 @@ test("native arXiv creation commits prospective identities, installs create-only
     expectedCandidates: afterParent.candidates,
     accessFence: fence,
   });
+  assert.deepEqual(host.primaryDataLoads, [
+    { itemType: "preprint", key: plan.itemKey },
+    { itemType: "attachment", key: plan.attachmentKey },
+  ]);
   const afterAttachment = await native.inspectArxiv(arxivSource);
   const installed = await native.installArxivPdf({
     source: arxivSource,

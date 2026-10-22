@@ -88,6 +88,7 @@ interface ZoteroItemLike {
   getNote?(): string;
   getNoteTitle?(): string;
   setNote?(content: string): void;
+  loadPrimaryData(reload?: boolean, failOnMissing?: boolean): Promise<unknown>;
   loadAllData?(): Promise<unknown>;
   getFilePath(): string | false;
   save(options?: Record<string, unknown>): Promise<unknown>;
@@ -973,6 +974,16 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
         parent.libraryID = personalLibraryId;
         this.#assertArxivFence(input.accessFence);
         parent.key = input.itemKey;
+        const initializationProblem = await this.#initializeProspectiveArxivItem(
+          parent,
+          "parent",
+          input.accessFence,
+          libraryFence,
+          fileEvidence,
+        );
+        if (initializationProblem !== undefined) {
+          return { kind: "blocked", error: initializationProblem };
+        }
         for (const [field, value] of [
           ["title", input.source.metadata.title],
           ["abstractNote", input.source.metadata.abstract],
@@ -1126,6 +1137,16 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
         attachment.libraryID = personalLibraryId;
         this.#assertArxivFence(input.accessFence);
         attachment.key = input.attachmentKey;
+        const initializationProblem = await this.#initializeProspectiveArxivItem(
+          attachment,
+          "attachment",
+          input.accessFence,
+          libraryFence,
+          fileEvidence,
+        );
+        if (initializationProblem !== undefined) {
+          return { kind: "blocked", error: initializationProblem };
+        }
         this.#assertArxivFence(input.accessFence);
         attachment.parentID = requiredNumber(parent.id, "parent item ID");
         this.#assertArxivFence(input.accessFence);
@@ -2369,6 +2390,30 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
       if (error instanceof CoreOperationError) return error;
       throw error;
     }
+  }
+
+  async #initializeProspectiveArxivItem(
+    item: ZoteroItemLike,
+    kind: "parent" | "attachment",
+    accessFence: string,
+    libraryFence: ArxivLibraryFence,
+    fileEvidence: readonly PreparedArxivFileEvidence[],
+  ): Promise<CoreOperationError | undefined> {
+    await item.loadPrimaryData();
+    const preparationProblem = this.#arxivPrecommitProblem(
+      accessFence,
+      libraryFence,
+      true,
+    );
+    if (preparationProblem !== undefined) return preparationProblem;
+    if (typeof item.id === "number") {
+      return new CoreOperationError(
+        "conflict",
+        `The prospective arXiv ${kind} key became occupied during native initialization`,
+      );
+    }
+    this.#assertPreparedArxivFiles(fileEvidence);
+    return undefined;
   }
 
   #assertArxivFence(fence: string): void {

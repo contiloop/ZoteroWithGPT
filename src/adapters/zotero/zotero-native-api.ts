@@ -88,6 +88,7 @@ interface ZoteroItemLike {
   getNoteTitle?(): string;
   setNote?(content: string): void;
   loadAllData?(): Promise<unknown>;
+  save(options?: Record<string, unknown>): Promise<unknown>;
   saveTx(options?: Record<string, unknown>): Promise<unknown>;
 }
 
@@ -166,12 +167,17 @@ interface ReaderLike {
 
 interface ZoteroLibraryLike {
   libraryID?: number;
+  clientVersion?: number;
   waitForDataLoad?(type: string): Promise<unknown>;
 }
 
 export interface ZoteroHostGlobal {
   version?: string;
   Profile?: { name?: string };
+  DB: {
+    executeTransaction<T>(work: () => Promise<T>): Promise<T>;
+    inTransaction(): boolean;
+  };
   Libraries: {
     userLibraryID: number;
     getAll(): ZoteroLibraryLike[];
@@ -733,6 +739,15 @@ function sameCandidates(
   return canonicalizeJson(left) === canonicalizeJson(right);
 }
 
+interface ArxivLibraryFence {
+  libraryId: number;
+  clientVersion: number;
+}
+
+type ArxivCommitAttempt<T> =
+  | { kind: "saved"; value: T }
+  | { kind: "blocked"; error: CoreOperationError };
+
 function arxivParentMetadataMaterial(parent: ZoteroItemLike): object {
   return {
     libraryId: requiredNumber(parent.libraryID, "library ID"),
@@ -891,67 +906,97 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
   }
 
   async createArxivParent(input: NativeArxivParentCreate): Promise<NativeArxivParentRecord> {
-    const current = await this.inspectArxiv(input.source);
-    if (!sameCandidates(current.candidates, input.expectedCandidates)) {
-      throw new CoreOperationError(
-        "conflict",
-        "The complete canonical arXiv parent set changed before parent commit",
-      );
-    }
     const personalLibraryId = requiredNumber(
       this.#zotero.Libraries.userLibraryID,
       "personal library ID",
     );
-    if (await this.#zotero.Items.getByLibraryAndKeyAsync(personalLibraryId, input.itemKey, {
-      noCache: true,
-    })) {
-      throw new CoreOperationError("conflict", "The prospective arXiv parent key is already used");
-    }
-    const precommit = await this.inspectArxiv(input.source);
-    this.#assertArxivFence(input.accessFence);
-    if (!sameCandidates(precommit.candidates, input.expectedCandidates)) {
-      throw new CoreOperationError(
-        "conflict",
-        "The complete canonical arXiv parent set changed during parent preparation",
+    const attempt = await this.#zotero.DB.executeTransaction<
+      ArxivCommitAttempt<ZoteroItemLike>
+    >(async () => {
+      const accessProblem = this.#arxivAccessProblem(input.accessFence);
+      if (accessProblem !== undefined) return { kind: "blocked", error: accessProblem };
+      const libraryFence = this.#captureArxivLibraryFence(true);
+      const current = await this.inspectArxiv(input.source);
+      const existing = await this.#zotero.Items.getByLibraryAndKeyAsync(
+        personalLibraryId,
+        input.itemKey,
+        { noCache: true },
       );
-    }
-    const parent = new this.#zotero.Item("preprint");
-    this.#assertArxivFence(input.accessFence);
-    parent.libraryID = personalLibraryId;
-    this.#assertArxivFence(input.accessFence);
-    parent.key = input.itemKey;
-    for (const [field, value] of [
-      ["title", input.source.metadata.title],
-      ["abstractNote", input.source.metadata.abstract],
-      ["date", input.source.metadata.published],
-      ["url", input.source.abstractUrl],
-      [
-        "extra",
+      const preparationProblem = this.#arxivPrecommitProblem(
+        input.accessFence,
+        libraryFence,
+        true,
+      );
+      if (preparationProblem !== undefined) {
+        return { kind: "blocked", error: preparationProblem };
+      }
+      if (!sameCandidates(current.candidates, input.expectedCandidates)) {
+        return {
+          kind: "blocked",
+          error: new CoreOperationError(
+            "conflict",
+            "The complete canonical arXiv parent set changed during parent preparation",
+          ),
+        };
+      }
+      if (existing) {
+        return {
+          kind: "blocked",
+          error: new CoreOperationError(
+            "conflict",
+            "The prospective arXiv parent key is already used",
+          ),
+        };
+      }
+
+      const parent = new this.#zotero.Item("preprint");
+      this.#assertArxivFence(input.accessFence);
+      parent.libraryID = personalLibraryId;
+      this.#assertArxivFence(input.accessFence);
+      parent.key = input.itemKey;
+      for (const [field, value] of [
+        ["title", input.source.metadata.title],
+        ["abstractNote", input.source.metadata.abstract],
+        ["date", input.source.metadata.published],
+        ["url", input.source.abstractUrl],
         [
-          `arXiv:${input.source.arxivId}`,
-          `version: ${String(input.source.version)}`,
-          `published: ${input.source.metadata.published}`,
-          `updated: ${input.source.metadata.updated}`,
-        ].join("\n"),
-      ],
-    ] as const) {
+          "extra",
+          [
+            `arXiv:${input.source.arxivId}`,
+            `version: ${String(input.source.version)}`,
+            `published: ${input.source.metadata.published}`,
+            `updated: ${input.source.metadata.updated}`,
+          ].join("\n"),
+        ],
+      ] as const) {
+        this.#assertArxivFence(input.accessFence);
+        parent.setField(field, value);
+      }
+      if (input.source.metadata.doi !== undefined) {
+        this.#assertArxivFence(input.accessFence);
+        parent.setField("DOI", input.source.metadata.doi);
+      }
       this.#assertArxivFence(input.accessFence);
-      parent.setField(field, value);
-    }
-    if (input.source.metadata.doi !== undefined) {
+      parent.setCreators?.(
+        input.source.metadata.authors.map((name) => ({ name, creatorType: "author" as const })),
+      );
       this.#assertArxivFence(input.accessFence);
-      parent.setField("DOI", input.source.metadata.doi);
-    }
+      parent.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
+      this.#assertArxivFence(input.accessFence);
+      parent.addRelation(ARXIV_PROVENANCE_RELATION_PREDICATE, input.parentProvenance);
+      this.#assertArxivFence(input.accessFence);
+      await parent.save({ skipSelect: true });
+      this.#assertArxivFence(input.accessFence);
+      if (!this.#zotero.DB.inTransaction()) {
+        throw new CoreOperationError(
+          "conflict",
+          "The native arXiv parent transaction ended before commit",
+        );
+      }
+      return { kind: "saved", value: parent };
+    });
+    if (attempt.kind === "blocked") throw attempt.error;
     this.#assertArxivFence(input.accessFence);
-    parent.setCreators?.(
-      input.source.metadata.authors.map((name) => ({ name, creatorType: "author" as const })),
-    );
-    this.#assertArxivFence(input.accessFence);
-    parent.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
-    this.#assertArxivFence(input.accessFence);
-    parent.addRelation(ARXIV_PROVENANCE_RELATION_PREDICATE, input.parentProvenance);
-    this.#assertArxivFence(input.accessFence);
-    await parent.saveTx({ skipSelect: true });
     const record = await this.getArxivParent(input.source, input.itemKey);
     if (
       record === undefined ||
@@ -969,69 +1014,106 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
   async createArxivAttachment(
     input: NativeArxivAttachmentCreate,
   ): Promise<NativeArxivAttachmentRecord> {
-    const current = await this.inspectArxiv(input.source);
-    if (!sameCandidates(current.candidates, input.expectedCandidates)) {
-      throw new CoreOperationError(
-        "conflict",
-        "The complete canonical arXiv attachment set changed before attachment commit",
-      );
-    }
     const personalLibraryId = requiredNumber(
       this.#zotero.Libraries.userLibraryID,
       "personal library ID",
     );
-    const parent = await this.#fresh(String(personalLibraryId), input.itemKey);
-    if (
-      parent === undefined ||
-      parent.deleted === true ||
-      !parent.isRegularItem() ||
-      !parent.isEditable() ||
-      !identifiesSource(input.source, await this.#familyIdentityEvidence(parent))
-    ) {
-      throw new CoreOperationError("conflict", "The selected canonical arXiv parent changed");
-    }
-    if (await this.#zotero.Items.getByLibraryAndKeyAsync(personalLibraryId, input.attachmentKey, {
-      noCache: true,
-    })) {
-      throw new CoreOperationError(
-        "conflict",
-        "The prospective arXiv attachment key is already used",
+    const attempt = await this.#zotero.DB.executeTransaction<
+      ArxivCommitAttempt<{ parent: ZoteroItemLike; attachment: ZoteroItemLike }>
+    >(async () => {
+      const accessProblem = this.#arxivAccessProblem(input.accessFence);
+      if (accessProblem !== undefined) return { kind: "blocked", error: accessProblem };
+      const libraryFence = this.#captureArxivLibraryFence(true);
+      const current = await this.inspectArxiv(input.source);
+      const parent = await this.#fresh(String(personalLibraryId), input.itemKey);
+      const parentIdentifiesSource =
+        parent !== undefined &&
+        parent.deleted !== true &&
+        parent.isRegularItem() &&
+        parent.isEditable() &&
+        identifiesSource(input.source, await this.#familyIdentityEvidence(parent));
+      const existing = await this.#zotero.Items.getByLibraryAndKeyAsync(
+        personalLibraryId,
+        input.attachmentKey,
+        { noCache: true },
       );
-    }
-    const precommit = await this.inspectArxiv(input.source);
-    this.#assertArxivFence(input.accessFence);
-    if (!sameCandidates(precommit.candidates, input.expectedCandidates)) {
-      throw new CoreOperationError(
-        "conflict",
-        "The complete canonical arXiv attachment set changed during attachment preparation",
+      const preparationProblem = this.#arxivPrecommitProblem(
+        input.accessFence,
+        libraryFence,
+        true,
       );
-    }
-    const attachment = new this.#zotero.Item("attachment");
+      if (preparationProblem !== undefined) {
+        return { kind: "blocked", error: preparationProblem };
+      }
+      if (!sameCandidates(current.candidates, input.expectedCandidates)) {
+        return {
+          kind: "blocked",
+          error: new CoreOperationError(
+            "conflict",
+            "The complete canonical arXiv attachment set changed during attachment preparation",
+          ),
+        };
+      }
+      if (!parentIdentifiesSource || parent === undefined) {
+        return {
+          kind: "blocked",
+          error: new CoreOperationError(
+            "conflict",
+            "The selected canonical arXiv parent changed",
+          ),
+        };
+      }
+      if (existing) {
+        return {
+          kind: "blocked",
+          error: new CoreOperationError(
+            "conflict",
+            "The prospective arXiv attachment key is already used",
+          ),
+        };
+      }
+
+      const attachment = new this.#zotero.Item("attachment");
+      this.#assertArxivFence(input.accessFence);
+      attachment.libraryID = personalLibraryId;
+      this.#assertArxivFence(input.accessFence);
+      attachment.key = input.attachmentKey;
+      this.#assertArxivFence(input.accessFence);
+      attachment.parentID = requiredNumber(parent.id, "parent item ID");
+      this.#assertArxivFence(input.accessFence);
+      attachment.attachmentLinkMode = this.#zotero.Attachments.LINK_MODE_IMPORTED_FILE;
+      this.#assertArxivFence(input.accessFence);
+      attachment.attachmentContentType = "application/pdf";
+      this.#assertArxivFence(input.accessFence);
+      attachment.attachmentPath = `storage:${arxivFileName(input.source)}`;
+      this.#assertArxivFence(input.accessFence);
+      attachment.setField(
+        "title",
+        `arXiv:${input.source.arxivId}v${String(input.source.version)} PDF`,
+      );
+      this.#assertArxivFence(input.accessFence);
+      attachment.setField("url", input.source.pdfUrl);
+      this.#assertArxivFence(input.accessFence);
+      attachment.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
+      this.#assertArxivFence(input.accessFence);
+      attachment.addRelation(
+        ARXIV_PROVENANCE_RELATION_PREDICATE,
+        input.attachmentProvenance,
+      );
+      this.#assertArxivFence(input.accessFence);
+      await attachment.save({ skipSelect: true });
+      this.#assertArxivFence(input.accessFence);
+      if (!this.#zotero.DB.inTransaction()) {
+        throw new CoreOperationError(
+          "conflict",
+          "The native arXiv attachment transaction ended before commit",
+        );
+      }
+      return { kind: "saved", value: { parent, attachment } };
+    });
+    if (attempt.kind === "blocked") throw attempt.error;
     this.#assertArxivFence(input.accessFence);
-    attachment.libraryID = personalLibraryId;
-    this.#assertArxivFence(input.accessFence);
-    attachment.key = input.attachmentKey;
-    this.#assertArxivFence(input.accessFence);
-    attachment.parentID = requiredNumber(parent.id, "parent item ID");
-    this.#assertArxivFence(input.accessFence);
-    attachment.attachmentLinkMode = this.#zotero.Attachments.LINK_MODE_IMPORTED_FILE;
-    this.#assertArxivFence(input.accessFence);
-    attachment.attachmentContentType = "application/pdf";
-    this.#assertArxivFence(input.accessFence);
-    attachment.attachmentPath = `storage:${arxivFileName(input.source)}`;
-    this.#assertArxivFence(input.accessFence);
-    attachment.setField("title", `arXiv:${input.source.arxivId}v${String(input.source.version)} PDF`);
-    this.#assertArxivFence(input.accessFence);
-    attachment.setField("url", input.source.pdfUrl);
-    this.#assertArxivFence(input.accessFence);
-    attachment.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
-    this.#assertArxivFence(input.accessFence);
-    attachment.addRelation(
-      ARXIV_PROVENANCE_RELATION_PREDICATE,
-      input.attachmentProvenance,
-    );
-    this.#assertArxivFence(input.accessFence);
-    await attachment.saveTx({ skipSelect: true });
+    const { parent, attachment } = attempt.value;
     const pdfCount = await this.#pdfChildCount(parent);
     const record = await this.#arxivAttachmentRecord(
       input.source,
@@ -1127,16 +1209,25 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
       input.stagedPdf.stagingId,
       destination,
       arxivFileName(input.source),
-      async () => {
+      async (createImmediately) => {
         this.#assertArxivFence(input.accessFence);
+        const libraryFence = this.#captureArxivLibraryFence(false);
         const finalInspection = await this.inspectArxiv(input.source);
-        this.#assertArxivFence(input.accessFence);
+        const preparationProblem = this.#arxivPrecommitProblem(
+          input.accessFence,
+          libraryFence,
+          false,
+        );
+        if (preparationProblem !== undefined) throw preparationProblem;
         if (!sameCandidates(finalInspection.candidates, input.expectedCandidates)) {
           throw new CoreOperationError(
             "conflict",
             "The complete canonical arXiv attachment set changed during file preparation",
           );
         }
+        this.#assertArxivFence(input.accessFence);
+        this.#assertArxivLibraryFence(libraryFence, false);
+        createImmediately();
       },
     );
     this.#assertArxivFence(input.accessFence);
@@ -1988,13 +2079,97 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     };
   }
 
-  #assertArxivFence(fence: string): void {
-    if (this.#accessGate === undefined || !this.#accessGate.isCurrent(fence)) {
+  #arxivAccessProblem(fence: string): CoreOperationError | undefined {
+    return this.#accessGate === undefined || !this.#accessGate.isCurrent(fence)
+      ? new CoreOperationError(
+          "permission_denied",
+          "Zotero companion access changed before native arXiv commit",
+        )
+      : undefined;
+  }
+
+  #personalLibrary(): ZoteroLibraryLike {
+    const libraryId = requiredNumber(
+      this.#zotero.Libraries.userLibraryID,
+      "personal library ID",
+    );
+    const library = this.#zotero.Libraries.get?.(libraryId);
+    if (library === undefined || library.libraryID !== libraryId) {
       throw new CoreOperationError(
-        "permission_denied",
-        "Zotero companion access changed before native arXiv commit",
+        "unsupported_capability",
+        "Zotero did not expose the personal library revision fence",
       );
     }
+    return library;
+  }
+
+  #captureArxivLibraryFence(transactionRequired: boolean): ArxivLibraryFence {
+    if (this.#zotero.DB.inTransaction() !== transactionRequired) {
+      throw new CoreOperationError(
+        "conflict",
+        transactionRequired
+          ? "The native arXiv commit is outside its serialized transaction"
+          : "A native transaction is active during arXiv file preparation",
+      );
+    }
+    const library = this.#personalLibrary();
+    if (!Number.isSafeInteger(library.clientVersion) || (library.clientVersion ?? -1) < 0) {
+      throw new CoreOperationError(
+        "unsupported_capability",
+        "Zotero did not expose a valid personal library client revision",
+      );
+    }
+    return {
+      libraryId: requiredNumber(library.libraryID, "personal library ID"),
+      clientVersion: library.clientVersion as number,
+    };
+  }
+
+  #assertArxivLibraryFence(
+    fence: ArxivLibraryFence,
+    transactionRequired: boolean,
+  ): void {
+    if (this.#zotero.DB.inTransaction() !== transactionRequired) {
+      throw new CoreOperationError(
+        "conflict",
+        transactionRequired
+          ? "The native arXiv transaction ended during preparation"
+          : "A native transaction began during arXiv file preparation",
+      );
+    }
+    const library = this.#personalLibrary();
+    if (
+      library.libraryID !== fence.libraryId ||
+      library.clientVersion !== fence.clientVersion
+    ) {
+      throw new CoreOperationError(
+        "conflict",
+        transactionRequired
+          ? "The personal library changed during native arXiv commit preparation"
+          : "The personal library changed during file preparation for arXiv import",
+      );
+    }
+  }
+
+  #arxivPrecommitProblem(
+    accessFence: string,
+    libraryFence: ArxivLibraryFence,
+    transactionRequired: boolean,
+  ): CoreOperationError | undefined {
+    const accessProblem = this.#arxivAccessProblem(accessFence);
+    if (accessProblem !== undefined) return accessProblem;
+    try {
+      this.#assertArxivLibraryFence(libraryFence, transactionRequired);
+      return undefined;
+    } catch (error) {
+      if (error instanceof CoreOperationError) return error;
+      throw error;
+    }
+  }
+
+  #assertArxivFence(fence: string): void {
+    const problem = this.#arxivAccessProblem(fence);
+    if (problem !== undefined) throw problem;
   }
 
   async #fresh(requestedLibraryId: string, key: string): Promise<ZoteroItemLike | undefined> {

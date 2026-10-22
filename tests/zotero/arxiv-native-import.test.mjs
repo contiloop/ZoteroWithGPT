@@ -465,6 +465,74 @@ test("fixture facade: canonical acquisition reuses one matching manual PDF witho
   );
 });
 
+test("fixture facade: canonical bytes with conflicting manual version evidence stop before creation", async () => {
+  const context = await fixture({
+    parents: [{
+      itemKey: "MANUAL1",
+      attachments: [{
+        attachmentKey: "CONFLICTV1",
+        fingerprint: verifiedPdf.fingerprint,
+        version: 1,
+        identity: "unverified",
+        canonicalSourceEvidence: false,
+        readable: true,
+        pageCount: verifiedPdf.pageCount,
+      }],
+    }],
+  });
+  const selection = {
+    kind: "attach",
+    itemKey: "MANUAL1",
+    expectedItemRevision: context.inspected.candidates[0].itemRevision,
+  };
+
+  const outcome = await context.adapter.ensure(
+    input(context, "op-conflicting-manual-version", selection),
+  );
+
+  assert.equal(outcome.kind, "rejected");
+  assert.equal(outcome.error.code, "conflict");
+  assert.equal(context.acquisition.calls, 1);
+  assert.equal(context.staging.staged, 0);
+  assert.equal(context.native.createParentCalls, 0);
+  assert.equal(context.native.createAttachmentCalls, 0);
+  assert.equal(context.native.installCalls, 0);
+  assert.equal(context.native.parents.get("MANUAL1").attachments.size, 1);
+});
+
+test("fixture facade: canonical bytes under another selected parent stop before creation", async () => {
+  const context = await fixture({
+    parents: [
+      { itemKey: "TARGET", attachments: [] },
+      {
+        itemKey: "OTHER",
+        attachments: [{
+          attachmentKey: "OTHERPDF",
+          fingerprint: verifiedPdf.fingerprint,
+          version: 1,
+          identity: "verified",
+          readable: true,
+          pageCount: verifiedPdf.pageCount,
+        }],
+      },
+    ],
+  });
+  const selected = context.inspected.candidates.find(
+    (candidate) => candidate.itemKey === "TARGET",
+  );
+  const outcome = await context.adapter.ensure(input(context, "op-cross-parent-bytes", {
+    kind: "attach",
+    itemKey: "TARGET",
+    expectedItemRevision: selected.itemRevision,
+  }));
+
+  assert.equal(outcome.kind, "rejected");
+  assert.equal(outcome.error.code, "conflict");
+  assert.equal(context.staging.staged, 0);
+  assert.equal(context.native.createAttachmentCalls, 0);
+  assert.equal(context.native.installCalls, 0);
+});
+
 test("fixture facade: explicit attachment allows a different version or unknown provenance while preserving it", async () => {
   for (const prior of [
     { attachmentKey: "OLDV1", fingerprint: "sha256:v1", version: 1, identity: "verified" },

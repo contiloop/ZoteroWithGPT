@@ -352,56 +352,73 @@ export class ZoteroArxivNativeImport
       let current = await this.#validatedInspection(input, acquired.fingerprint);
       if (input.selection.kind === "attach") {
         const attachSelection = input.selection;
-        const selected = current.candidates.find(
-          (candidate) => candidate.itemKey === attachSelection.itemKey,
+        const matchingBytes = current.candidates.flatMap((candidate) =>
+          candidate.attachments
+            .filter((attachment) => attachment.fingerprint === acquired.fingerprint)
+            .map((attachment) => ({ itemKey: candidate.itemKey, attachment })),
         );
-        const matchingManual = selected?.attachments.filter(
-          (attachment) =>
-            attachment.identity === "unverified" &&
-            attachment.fingerprint === acquired.fingerprint,
-        ) ?? [];
-        if (matchingManual.length === 1) {
-          const candidate = matchingManual[0] as ArxivCandidate["attachments"][number];
-          if (candidate.version === null || candidate.version === input.source.version) {
-            const attachment = await this.#native.getArxivAttachment(
-              input.source,
-              attachSelection.itemKey,
-              candidate.attachmentKey,
+        if (matchingBytes.length > 1) {
+          throw new CoreOperationError(
+            "conflict",
+            "Multiple existing PDFs match the acquired canonical arXiv bytes",
+          );
+        }
+        if (matchingBytes.length === 1) {
+          const match = matchingBytes[0] as {
+            itemKey: string;
+            attachment: ArxivCandidate["attachments"][number];
+          };
+          if (match.itemKey !== attachSelection.itemKey) {
+            throw new CoreOperationError(
+              "conflict",
+              "The acquired canonical arXiv bytes already exist under another parent",
             );
-            this.#native.assertArxivAccessFence(input.accessFence);
-            evidence = this.#evidence(input, current, {
-              fingerprint: acquired.fingerprint,
-              byteLength: acquired.byteLength,
-              pageCount: acquired.pageCount,
-              stagingId: null,
-              itemKey: attachSelection.itemKey,
-              itemAction: "reused",
-              pdfAction: "reused",
-              attachmentKey: candidate.attachmentKey,
-            });
-            if (attachment === undefined || !expectedAttachmentIsReady(evidence, attachment)) {
-              throw new CoreOperationError(
-                "conflict",
-                "The matching manual PDF lacks unambiguous canonical source evidence",
-              );
-            }
-            const reuseInspection = await this.#native.inspectArxiv(input.source);
-            this.#native.assertArxivAccessFence(input.accessFence);
-            if (!sameCandidateSnapshot(current.candidates, reuseInspection.candidates)) {
-              throw new CoreOperationError(
-                "conflict",
-                "The complete canonical arXiv set changed during manual PDF readback",
-              );
-            }
-            await this.#checkpoint(input.identity.operationId, evidence);
-            const result = ready(evidence, attachment);
-            await this.#checkpoint(input.identity.operationId, {
-              ...evidence,
-              stage: "ready",
-              result,
-            });
-            return { kind: "completed", data: result, verification: confirmed };
           }
+          const candidate = match.attachment;
+          if (candidate.version !== null && candidate.version !== input.source.version) {
+            throw new CoreOperationError(
+              "conflict",
+              "An existing byte-identical PDF has conflicting arXiv version evidence",
+            );
+          }
+          const attachment = await this.#native.getArxivAttachment(
+            input.source,
+            attachSelection.itemKey,
+            candidate.attachmentKey,
+          );
+          this.#native.assertArxivAccessFence(input.accessFence);
+          evidence = this.#evidence(input, current, {
+            fingerprint: acquired.fingerprint,
+            byteLength: acquired.byteLength,
+            pageCount: acquired.pageCount,
+            stagingId: null,
+            itemKey: attachSelection.itemKey,
+            itemAction: "reused",
+            pdfAction: "reused",
+            attachmentKey: candidate.attachmentKey,
+          });
+          if (attachment === undefined || !expectedAttachmentIsReady(evidence, attachment)) {
+            throw new CoreOperationError(
+              "conflict",
+              "The matching manual PDF lacks unambiguous canonical source evidence",
+            );
+          }
+          const reuseInspection = await this.#native.inspectArxiv(input.source);
+          this.#native.assertArxivAccessFence(input.accessFence);
+          if (!sameCandidateSnapshot(current.candidates, reuseInspection.candidates)) {
+            throw new CoreOperationError(
+              "conflict",
+              "The complete canonical arXiv set changed during manual PDF readback",
+            );
+          }
+          await this.#checkpoint(input.identity.operationId, evidence);
+          const result = ready(evidence, attachment);
+          await this.#checkpoint(input.identity.operationId, {
+            ...evidence,
+            stage: "ready",
+            result,
+          });
+          return { kind: "completed", data: result, verification: confirmed };
         }
       }
 

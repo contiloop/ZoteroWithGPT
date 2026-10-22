@@ -191,11 +191,12 @@ export interface NativeArxivStagedFileInstaller {
     destinationDirectory: string,
     fileName: string,
     /**
-     * Awaited after all installer preparation and immediately before exclusive
-     * file creation. The installer performs no further preparation or await
-     * between this validation and the create-only write.
+     * Called after all asynchronous installer preparation. The native adapter
+     * performs its final complete inspection, then invokes `createImmediately`
+     * in the same synchronous continuation. The closure must perform only an
+     * exclusive create-only copy and must not return a promise.
      */
-    validateImmediatelyBeforeCreate: () => Promise<void>,
+    commitValidatedCreate: (createImmediately: () => void) => Promise<void>,
   ): Promise<void>;
 }
 

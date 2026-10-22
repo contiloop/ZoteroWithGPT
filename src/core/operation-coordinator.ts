@@ -11,6 +11,8 @@ import type {
 import {
   PROTOCOL_VERSION,
   canonicalRequestBytes,
+  isEnsureArxivItemOnlyResult,
+  isEnsureArxivReadyResult,
   isMutationOperation,
   type OperationState,
   type ProtocolError,
@@ -288,6 +290,18 @@ export class OperationCoordinator {
     outcome: OperationExecutionOutcome,
   ): Promise<OperationRecord> {
     if (outcome.kind === "completed") {
+      if (running.operation === "ensure_arxiv_pdf" && !isEnsureArxivReadyResult(outcome.data)) {
+        const indeterminate = coreErrorResponse(
+          running.operationId,
+          "indeterminate",
+          new CoreOperationError(
+            "unknown_outcome",
+            "The arXiv import returned invalid completion evidence; its native outcome must be reconciled",
+          ),
+          outcome.verification,
+        );
+        return this.#move(running, "indeterminate", indeterminate);
+      }
       if (running.mutation && outcome.verification.storage !== "confirmed") {
         if (outcome.verification.storage === "failed") {
           const failed = coreErrorResponse(
@@ -322,10 +336,20 @@ export class OperationCoordinator {
       return this.#move(running, "succeeded", succeeded);
     }
 
+    const retainedData =
+      outcome.kind === "failed" &&
+      "data" in outcome &&
+      running.operation === "ensure_arxiv_pdf" &&
+      outcome.error.code === "storage_error" &&
+      outcome.verification.storage === "confirmed" &&
+      outcome.verification.viewer === "not_checked" &&
+      isEnsureArxivItemOnlyResult(outcome.data)
+        ? outcome.data
+        : null;
     const failed = response(
       running.operationId,
       outcome.kind,
-      null,
+      retainedData,
       outcome.error,
       outcome.verification,
     );

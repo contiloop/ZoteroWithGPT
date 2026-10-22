@@ -112,6 +112,92 @@ Payload: `{}`. `profileId` may be omitted for discovery.
 
 Result fields: protocol version, plugin version, Zotero version, profile identity, enabled state, supported operations, annotation types, native colors, size capabilities, and transport description.
 
+Only operations wired in the running build appear in `capabilities.operations`. The two arXiv operations below are additive protocol-v1 members, but a build that has not wired their source acquisition and native import adapters returns `unsupported_capability` and does not advertise them.
+
+### `inspect_arxiv`
+
+Payload: `{ "url": "https://arxiv.org/abs/2401.01234v2" }`. The URL is nonempty, limited to 4,096 UTF-8 bytes, and must be an uncredentialed official HTTPS arXiv abstract or PDF URL without a query or fragment. Modern identifiers use `YYMM.NNNN` or `YYMM.NNNNN`; legacy identifiers use `archive/YYMMNNN`. Numeric months and serials must be valid. A URL may include a positive version suffix, but `ArticleIdentity.arxivId` never includes that suffix.
+
+This is a profiled read. Authorization is forbidden, and the host selects the profile's personal library. The result has this shape:
+
+```typescript
+type ArticleIdentity = { arxivId: string; version: number };
+type ArxivSource = ArticleIdentity & {
+  abstractUrl: string;
+  pdfUrl: string;
+  metadata: {
+    title: string;
+    authors: string[];
+    published: string; // ISO timestamp
+    updated: string; // ISO timestamp
+    abstract: string; // may be empty
+    doi?: string;
+  };
+};
+type ImportSelection =
+  | { kind: "create" }
+  | { kind: "attach"; itemKey: string; expectedItemRevision: string }
+  | { kind: "reuse"; itemKey: string; attachmentKey: string; expectedFingerprint: string };
+type ArxivCandidate = {
+  itemKey: string;
+  itemRevision: string;
+  title: string;
+  attachments: {
+    attachmentKey: string;
+    fingerprint: string | null;
+    version: number | null;
+    identity: "verified" | "unverified";
+  }[];
+};
+type InspectArxivData = {
+  source: ArxivSource;
+  libraryId: string;
+  candidates: ArxivCandidate[];
+  decision: "create" | "attach" | "reuse" | "needs_choice";
+  reason: string;
+  inspectionToken: string;
+  selection?: ImportSelection;
+};
+```
+
+The source comes from one matching metadata entry and names a concrete version. The extension constructs `abstractUrl` and `pdfUrl`; a client cannot provide a download URL or trusted metadata. All returned strings are nonempty except `metadata.abstract`, and optional fields are omitted rather than set to `null`.
+
+Candidate URL or title similarity cannot override conflicting evidence. `identity: "verified"` requires trustworthy native provenance or a demonstrated matching PDF fingerprint. A different existing version or a competing unverified PDF yields `needs_choice`. `selection` is present only for an unambiguous matching `create`, `attach`, or `reuse` decision and is omitted for `needs_choice`; `create` is available only when there is no canonical parent candidate.
+
+The inspection token binds the source identity and version, selected library, and complete relevant native candidate snapshot. It is optimistic conflict evidence, not a credential or mutation authority. A later ensure rejects the token with `conflict` if any bound source, library, item revision, attachment identity, version, or fingerprint changed.
+
+### `ensure_arxiv_pdf`
+
+This is an authorized profiled mutation. Payload:
+
+```json
+{
+  "source": { "arxivId": "2401.01234", "version": 2 },
+  "inspectionToken": "opaque-inspection-token",
+  "selection": { "kind": "create" }
+}
+```
+
+`source` must exactly match the inspected unversioned identity plus positive safe-integer version. `selection` must be one of the strict `ImportSelection` shapes and match the token-bound decision. Unknown or stale tokens do not authorize a best guess. A successful result is:
+
+```typescript
+type EnsureArxivPdfData = {
+  source: ArticleIdentity;
+  libraryId: string;
+  completion: "ready" | "item_only";
+  itemKey: string;
+  itemAction: "created" | "reused";
+  attachmentKey: string | null;
+  attachmentFingerprint: string | null;
+  pdfAction: "downloaded" | "reused" | "none";
+  deepLink: string;
+};
+```
+
+For `succeeded`, `completion` is `ready`, both attachment fields are nonnull, `pdfAction` is `downloaded` or `reused`, storage is `confirmed` by actual native readback, and viewer is `not_checked`. This operation creates no annotations.
+
+If a parent item was definitively committed and read back but PDF acquisition or import then fails, the response may be `failed` with `storage_error` and bounded retained data: `completion: "item_only"`, null attachment fields, `pdfAction: "none"`, and a parent-item deep link. Its verification is `storage: "confirmed"`, `viewer: "not_checked"`. Other precommit failed or rejected responses have null data. A possibly committed outcome is `indeterminate` with `unknown_outcome` and null data; retryability never authorizes a different operation ID for a possibly committed request.
+
 ### `search_papers`
 
 Payload:
@@ -391,6 +477,8 @@ conflict duplicate_id_mismatch unsupported_capability too_large storage_error
 verification_failed unknown_outcome
 ```
 
+For the arXiv operations, malformed or unsupported source input maps to `invalid_request` or `unsupported_capability`; an absent article/version maps to `not_found`; source retrieval, PDF download, and a known import failure map to `storage_error`. Missing local authority maps to `permission_denied` or `not_connected`, limits to `too_large`, a stale inspection token to `conflict`, a changed selected attachment to `stale_attachment`, and unresolved competing candidates to `ambiguous_target`. `retryable` describes the same operation's condition; it never authorizes a new operation ID for a possibly committed mutation.
+
 ## Successful response data
 
 The following shapes describe `data` inside the response envelope, not additional top-level fields. `?` denotes a field that may be omitted (not an alternative `null` value), `[]` an array, and `ResolvedAnchor` the complete anchor shape defined above. Strings containing content are returned in full within the response limits. Compare opaque revision tokens exactly; use the returned revision for a later approved update.
@@ -398,6 +486,8 @@ The following shapes describe `data` inside the response envelope, not additiona
 | Operation | `data` shape |
 | --- | --- |
 | `connection_status` | `ConnectionStatus` |
+| `inspect_arxiv` | `InspectArxivData` |
+| `ensure_arxiv_pdf` | `EnsureArxivPdfData` with `completion: "ready"` on success |
 | `search_papers` | `{ matches: PaperMatch[] }` |
 | `read_pdf` | `{ attachmentFingerprint: string, attachmentRevision: string, pages: PdfPage[] }` |
 | `list_annotations` | `{ annotations: NativeAnnotation[] }` |
@@ -484,6 +574,8 @@ For annotation creation, `saved.comment` is the persisted complete comment; for 
 
 Verification descriptions are diagnostic text, not stable machine-readable error codes. Read each evidence object's `confirmed` boolean together with the envelope's independent `verification.storage` and `verification.viewer` states. Neither a successful verification request nor a deep link proves that its viewer evidence is confirmed. The current file transport reports `kind: "custom"`; other transport kinds in the versioned shape do not claim an installed HTTP or native-messaging endpoint.
 
+The response validator receives the submitted operation name and validates its complete result shape. The published response schema has no generic object fallback: each of the fourteen success data shapes is closed to unknown fields. It also constrains lifecycle data. Queued and running responses have null data and error; succeeded responses have a complete success shape and null error; rejected and indeterminate responses have null data. The sole failed-data exception is the confirmed `ensure_arxiv_pdf` `item_only` shape described above. A malformed arXiv object cannot pass through one of the legacy result alternatives.
+
 ## Identity, lifecycle, conflicts, and recovery
 
 The canonical digest covers `protocolVersion`, `operation`, `profileId` when present, authorization when present, and the operation payload. It excludes `operationId`, because the durable identity is the pair of the opaque ID and this digest. Object keys are sorted recursively; array order is preserved; non-JSON values and nonfinite numbers are rejected. The identity digest is a collision-resistant cryptographic hash of the canonical UTF-8 bytes.
@@ -502,3 +594,5 @@ Mutations are serialized per profile. There is no implicit atomic batch transact
 `expectedRevision` is checked against the actual current target immediately before an update. A manual edit or sync update that changes the revision returns `conflict`; it is never overwritten. After a conflict, the client must read the target again and obtain renewed human approval for the updated content and target before sending a new operation ID.
 
 Historical operation identity and results survive ordinary plugin reinstall or upgrade. A crash-left `running` write is reconciled against its recorded native identity; recovery does not create the item again. A previously succeeded operation is returned from history even if a person later deletes its annotation. If commit status cannot be proven, recovery returns `indeterminate` with `unknown_outcome`.
+
+This additive change retains `protocolVersion: 1`. Requests for the original twelve operations and durable journal records written by plugin version 0.1.0 remain readable with their historical outcomes unchanged.

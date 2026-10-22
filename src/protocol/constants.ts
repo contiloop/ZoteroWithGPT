@@ -4,6 +4,7 @@ export const MAX_REQUEST_BYTES = 1_048_576;
 export const MAX_TEXT_BYTES = 524_288;
 export const MAX_EXCERPT_BYTES = 65_536;
 export const MAX_QUERY_BYTES = 4_096;
+export const MAX_URL_BYTES = 4_096;
 export const MAX_AUTHORIZATION_SCOPE_BYTES = 16_384;
 export const MAX_IDENTIFIER_BYTES = 512;
 export const MAX_PAGE_SPAN = 200;
@@ -34,6 +35,8 @@ export const OPERATION_NAMES = [
   "create_note",
   "update_note",
   "verify_annotation",
+  "inspect_arxiv",
+  "ensure_arxiv_pdf",
 ] as const satisfies readonly OperationName[];
 
 export const MUTATION_OPERATION_NAMES = [
@@ -41,6 +44,7 @@ export const MUTATION_OPERATION_NAMES = [
   "update_annotation",
   "create_note",
   "update_note",
+  "ensure_arxiv_pdf",
 ] as const satisfies readonly MutationOperationName[];
 
 export function isMutationOperation(operation: OperationName): operation is MutationOperationName {

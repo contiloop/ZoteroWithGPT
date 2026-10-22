@@ -1,0 +1,31 @@
+{
+  "protocolVersion": 1,
+  "operationId": "example-inspect-arxiv-1",
+  "state": "succeeded",
+  "data": {
+    "source": {
+      "arxivId": "2401.01234",
+      "version": 2,
+      "abstractUrl": "https://arxiv.org/abs/2401.01234v2",
+      "pdfUrl": "https://arxiv.org/pdf/2401.01234v2",
+      "metadata": {
+        "title": "A Strict Import Contract",
+        "authors": ["Ada Researcher"],
+        "published": "2024-01-02T03:04:05Z",
+        "updated": "2024-02-03T04:05:06Z",
+        "abstract": "A controlled example used only for protocol validation."
+      }
+    },
+    "libraryId": "1",
+    "candidates": [],
+    "decision": "create",
+    "reason": "No canonical parent item exists in the selected personal library.",
+    "inspectionToken": "inspection-example-2401.01234-v2",
+    "selection": { "kind": "create" }
+  },
+  "error": null,
+  "verification": {
+    "storage": "not_applicable",
+    "viewer": "not_applicable"
+  }
+}

@@ -7,7 +7,6 @@ import {
   MAX_REQUEST_BYTES,
   MAX_TEXT_BYTES,
   NATIVE_ANNOTATION_COLORS,
-  OPERATION_NAMES,
   PROTOCOL_VERSION,
   type ConnectionStatusResult,
   type CreateAnnotationResult,
@@ -16,6 +15,7 @@ import {
   type ListNotesResult,
   type NativeAnnotation,
   type NativeAnnotationColor,
+  type OperationName,
   type ReadNoteResult,
   type ReadPdfResult,
   type RequestFor,
@@ -49,6 +49,21 @@ import {
   operationIdentityMarker,
   safeNativeNoteContent,
 } from "./record-utils.js";
+
+const IMPLEMENTED_OPERATION_NAMES = [
+  "connection_status",
+  "search_papers",
+  "read_pdf",
+  "list_annotations",
+  "list_notes",
+  "read_note",
+  "resolve_anchor",
+  "create_annotation",
+  "update_annotation",
+  "create_note",
+  "update_note",
+  "verify_annotation",
+] as const satisfies readonly OperationName[];
 
 const DEFAULT_LIMIT = 25;
 const DEFAULT_ANNOTATION_COLOR: NativeAnnotationColor = "#ffd400";
@@ -145,7 +160,7 @@ export class ZoteroLibraryAdapter
       },
       enabled: this.#isEnabled(),
       capabilities: {
-        operations: [...OPERATION_NAMES],
+        operations: [...IMPLEMENTED_OPERATION_NAMES],
         annotationTypes: ["highlight", "note"],
         annotationColors: [...NATIVE_ANNOTATION_COLORS],
         maxRequestBytes: MAX_REQUEST_BYTES,

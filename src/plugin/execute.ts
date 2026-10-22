@@ -122,6 +122,12 @@ export class NativeOperationExecutor implements OperationExecutorPort {
           viewer: viewerEvidence.confirmed ? "confirmed" : "failed",
         });
       }
+      case "inspect_arxiv":
+      case "ensure_arxiv_pdf":
+        throw new CoreOperationError(
+          "unsupported_capability",
+          `${request.operation} is defined by protocol v1 but is not active in this build`,
+        );
     }
   }
 }

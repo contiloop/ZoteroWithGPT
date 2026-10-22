@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
   MAX_REQUEST_BYTES,
+  MUTATION_OPERATION_NAMES,
   NATIVE_ANNOTATION_COLORS,
+  OPERATION_NAMES,
   ProtocolValidationError,
   parseProtocolRequest,
+  parseArxivUrl,
   validateProtocolRequest,
+  validateProtocolResponse,
 } from "../../dist/protocol/index.js";
 
 const connectionRequest = {
@@ -262,4 +267,289 @@ test("long explanations remain complete annotation comments", () => {
 
   assert.equal(request.operation, "create_annotation");
   assert.equal(request.payload.comment, comment);
+});
+
+const arxivSource = {
+  arxivId: "2401.01234",
+  version: 2,
+  abstractUrl: "https://arxiv.org/abs/2401.01234v2",
+  pdfUrl: "https://arxiv.org/pdf/2401.01234v2",
+  metadata: {
+    title: "A Strict Import Contract",
+    authors: ["Ada Researcher", "Grace Scholar"],
+    published: "2024-01-02T03:04:05Z",
+    updated: "2024-02-03T04:05:06Z",
+    abstract: "",
+    doi: "10.1000/example",
+  },
+};
+
+const inspectData = {
+  source: arxivSource,
+  libraryId: "1",
+  candidates: [
+    {
+      itemKey: "ITEM1234",
+      itemRevision: "rev:4",
+      title: "A Strict Import Contract",
+      attachments: [
+        {
+          attachmentKey: "ATTACH01",
+          fingerprint: "sha256:known-pdf",
+          version: 2,
+          identity: "verified",
+        },
+      ],
+    },
+  ],
+  decision: "reuse",
+  reason: "The current attachment has verified matching provenance.",
+  inspectionToken: "inspection:2401.01234:v2:snapshot-1",
+  selection: {
+    kind: "reuse",
+    itemKey: "ITEM1234",
+    attachmentKey: "ATTACH01",
+    expectedFingerprint: "sha256:known-pdf",
+  },
+};
+
+function responseEnvelope(operationId, state, data, error, verification) {
+  return { protocolVersion: 1, operationId, state, data, error, verification };
+}
+
+test("protocol v1 adds exactly the two arXiv operations and classifies only ensure as a mutation", () => {
+  assert.equal(OPERATION_NAMES.length, 14);
+  assert.deepEqual(OPERATION_NAMES.slice(-2), ["inspect_arxiv", "ensure_arxiv_pdf"]);
+  assert.equal(new Set(OPERATION_NAMES).size, 14);
+  assert.equal(MUTATION_OPERATION_NAMES.length, 5);
+  assert.equal(MUTATION_OPERATION_NAMES.includes("inspect_arxiv"), false);
+  assert.equal(MUTATION_OPERATION_NAMES.includes("ensure_arxiv_pdf"), true);
+});
+
+test("inspect_arxiv accepts bounded official arXiv URLs without read authorization", () => {
+  const modern = validateProtocolRequest({
+    protocolVersion: 1,
+    operationId: "op.inspect-modern-1",
+    operation: "inspect_arxiv",
+    profileId: "profile-A",
+    payload: { url: "https://arxiv.org/abs/2401.01234v2" },
+  });
+  assert.deepEqual(parseArxivUrl(modern.payload.url), {
+    arxivId: "2401.01234",
+    version: 2,
+  });
+
+  assert.deepEqual(parseArxivUrl("https://arxiv.org/pdf/hep-th/9901001v3.pdf"), {
+    arxivId: "hep-th/9901001",
+    version: 3,
+  });
+
+  expectCode(
+    () => validateProtocolRequest({ ...modern, authorization: {
+      kind: "explicit_request", scope: "Inspect this article.",
+    } }),
+    "invalid_request",
+  );
+});
+
+test("inspect_arxiv rejects malformed, non-arXiv, and oversized URLs", () => {
+  const base = {
+    protocolVersion: 1,
+    operationId: "op.inspect-invalid-1",
+    operation: "inspect_arxiv",
+    profileId: "profile-A",
+  };
+  for (const url of [
+    "http://arxiv.org/abs/2401.01234",
+    "https://example.com/abs/2401.01234",
+    "https://arxiv.org/abs/2413.01234",
+    "https://arxiv.org/abs/2401.00000",
+    "https://arxiv.org/abs/2401.01234v0",
+    "https://arxiv.org/abs/2401.01234v2?download=1",
+    "https://arxiv.org/abs/hep-th/9913001",
+    "https://arxiv.org/abs/hep-th/9901000",
+  ]) {
+    expectCode(() => validateProtocolRequest({ ...base, payload: { url } }), "invalid_request");
+  }
+  expectCode(
+    () => validateProtocolRequest({ ...base, payload: { url: "가".repeat(1_366) } }),
+    "too_large",
+  );
+});
+
+test("ensure_arxiv_pdf requires scoped mutation authorization and strict identity and selection", () => {
+  const base = {
+    protocolVersion: 1,
+    operationId: "op.ensure-1",
+    operation: "ensure_arxiv_pdf",
+    profileId: "profile-A",
+    payload: {
+      source: { arxivId: "2401.01234", version: 2 },
+      inspectionToken: "inspection:2401.01234:v2:snapshot-1",
+      selection: {
+        kind: "attach",
+        itemKey: "ITEM1234",
+        expectedItemRevision: "rev:4",
+      },
+    },
+  };
+  expectCode(() => validateProtocolRequest(base), "permission_denied");
+
+  const authorized = {
+    ...base,
+    authorization: {
+      kind: "explicit_request",
+      scope: "Attach arXiv 2401.01234v2 to ITEM1234 after the inspected snapshot.",
+    },
+  };
+  assert.equal(validateProtocolRequest(authorized).payload.selection.kind, "attach");
+
+  for (const payload of [
+    { ...base.payload, source: { arxivId: "2401.01234v2", version: 2 } },
+    { ...base.payload, source: { arxivId: "2401.01234", version: 0 } },
+    { ...base.payload, source: { arxivId: "legacy/9913001", version: 1 } },
+    { ...base.payload, selection: { kind: "create", itemKey: "unexpected" } },
+    { ...base.payload, selection: { kind: "reuse", itemKey: "ITEM1234" } },
+    { ...base.payload, selection: null },
+  ]) {
+    expectCode(() => validateProtocolRequest({ ...authorized, payload }), "invalid_request");
+  }
+});
+
+test("inspect_arxiv response validation enforces the complete strict result shape", () => {
+  const valid = responseEnvelope(
+    "op.inspect-result-1",
+    "succeeded",
+    inspectData,
+    null,
+    { storage: "not_applicable", viewer: "not_applicable" },
+  );
+  assert.deepEqual(validateProtocolResponse("inspect_arxiv", valid), valid);
+
+  const invalidData = [
+    { ...inspectData, unexpected: true },
+    { ...inspectData, reason: "" },
+    { ...inspectData, decision: "needs_choice", selection: { kind: "create" } },
+    { ...inspectData, source: { ...arxivSource, abstractUrl: "https://evil.example/a" } },
+    { ...inspectData, source: { ...arxivSource, metadata: { ...arxivSource.metadata, authors: [""] } } },
+    { ...inspectData, source: { ...arxivSource, metadata: { ...arxivSource.metadata, abstract: null } } },
+  ];
+  for (const data of invalidData) {
+    expectCode(
+      () => validateProtocolResponse("inspect_arxiv", { ...valid, data }),
+      "invalid_request",
+    );
+  }
+});
+
+test("ensure_arxiv_pdf validates complete success, bounded retained failure, and indeterminate shapes", () => {
+  const ready = {
+    source: { arxivId: "2401.01234", version: 2 },
+    libraryId: "1",
+    completion: "ready",
+    itemKey: "ITEM1234",
+    itemAction: "reused",
+    attachmentKey: "ATTACH01",
+    attachmentFingerprint: "sha256:known-pdf",
+    pdfAction: "reused",
+    deepLink: "zotero://open-pdf/library/items/ATTACH01",
+  };
+  const succeeded = responseEnvelope(
+    "op.ensure-result-1",
+    "succeeded",
+    ready,
+    null,
+    { storage: "confirmed", viewer: "not_checked" },
+  );
+  assert.deepEqual(validateProtocolResponse("ensure_arxiv_pdf", succeeded), succeeded);
+
+  for (const data of [
+    { ...ready, attachmentKey: null },
+    { ...ready, attachmentFingerprint: null },
+    { ...ready, pdfAction: "none" },
+    { ...ready, deepLink: "" },
+  ]) {
+    expectCode(
+      () => validateProtocolResponse("ensure_arxiv_pdf", { ...succeeded, data }),
+      "invalid_request",
+    );
+  }
+
+  const itemOnly = {
+    ...ready,
+    completion: "item_only",
+    itemAction: "created",
+    attachmentKey: null,
+    attachmentFingerprint: null,
+    pdfAction: "none",
+    deepLink: "zotero://select/library/items/ITEM1234",
+  };
+  const failed = responseEnvelope(
+    "op.ensure-result-2",
+    "failed",
+    itemOnly,
+    { code: "storage_error", message: "The PDF acquisition failed after parent readback.", retryable: false },
+    { storage: "confirmed", viewer: "not_checked" },
+  );
+  assert.deepEqual(validateProtocolResponse("ensure_arxiv_pdf", failed), failed);
+  expectCode(
+    () => validateProtocolResponse("ensure_arxiv_pdf", {
+      ...failed,
+      error: { ...failed.error, code: "conflict" },
+    }),
+    "invalid_request",
+  );
+
+  const indeterminate = responseEnvelope(
+    "op.ensure-result-3",
+    "indeterminate",
+    null,
+    { code: "unknown_outcome", message: "Commit status is unknown.", retryable: false },
+    { storage: "not_checked", viewer: "not_checked" },
+  );
+  assert.deepEqual(validateProtocolResponse("ensure_arxiv_pdf", indeterminate), indeterminate);
+  expectCode(
+    () => validateProtocolResponse("ensure_arxiv_pdf", { ...indeterminate, data: itemOnly }),
+    "invalid_request",
+  );
+});
+
+test("distributed arXiv examples pass the same runtime validators without network access", () => {
+  const example = (name) => JSON.parse(readFileSync(new URL(
+    `../../scripts/package/assets/protocol/examples/${name}`,
+    import.meta.url,
+  ), "utf8"));
+
+  const inspectRequest = example("inspect-arxiv.request.json");
+  const inspectResponse = example("inspect-arxiv.response.json");
+  const ensureRequest = example("ensure-arxiv-pdf.request.json");
+  const readyResponse = example("ensure-arxiv-pdf.response.json");
+  const itemOnlyResponse = example("ensure-arxiv-pdf.item-only.response.json");
+  const connectionResponse = example("connection-status.response.json");
+  const annotationResponse = example("create-annotation.response.json");
+
+  assert.deepEqual(
+    validateProtocolResponse("connection_status", connectionResponse),
+    connectionResponse,
+  );
+  assert.deepEqual(
+    validateProtocolResponse("create_annotation", annotationResponse),
+    annotationResponse,
+  );
+  assert.deepEqual(validateProtocolRequest(inspectRequest), inspectRequest);
+  assert.deepEqual(validateProtocolResponse("inspect_arxiv", inspectResponse), inspectResponse);
+  assert.deepEqual(validateProtocolRequest(ensureRequest), ensureRequest);
+  assert.deepEqual(validateProtocolResponse("ensure_arxiv_pdf", readyResponse), readyResponse);
+  assert.deepEqual(
+    validateProtocolResponse("ensure_arxiv_pdf", itemOnlyResponse),
+    itemOnlyResponse,
+  );
+
+  expectCode(
+    () => validateProtocolResponse("connection_status", {
+      ...connectionResponse,
+      data: { ...connectionResponse.data, unexpected: true },
+    }),
+    "invalid_request",
+  );
 });

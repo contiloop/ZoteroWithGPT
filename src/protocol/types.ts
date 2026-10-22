@@ -12,13 +12,16 @@ export type OperationName =
   | "update_annotation"
   | "create_note"
   | "update_note"
-  | "verify_annotation";
+  | "verify_annotation"
+  | "inspect_arxiv"
+  | "ensure_arxiv_pdf";
 
 export type MutationOperationName =
   | "create_annotation"
   | "update_annotation"
   | "create_note"
-  | "update_note";
+  | "update_note"
+  | "ensure_arxiv_pdf";
 
 export type ReadOperationName = Exclude<OperationName, MutationOperationName>;
 
@@ -154,6 +157,38 @@ export interface VerifyAnnotationPayload {
   annotationKey: string;
 }
 
+/** Canonical arXiv identity. arxivId never includes a trailing version suffix. */
+export interface ArticleIdentity {
+  arxivId: string;
+  version: number;
+}
+
+/** Parsed from an official arXiv URL before any source acquisition. */
+export interface ArxivUrlReference {
+  arxivId: string;
+  version?: number;
+}
+
+export interface InspectArxivPayload {
+  url: string;
+}
+
+export type ImportSelection =
+  | { kind: "create" }
+  | { kind: "attach"; itemKey: string; expectedItemRevision: string }
+  | {
+      kind: "reuse";
+      itemKey: string;
+      attachmentKey: string;
+      expectedFingerprint: string;
+    };
+
+export interface EnsureArxivPdfPayload {
+  source: ArticleIdentity;
+  inspectionToken: string;
+  selection: ImportSelection;
+}
+
 export interface OperationPayloadMap {
   connection_status: ConnectionStatusPayload;
   search_papers: SearchPapersPayload;
@@ -167,6 +202,8 @@ export interface OperationPayloadMap {
   create_note: CreateNotePayload;
   update_note: UpdateNotePayload;
   verify_annotation: VerifyAnnotationPayload;
+  inspect_arxiv: InspectArxivPayload;
+  ensure_arxiv_pdf: EnsureArxivPdfPayload;
 }
 
 interface RequestBase<O extends OperationName> {
@@ -204,7 +241,9 @@ export type ProtocolRequest =
   | AuthorizedMutationRequest<"update_annotation">
   | AuthorizedMutationRequest<"create_note">
   | AuthorizedMutationRequest<"update_note">
-  | ProfiledReadRequest<"verify_annotation">;
+  | ProfiledReadRequest<"verify_annotation">
+  | ProfiledReadRequest<"inspect_arxiv">
+  | AuthorizedMutationRequest<"ensure_arxiv_pdf">;
 
 export type RequestFor<O extends OperationName> = Extract<ProtocolRequest, { operation: O }>;
 
@@ -371,6 +410,77 @@ export interface VerifyAnnotationResult {
   viewerEvidence: VerificationDetail;
 }
 
+export interface ArxivMetadata {
+  title: string;
+  authors: string[];
+  published: string;
+  updated: string;
+  /** The abstract is the only protocol string that may be empty. */
+  abstract: string;
+  doi?: string;
+}
+
+export interface ArxivSource extends ArticleIdentity {
+  abstractUrl: string;
+  pdfUrl: string;
+  metadata: ArxivMetadata;
+}
+
+export interface ArxivCandidateAttachment {
+  attachmentKey: string;
+  fingerprint: string | null;
+  version: number | null;
+  identity: "verified" | "unverified";
+}
+
+export interface ArxivCandidate {
+  itemKey: string;
+  itemRevision: string;
+  title: string;
+  attachments: ArxivCandidateAttachment[];
+}
+
+export interface InspectArxivResult {
+  source: ArxivSource;
+  libraryId: string;
+  candidates: ArxivCandidate[];
+  decision: "create" | "attach" | "reuse" | "needs_choice";
+  reason: string;
+  inspectionToken: string;
+  /** Present only when decision is the matching unambiguous action. */
+  selection?: ImportSelection;
+}
+
+/** Wire-contract name retained for consumers that describe response `data`. */
+export type InspectArxivData = InspectArxivResult;
+
+export type EnsureArxivPdfResult =
+  | {
+      source: ArticleIdentity;
+      libraryId: string;
+      completion: "ready";
+      itemKey: string;
+      itemAction: "created" | "reused";
+      attachmentKey: string;
+      attachmentFingerprint: string;
+      pdfAction: "downloaded" | "reused";
+      deepLink: string;
+    }
+  | {
+      source: ArticleIdentity;
+      libraryId: string;
+      completion: "item_only";
+      itemKey: string;
+      itemAction: "created" | "reused";
+      attachmentKey: null;
+      attachmentFingerprint: null;
+      pdfAction: "none";
+      deepLink: string;
+    };
+
+/** Wire-contract name retained for consumers that describe response `data`. */
+export type EnsureArxivPdfData = EnsureArxivPdfResult;
+
 export interface OperationResultMap {
   connection_status: ConnectionStatusResult;
   search_papers: SearchPapersResult;
@@ -384,6 +494,8 @@ export interface OperationResultMap {
   create_note: CreateNoteResult;
   update_note: UpdateNoteResult;
   verify_annotation: VerifyAnnotationResult;
+  inspect_arxiv: InspectArxivResult;
+  ensure_arxiv_pdf: EnsureArxivPdfResult;
 }
 
 export type ResultFor<O extends OperationName> = OperationResultMap[O];

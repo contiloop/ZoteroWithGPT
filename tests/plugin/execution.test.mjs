@@ -66,3 +66,26 @@ test('readback errors after a write remain uncertain rather than rejected', asyn
   assert.equal(result.kind, 'completed');
   assert.equal(result.verification.storage, 'not_checked');
 });
+
+test('unwired arXiv operations fail closed as unsupported capabilities', async () => {
+  const executor = new NativeOperationExecutor({});
+  for (const request of [
+    { operation: 'inspect_arxiv', payload: { url: 'https://arxiv.org/abs/2401.01234v2' } },
+    {
+      operation: 'ensure_arxiv_pdf',
+      payload: {
+        source: { arxivId: '2401.01234', version: 2 },
+        inspectionToken: 'inspection:snapshot-1',
+        selection: { kind: 'create' },
+      },
+    },
+  ]) {
+    const result = await executor.execute(request, {
+      operationId: `unsupported-${request.operation}`,
+      requestDigest: 'digest',
+    });
+    assert.equal(result.kind, 'rejected');
+    assert.equal(result.error.code, 'unsupported_capability');
+    assert.equal(result.verification.storage, 'not_checked');
+  }
+});

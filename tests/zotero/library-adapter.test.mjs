@@ -273,6 +273,20 @@ function windowLikeWithDocument(window, document) {
   };
 }
 
+test("connection status advertises only the twelve currently wired operations", async () => {
+  const result = await adapter().connectionStatus({
+    protocolVersion: 1,
+    operationId: "op-connection-capabilities",
+    operation: "connection_status",
+    payload: {},
+  });
+
+  assert.equal(result.capabilities.operations.length, 12);
+  assert.equal(result.capabilities.operations.includes("inspect_arxiv"), false);
+  assert.equal(result.capabilities.operations.includes("ensure_arxiv_pdf"), false);
+  assert.equal(result.capabilities.operations.includes("verify_annotation"), true);
+});
+
 test("paper discovery returns ambiguous titles and every PDF candidate", async () => {
   const result = await adapter().searchPapers({
     protocolVersion: 1,

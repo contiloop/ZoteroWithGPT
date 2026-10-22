@@ -468,6 +468,9 @@ export class ZoteroArxivNativeImport
           });
           nativeMutationConfirmed = true;
         } catch (error) {
+          if (error instanceof CoreOperationError && error.code === "unknown_outcome") {
+            return unknown(error.message);
+          }
           if (error instanceof CoreOperationError &&
               (error.code === "conflict" || error.code === "permission_denied")) {
             return precommitFailure(error);
@@ -524,6 +527,9 @@ export class ZoteroArxivNativeImport
         });
         nativeMutationConfirmed = true;
       } catch (error) {
+        if (error instanceof CoreOperationError && error.code === "unknown_outcome") {
+          return unknown(error.message);
+        }
         if (error instanceof CoreOperationError &&
             (error.code === "conflict" || error.code === "permission_denied") &&
             !nativeMutationConfirmed) {
@@ -589,7 +595,10 @@ export class ZoteroArxivNativeImport
           expectedCandidates: beforeInstall.candidates,
           accessFence: input.accessFence,
         });
-      } catch {
+      } catch (error) {
+        if (error instanceof CoreOperationError && error.code === "unknown_outcome") {
+          return unknown(error.message);
+        }
         return await this.#reconcileEvidence(evidence, input.identity.operationId);
       }
       try {
@@ -656,6 +665,9 @@ export class ZoteroArxivNativeImport
       });
       return { kind: "completed", data: result, verification: confirmed };
     } catch (error) {
+      if (error instanceof CoreOperationError && error.code === "unknown_outcome") {
+        return unknown(error.message);
+      }
       if (nativeMutationConfirmed && evidence !== undefined) {
         return await this.#reconcileEvidence(evidence, input.identity.operationId);
       }

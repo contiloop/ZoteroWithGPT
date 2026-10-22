@@ -200,6 +200,18 @@ export interface NativeArxivStagedFileInstaller {
   ): Promise<void>;
 }
 
+export interface NativeArxivSynchronousFileFingerprintPort {
+  /**
+   * Reads and SHA-256 fingerprints the current file synchronously. `null`
+   * proves that the path is absent. Implementations must reject a present file
+   * larger than `maximumByteLength` before hashing beyond that bound.
+   */
+  fingerprintNow(
+    path: string,
+    maximumByteLength: number,
+  ): { fingerprint: string; byteLength: number } | null;
+}
+
 /**
  * Sanitizes newly authorized note content and validates an exact native body
  * before a write. Validation never rewrites existing human-authored bytes.

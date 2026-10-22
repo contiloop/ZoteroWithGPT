@@ -23,6 +23,7 @@ import type {
   NativeArxivParentCreate,
   NativeArxivParentRecord,
   NativeArxivPdfInstall,
+  NativeArxivSynchronousFileFingerprintPort,
   NativeArxivStagedFileInstaller,
   NativeAnnotationCreate,
   NativeAnnotationRecord,
@@ -88,6 +89,7 @@ interface ZoteroItemLike {
   getNoteTitle?(): string;
   setNote?(content: string): void;
   loadAllData?(): Promise<unknown>;
+  getFilePath(): string | false;
   save(options?: Record<string, unknown>): Promise<unknown>;
   saveTx(options?: Record<string, unknown>): Promise<unknown>;
 }
@@ -242,6 +244,7 @@ export interface ZoteroNativeEnvironment {
   noteContent: NativeNoteContentPolicy;
   accessGate?: ZoteroAccessGate;
   arxivStaging?: NativeArxivStagedFileInstaller;
+  arxivFileFingerprint?: NativeArxivSynchronousFileFingerprintPort;
 }
 
 interface QueryNodeLike {
@@ -744,6 +747,14 @@ interface ArxivLibraryFence {
   clientVersion: number;
 }
 
+interface PreparedArxivFileEvidence {
+  expectedFingerprint: string | null;
+  attachment: ZoteroItemLike;
+}
+
+const MAX_SYNCHRONOUS_ARXIV_FILE_BYTES = 64 * 1024 * 1024;
+const MAX_SYNCHRONOUS_ARXIV_TOTAL_BYTES = 128 * 1024 * 1024;
+
 type ArxivCommitAttempt<T> =
   | { kind: "saved"; value: T }
   | { kind: "blocked"; error: CoreOperationError };
@@ -778,6 +789,9 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
   readonly #noteContent: NativeNoteContentPolicy;
   readonly #accessGate: ZoteroAccessGate | undefined;
   readonly #arxivStaging: NativeArxivStagedFileInstaller | undefined;
+  readonly #arxivFileFingerprint:
+    | NativeArxivSynchronousFileFingerprintPort
+    | undefined;
 
   constructor(environment: ZoteroNativeEnvironment) {
     this.#zotero = environment.Zotero;
@@ -787,6 +801,7 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     this.#noteContent = environment.noteContent;
     this.#accessGate = environment.accessGate;
     this.#arxivStaging = environment.arxivStaging;
+    this.#arxivFileFingerprint = environment.arxivFileFingerprint;
   }
 
   async runtimeStatus(): Promise<NativeRuntimeStatus> {
@@ -910,105 +925,130 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
       this.#zotero.Libraries.userLibraryID,
       "personal library ID",
     );
-    const attempt = await this.#zotero.DB.executeTransaction<
-      ArxivCommitAttempt<ZoteroItemLike>
-    >(async () => {
-      const accessProblem = this.#arxivAccessProblem(input.accessFence);
-      if (accessProblem !== undefined) return { kind: "blocked", error: accessProblem };
-      const libraryFence = this.#captureArxivLibraryFence(true);
-      const current = await this.inspectArxiv(input.source);
-      const existing = await this.#zotero.Items.getByLibraryAndKeyAsync(
-        personalLibraryId,
-        input.itemKey,
-        { noCache: true },
-      );
-      const preparationProblem = this.#arxivPrecommitProblem(
-        input.accessFence,
-        libraryFence,
-        true,
-      );
-      if (preparationProblem !== undefined) {
-        return { kind: "blocked", error: preparationProblem };
-      }
-      if (!sameCandidates(current.candidates, input.expectedCandidates)) {
-        return {
-          kind: "blocked",
-          error: new CoreOperationError(
-            "conflict",
-            "The complete canonical arXiv parent set changed during parent preparation",
-          ),
-        };
-      }
-      if (existing) {
-        return {
-          kind: "blocked",
-          error: new CoreOperationError(
-            "conflict",
-            "The prospective arXiv parent key is already used",
-          ),
-        };
-      }
+    let commitBoundaryReached = false;
+    let attempt: ArxivCommitAttempt<ZoteroItemLike>;
+    try {
+      attempt = await this.#zotero.DB.executeTransaction<
+        ArxivCommitAttempt<ZoteroItemLike>
+      >(async () => {
+        const accessProblem = this.#arxivAccessProblem(input.accessFence);
+        if (accessProblem !== undefined) return { kind: "blocked", error: accessProblem };
+        const libraryFence = this.#captureArxivLibraryFence(true);
+        const current = await this.inspectArxiv(input.source);
+        const existing = await this.#zotero.Items.getByLibraryAndKeyAsync(
+          personalLibraryId,
+          input.itemKey,
+          { noCache: true },
+        );
+        const fileEvidence = await this.#prepareArxivFileEvidence(current.candidates);
+        const preparationProblem = this.#arxivPrecommitProblem(
+          input.accessFence,
+          libraryFence,
+          true,
+        );
+        if (preparationProblem !== undefined) {
+          return { kind: "blocked", error: preparationProblem };
+        }
+        if (!sameCandidates(current.candidates, input.expectedCandidates)) {
+          return {
+            kind: "blocked",
+            error: new CoreOperationError(
+              "conflict",
+              "The complete canonical arXiv parent set changed during parent preparation",
+            ),
+          };
+        }
+        if (existing) {
+          return {
+            kind: "blocked",
+            error: new CoreOperationError(
+              "conflict",
+              "The prospective arXiv parent key is already used",
+            ),
+          };
+        }
 
-      const parent = new this.#zotero.Item("preprint");
-      this.#assertArxivFence(input.accessFence);
-      parent.libraryID = personalLibraryId;
-      this.#assertArxivFence(input.accessFence);
-      parent.key = input.itemKey;
-      for (const [field, value] of [
-        ["title", input.source.metadata.title],
-        ["abstractNote", input.source.metadata.abstract],
-        ["date", input.source.metadata.published],
-        ["url", input.source.abstractUrl],
-        [
-          "extra",
+        const parent = new this.#zotero.Item("preprint");
+        this.#assertArxivFence(input.accessFence);
+        parent.libraryID = personalLibraryId;
+        this.#assertArxivFence(input.accessFence);
+        parent.key = input.itemKey;
+        for (const [field, value] of [
+          ["title", input.source.metadata.title],
+          ["abstractNote", input.source.metadata.abstract],
+          ["date", input.source.metadata.published],
+          ["url", input.source.abstractUrl],
           [
-            `arXiv:${input.source.arxivId}`,
-            `version: ${String(input.source.version)}`,
-            `published: ${input.source.metadata.published}`,
-            `updated: ${input.source.metadata.updated}`,
-          ].join("\n"),
-        ],
-      ] as const) {
+            "extra",
+            [
+              `arXiv:${input.source.arxivId}`,
+              `version: ${String(input.source.version)}`,
+              `published: ${input.source.metadata.published}`,
+              `updated: ${input.source.metadata.updated}`,
+            ].join("\n"),
+          ],
+        ] as const) {
+          this.#assertArxivFence(input.accessFence);
+          parent.setField(field, value);
+        }
+        if (input.source.metadata.doi !== undefined) {
+          this.#assertArxivFence(input.accessFence);
+          parent.setField("DOI", input.source.metadata.doi);
+        }
         this.#assertArxivFence(input.accessFence);
-        parent.setField(field, value);
-      }
-      if (input.source.metadata.doi !== undefined) {
+        parent.setCreators?.(
+          input.source.metadata.authors.map((name) => ({
+            name,
+            creatorType: "author" as const,
+          })),
+        );
         this.#assertArxivFence(input.accessFence);
-        parent.setField("DOI", input.source.metadata.doi);
-      }
-      this.#assertArxivFence(input.accessFence);
-      parent.setCreators?.(
-        input.source.metadata.authors.map((name) => ({ name, creatorType: "author" as const })),
-      );
-      this.#assertArxivFence(input.accessFence);
-      parent.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
-      this.#assertArxivFence(input.accessFence);
-      parent.addRelation(ARXIV_PROVENANCE_RELATION_PREDICATE, input.parentProvenance);
-      this.#assertArxivFence(input.accessFence);
-      await parent.save({ skipSelect: true });
-      this.#assertArxivFence(input.accessFence);
-      if (!this.#zotero.DB.inTransaction()) {
+        parent.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
+        this.#assertArxivFence(input.accessFence);
+        parent.addRelation(ARXIV_PROVENANCE_RELATION_PREDICATE, input.parentProvenance);
+        this.#assertArxivFence(input.accessFence);
+        this.#assertPreparedArxivFiles(fileEvidence);
+        await parent.save({ skipSelect: true });
+        this.#assertArxivFence(input.accessFence);
+        if (!this.#zotero.DB.inTransaction()) {
+          throw new CoreOperationError(
+            "conflict",
+            "The native arXiv parent transaction ended before commit",
+          );
+        }
+        commitBoundaryReached = true;
+        return { kind: "saved", value: parent };
+      });
+    } catch (error) {
+      if (commitBoundaryReached) {
         throw new CoreOperationError(
-          "conflict",
-          "The native arXiv parent transaction ended before commit",
+          "unknown_outcome",
+          "The native arXiv parent commit completed its callback but its final outcome is unknown",
         );
       }
-      return { kind: "saved", value: parent };
-    });
-    if (attempt.kind === "blocked") throw attempt.error;
-    this.#assertArxivFence(input.accessFence);
-    const record = await this.getArxivParent(input.source, input.itemKey);
-    if (
-      record === undefined ||
-      !record.metadataMatchesSource ||
-      record.operationMarkers.length !== 1 ||
-      record.operationMarkers[0] !== input.operationMarker ||
-      record.provenanceMarkers.length !== 1 ||
-      record.provenanceMarkers[0] !== input.parentProvenance
-    ) {
-      throw new Error("The committed arXiv parent failed exact native readback");
+      throw error;
     }
-    return record;
+    if (attempt.kind === "blocked") throw attempt.error;
+    try {
+      this.#assertArxivFence(input.accessFence);
+      const record = await this.getArxivParent(input.source, input.itemKey);
+      if (
+        record === undefined ||
+        !record.metadataMatchesSource ||
+        record.operationMarkers.length !== 1 ||
+        record.operationMarkers[0] !== input.operationMarker ||
+        record.provenanceMarkers.length !== 1 ||
+        record.provenanceMarkers[0] !== input.parentProvenance
+      ) {
+        throw new Error("The committed arXiv parent failed exact native readback");
+      }
+      return record;
+    } catch {
+      throw new CoreOperationError(
+        "unknown_outcome",
+        "The native arXiv parent committed but current readback could not be confirmed",
+      );
+    }
   }
 
   async createArxivAttachment(
@@ -1018,119 +1058,144 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
       this.#zotero.Libraries.userLibraryID,
       "personal library ID",
     );
-    const attempt = await this.#zotero.DB.executeTransaction<
-      ArxivCommitAttempt<{ parent: ZoteroItemLike; attachment: ZoteroItemLike }>
-    >(async () => {
-      const accessProblem = this.#arxivAccessProblem(input.accessFence);
-      if (accessProblem !== undefined) return { kind: "blocked", error: accessProblem };
-      const libraryFence = this.#captureArxivLibraryFence(true);
-      const current = await this.inspectArxiv(input.source);
-      const parent = await this.#fresh(String(personalLibraryId), input.itemKey);
-      const parentIdentifiesSource =
-        parent !== undefined &&
-        parent.deleted !== true &&
-        parent.isRegularItem() &&
-        parent.isEditable() &&
-        identifiesSource(input.source, await this.#familyIdentityEvidence(parent));
-      const existing = await this.#zotero.Items.getByLibraryAndKeyAsync(
-        personalLibraryId,
-        input.attachmentKey,
-        { noCache: true },
-      );
-      const preparationProblem = this.#arxivPrecommitProblem(
-        input.accessFence,
-        libraryFence,
-        true,
-      );
-      if (preparationProblem !== undefined) {
-        return { kind: "blocked", error: preparationProblem };
-      }
-      if (!sameCandidates(current.candidates, input.expectedCandidates)) {
-        return {
-          kind: "blocked",
-          error: new CoreOperationError(
-            "conflict",
-            "The complete canonical arXiv attachment set changed during attachment preparation",
-          ),
-        };
-      }
-      if (!parentIdentifiesSource || parent === undefined) {
-        return {
-          kind: "blocked",
-          error: new CoreOperationError(
-            "conflict",
-            "The selected canonical arXiv parent changed",
-          ),
-        };
-      }
-      if (existing) {
-        return {
-          kind: "blocked",
-          error: new CoreOperationError(
-            "conflict",
-            "The prospective arXiv attachment key is already used",
-          ),
-        };
-      }
+    let commitBoundaryReached = false;
+    let attempt: ArxivCommitAttempt<{
+      parent: ZoteroItemLike;
+      attachment: ZoteroItemLike;
+    }>;
+    try {
+      attempt = await this.#zotero.DB.executeTransaction<
+        ArxivCommitAttempt<{ parent: ZoteroItemLike; attachment: ZoteroItemLike }>
+      >(async () => {
+        const accessProblem = this.#arxivAccessProblem(input.accessFence);
+        if (accessProblem !== undefined) return { kind: "blocked", error: accessProblem };
+        const libraryFence = this.#captureArxivLibraryFence(true);
+        const current = await this.inspectArxiv(input.source);
+        const parent = await this.#fresh(String(personalLibraryId), input.itemKey);
+        const parentIdentifiesSource =
+          parent !== undefined &&
+          parent.deleted !== true &&
+          parent.isRegularItem() &&
+          parent.isEditable() &&
+          identifiesSource(input.source, await this.#familyIdentityEvidence(parent));
+        const existing = await this.#zotero.Items.getByLibraryAndKeyAsync(
+          personalLibraryId,
+          input.attachmentKey,
+          { noCache: true },
+        );
+        const fileEvidence = await this.#prepareArxivFileEvidence(current.candidates);
+        const preparationProblem = this.#arxivPrecommitProblem(
+          input.accessFence,
+          libraryFence,
+          true,
+        );
+        if (preparationProblem !== undefined) {
+          return { kind: "blocked", error: preparationProblem };
+        }
+        if (!sameCandidates(current.candidates, input.expectedCandidates)) {
+          return {
+            kind: "blocked",
+            error: new CoreOperationError(
+              "conflict",
+              "The complete canonical arXiv attachment set changed during attachment preparation",
+            ),
+          };
+        }
+        if (!parentIdentifiesSource || parent === undefined) {
+          return {
+            kind: "blocked",
+            error: new CoreOperationError(
+              "conflict",
+              "The selected canonical arXiv parent changed",
+            ),
+          };
+        }
+        if (existing) {
+          return {
+            kind: "blocked",
+            error: new CoreOperationError(
+              "conflict",
+              "The prospective arXiv attachment key is already used",
+            ),
+          };
+        }
 
-      const attachment = new this.#zotero.Item("attachment");
-      this.#assertArxivFence(input.accessFence);
-      attachment.libraryID = personalLibraryId;
-      this.#assertArxivFence(input.accessFence);
-      attachment.key = input.attachmentKey;
-      this.#assertArxivFence(input.accessFence);
-      attachment.parentID = requiredNumber(parent.id, "parent item ID");
-      this.#assertArxivFence(input.accessFence);
-      attachment.attachmentLinkMode = this.#zotero.Attachments.LINK_MODE_IMPORTED_FILE;
-      this.#assertArxivFence(input.accessFence);
-      attachment.attachmentContentType = "application/pdf";
-      this.#assertArxivFence(input.accessFence);
-      attachment.attachmentPath = `storage:${arxivFileName(input.source)}`;
-      this.#assertArxivFence(input.accessFence);
-      attachment.setField(
-        "title",
-        `arXiv:${input.source.arxivId}v${String(input.source.version)} PDF`,
-      );
-      this.#assertArxivFence(input.accessFence);
-      attachment.setField("url", input.source.pdfUrl);
-      this.#assertArxivFence(input.accessFence);
-      attachment.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
-      this.#assertArxivFence(input.accessFence);
-      attachment.addRelation(
-        ARXIV_PROVENANCE_RELATION_PREDICATE,
-        input.attachmentProvenance,
-      );
-      this.#assertArxivFence(input.accessFence);
-      await attachment.save({ skipSelect: true });
-      this.#assertArxivFence(input.accessFence);
-      if (!this.#zotero.DB.inTransaction()) {
+        const attachment = new this.#zotero.Item("attachment");
+        this.#assertArxivFence(input.accessFence);
+        attachment.libraryID = personalLibraryId;
+        this.#assertArxivFence(input.accessFence);
+        attachment.key = input.attachmentKey;
+        this.#assertArxivFence(input.accessFence);
+        attachment.parentID = requiredNumber(parent.id, "parent item ID");
+        this.#assertArxivFence(input.accessFence);
+        attachment.attachmentLinkMode = this.#zotero.Attachments.LINK_MODE_IMPORTED_FILE;
+        this.#assertArxivFence(input.accessFence);
+        attachment.attachmentContentType = "application/pdf";
+        this.#assertArxivFence(input.accessFence);
+        attachment.attachmentPath = `storage:${arxivFileName(input.source)}`;
+        this.#assertArxivFence(input.accessFence);
+        attachment.setField(
+          "title",
+          `arXiv:${input.source.arxivId}v${String(input.source.version)} PDF`,
+        );
+        this.#assertArxivFence(input.accessFence);
+        attachment.setField("url", input.source.pdfUrl);
+        this.#assertArxivFence(input.accessFence);
+        attachment.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
+        this.#assertArxivFence(input.accessFence);
+        attachment.addRelation(
+          ARXIV_PROVENANCE_RELATION_PREDICATE,
+          input.attachmentProvenance,
+        );
+        this.#assertArxivFence(input.accessFence);
+        this.#assertPreparedArxivFiles(fileEvidence);
+        await attachment.save({ skipSelect: true });
+        this.#assertArxivFence(input.accessFence);
+        if (!this.#zotero.DB.inTransaction()) {
+          throw new CoreOperationError(
+            "conflict",
+            "The native arXiv attachment transaction ended before commit",
+          );
+        }
+        commitBoundaryReached = true;
+        return { kind: "saved", value: { parent, attachment } };
+      });
+    } catch (error) {
+      if (commitBoundaryReached) {
         throw new CoreOperationError(
-          "conflict",
-          "The native arXiv attachment transaction ended before commit",
+          "unknown_outcome",
+          "The native arXiv attachment commit completed its callback but its final outcome is unknown",
         );
       }
-      return { kind: "saved", value: { parent, attachment } };
-    });
-    if (attempt.kind === "blocked") throw attempt.error;
-    this.#assertArxivFence(input.accessFence);
-    const { parent, attachment } = attempt.value;
-    const pdfCount = await this.#pdfChildCount(parent);
-    const record = await this.#arxivAttachmentRecord(
-      input.source,
-      parent,
-      attachment,
-      pdfCount,
-      false,
-    );
-    if (
-      record.operationMarkers.length !== 1 ||
-      record.operationMarkers[0] !== input.operationMarker ||
-      record.provenanceMarkers.length !== 1 ||
-      record.provenanceMarkers[0] !== input.attachmentProvenance
-    ) {
-      throw new Error("The committed arXiv attachment identity failed native readback");
+      throw error;
     }
-    return record;
+    if (attempt.kind === "blocked") throw attempt.error;
+    try {
+      this.#assertArxivFence(input.accessFence);
+      const { parent, attachment } = attempt.value;
+      const pdfCount = await this.#pdfChildCount(parent);
+      const record = await this.#arxivAttachmentRecord(
+        input.source,
+        parent,
+        attachment,
+        pdfCount,
+        false,
+      );
+      if (
+        record.operationMarkers.length !== 1 ||
+        record.operationMarkers[0] !== input.operationMarker ||
+        record.provenanceMarkers.length !== 1 ||
+        record.provenanceMarkers[0] !== input.attachmentProvenance
+      ) {
+        throw new Error("The committed arXiv attachment identity failed native readback");
+      }
+      return record;
+    } catch {
+      throw new CoreOperationError(
+        "unknown_outcome",
+        "The native arXiv attachment committed but current readback could not be confirmed",
+      );
+    }
   }
 
   async installArxivPdf(input: NativeArxivPdfInstall): Promise<NativeArxivAttachmentRecord> {
@@ -1205,41 +1270,64 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     }
     const destination = this.#zotero.Attachments.getStorageDirectory(attachment).path;
     this.#assertArxivFence(input.accessFence);
-    await this.#arxivStaging.installCreateOnly(
-      input.stagedPdf.stagingId,
-      destination,
-      arxivFileName(input.source),
-      async (createImmediately) => {
-        this.#assertArxivFence(input.accessFence);
-        const libraryFence = this.#captureArxivLibraryFence(false);
-        const finalInspection = await this.inspectArxiv(input.source);
-        const preparationProblem = this.#arxivPrecommitProblem(
-          input.accessFence,
-          libraryFence,
-          false,
-        );
-        if (preparationProblem !== undefined) throw preparationProblem;
-        if (!sameCandidates(finalInspection.candidates, input.expectedCandidates)) {
-          throw new CoreOperationError(
-            "conflict",
-            "The complete canonical arXiv attachment set changed during file preparation",
+    let fileCreateAttempted = false;
+    try {
+      await this.#arxivStaging.installCreateOnly(
+        input.stagedPdf.stagingId,
+        destination,
+        arxivFileName(input.source),
+        async (createImmediately) => {
+          this.#assertArxivFence(input.accessFence);
+          const libraryFence = this.#captureArxivLibraryFence(false);
+          const finalInspection = await this.inspectArxiv(input.source);
+          const fileEvidence = await this.#prepareArxivFileEvidence(
+            finalInspection.candidates,
           );
-        }
-        this.#assertArxivFence(input.accessFence);
-        this.#assertArxivLibraryFence(libraryFence, false);
-        createImmediately();
-      },
-    );
-    this.#assertArxivFence(input.accessFence);
-    const installed = await this.getArxivAttachment(
-      input.source,
-      input.itemKey,
-      input.attachmentKey,
-    );
-    if (installed === undefined) {
-      throw new Error("The installed arXiv PDF attachment could not be reloaded");
+          const preparationProblem = this.#arxivPrecommitProblem(
+            input.accessFence,
+            libraryFence,
+            false,
+          );
+          if (preparationProblem !== undefined) throw preparationProblem;
+          if (!sameCandidates(finalInspection.candidates, input.expectedCandidates)) {
+            throw new CoreOperationError(
+              "conflict",
+              "The complete canonical arXiv attachment set changed during file preparation",
+            );
+          }
+          this.#assertArxivFence(input.accessFence);
+          this.#assertArxivLibraryFence(libraryFence, false);
+          this.#assertPreparedArxivFiles(fileEvidence);
+          fileCreateAttempted = true;
+          createImmediately();
+        },
+      );
+    } catch (error) {
+      if (fileCreateAttempted) {
+        throw new CoreOperationError(
+          "unknown_outcome",
+          "The native arXiv file create was attempted but its final outcome is unknown",
+        );
+      }
+      throw error;
     }
-    return installed;
+    try {
+      this.#assertArxivFence(input.accessFence);
+      const installed = await this.getArxivAttachment(
+        input.source,
+        input.itemKey,
+        input.attachmentKey,
+      );
+      if (installed === undefined) {
+        throw new Error("The installed arXiv PDF attachment could not be reloaded");
+      }
+      return installed;
+    } catch {
+      throw new CoreOperationError(
+        "unknown_outcome",
+        "The native arXiv file was created but current readback could not be confirmed",
+      );
+    }
   }
 
   async findArxivByOperationMarker(marker: string): Promise<NativeArxivOperationObject[]> {
@@ -2077,6 +2165,120 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
       provenanceMarkers,
       deepLink: `zotero://open-pdf/library/items/${encodeURIComponent(attachmentKey)}`,
     };
+  }
+
+  async #prepareArxivFileEvidence(
+    candidates: readonly ArxivCandidate[],
+  ): Promise<PreparedArxivFileEvidence[]> {
+    const personalLibraryId = String(
+      requiredNumber(this.#zotero.Libraries.userLibraryID, "personal library ID"),
+    );
+    const prepared: PreparedArxivFileEvidence[] = [];
+    for (const candidate of candidates) {
+      const parent = await this.#fresh(personalLibraryId, candidate.itemKey);
+      if (
+        parent === undefined ||
+        parent.deleted === true ||
+        !parent.isRegularItem()
+      ) {
+        throw new CoreOperationError(
+          "conflict",
+          "A canonical arXiv parent changed during PDF freshness preparation",
+        );
+      }
+      for (const evidence of candidate.attachments) {
+        const attachment = await this.#fresh(personalLibraryId, evidence.attachmentKey);
+        if (
+          attachment === undefined ||
+          attachment.deleted === true ||
+          !attachment.isPDFAttachment() ||
+          attachment.parentItemID !== parent.id
+        ) {
+          throw new CoreOperationError(
+            "conflict",
+            "A canonical arXiv PDF changed during freshness preparation",
+          );
+        }
+        prepared.push({
+          expectedFingerprint: evidence.fingerprint,
+          attachment,
+        });
+      }
+    }
+    return prepared;
+  }
+
+  #assertPreparedArxivFiles(evidence: readonly PreparedArxivFileEvidence[]): void {
+    let remainingBytes = MAX_SYNCHRONOUS_ARXIV_TOTAL_BYTES;
+    const fingerprintsByPath = new Map<
+      string,
+      { fingerprint: string; byteLength: number } | null
+    >();
+    for (const entry of evidence) {
+      let path: string | false;
+      try {
+        path = entry.attachment.getFilePath();
+      } catch {
+        throw new CoreOperationError(
+          "unsupported_capability",
+          "Zotero could not synchronously resolve a relevant PDF path",
+        );
+      }
+      if (path === false) {
+        if (entry.expectedFingerprint !== null) {
+          throw new CoreOperationError(
+            "conflict",
+            "Existing PDF bytes changed during native arXiv preparation",
+          );
+        }
+        continue;
+      }
+      let actual = fingerprintsByPath.get(path);
+      if (!fingerprintsByPath.has(path)) {
+        if (this.#arxivFileFingerprint === undefined) {
+          throw new CoreOperationError(
+            "unsupported_capability",
+            "No synchronous native PDF fingerprint provider is configured",
+          );
+        }
+        const maximumByteLength = Math.min(
+          MAX_SYNCHRONOUS_ARXIV_FILE_BYTES,
+          remainingBytes,
+        );
+        try {
+          actual = this.#arxivFileFingerprint.fingerprintNow(path, maximumByteLength);
+        } catch {
+          throw new CoreOperationError(
+            "unsupported_capability",
+            "A relevant PDF could not be fingerprinted synchronously within the safety bound",
+          );
+        }
+        if (
+          actual !== null &&
+          (
+            !Number.isSafeInteger(actual.byteLength) ||
+            actual.byteLength < 0 ||
+            actual.byteLength > maximumByteLength ||
+            !/^sha256:[0-9a-f]{64}$/u.test(actual.fingerprint)
+          )
+        ) {
+          throw new CoreOperationError(
+            "unsupported_capability",
+            "The synchronous native PDF fingerprint provider returned invalid evidence",
+          );
+        }
+        fingerprintsByPath.set(path, actual ?? null);
+        if (actual !== null) remainingBytes -= actual.byteLength;
+      }
+      if (actual === undefined) actual = null;
+      const actualFingerprint = actual === null ? null : actual.fingerprint;
+      if (actualFingerprint !== entry.expectedFingerprint) {
+        throw new CoreOperationError(
+          "conflict",
+          "Existing PDF bytes changed during native arXiv preparation",
+        );
+      }
+    }
   }
 
   #arxivAccessProblem(fence: string): CoreOperationError | undefined {

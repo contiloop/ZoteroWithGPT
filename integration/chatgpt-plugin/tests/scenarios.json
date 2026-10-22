@@ -34,6 +34,22 @@
       }
     },
     {
+      "id": "abstract-dot-pdf-normalization",
+      "input": {
+        "paper": "https://arxiv.org/abs/2401.01234v2.pdf?download=1#theorem",
+        "conversationMaterial": ["assistant_explanation"],
+        "request": "Save this explanation beside the theorem in Zotero."
+      },
+      "expected": {
+        "activation": "activate",
+        "clarification": "none",
+        "writes": ["ensure_arxiv_pdf", "create_annotation"],
+        "recognizedPath": "abs",
+        "terminalDotPdf": true,
+        "normalizedSource": "canonical_https_arxiv_version"
+      }
+    },
+    {
       "id": "question-only",
       "input": {
         "paper": "https://arxiv.org/abs/2401.01234v2",

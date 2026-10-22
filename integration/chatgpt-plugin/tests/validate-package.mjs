@@ -12,6 +12,7 @@ const TARGET_PLUGIN_VERSION = "0.2.0";
 const REQUIRED_SCENARIOS = [
   "direct-save",
   "indirect-save",
+  "abstract-dot-pdf-normalization",
   "question-only",
   "missing-setup-or-tools",
   "unsupported-new-import-url",
@@ -140,6 +141,14 @@ function validateScenarios(document) {
   assert.equal(byId.get("direct-save").expected.explicitMentionRequired, false);
   assert.equal(byId.get("direct-save").expected.separateImportApproval, false);
   assert.equal(byId.get("indirect-save").expected.normalizedSource, "canonical_https_arxiv_version");
+  assert.deepEqual(byId.get("abstract-dot-pdf-normalization").expected, {
+    activation: "activate",
+    clarification: "none",
+    writes: ["ensure_arxiv_pdf", "create_annotation"],
+    recognizedPath: "abs",
+    terminalDotPdf: true,
+    normalizedSource: "canonical_https_arxiv_version",
+  });
   assert.equal(byId.get("missing-setup-or-tools").expected.repeatFullTutorial, false);
   assert.deepEqual(byId.get("unsupported-new-import-url").expected.writes, []);
   assert.equal(byId.get("missing-conversation-material").expected.inventContent, false);

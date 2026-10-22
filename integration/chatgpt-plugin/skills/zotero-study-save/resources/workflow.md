@@ -131,12 +131,12 @@ PDF target before saving; a result list never selects its first match.
 For a new import, accept only an official arXiv abstract or PDF link whose path
 contains a valid modern or legacy identifier and optional positive version.
 Recognize `http` or `https`, the exact arXiv host (with an optional `www`),
-`abs` or `pdf` paths, optional `.pdf` on PDF links, and harmless query or
-fragment text. Reject credentials, a nonstandard port, a deceptive hostname,
-or another path. `inspect_arxiv` validates and normalizes the input and returns
-canonical HTTPS abstract/PDF URLs; those host-produced URLs and metadata are
-the only retrieval inputs. Never supply client metadata or a download URL to
-the host.
+`abs` or `pdf` paths, an optional terminal `.pdf` on either recognized path,
+and harmless query or fragment text. Reject credentials, a nonstandard port, a
+deceptive hostname, or another path. `inspect_arxiv` validates and normalizes
+the input and returns canonical HTTPS abstract/PDF URLs; those host-produced
+URLs and metadata are the only retrieval inputs. Never supply client metadata
+or a download URL to the host.
 
 Use the exact PDF version actually studied. A versioned link is evidence for
 that version. Resolution of an unversioned link to a concrete current version
@@ -150,7 +150,12 @@ the returned inspection token as optimistic snapshot evidence, not a
 credential or authorization.
 
 - `decision: "create"`, `"attach"`, or `"reuse"` is usable only with the exact
-  returned `source`, `inspectionToken`, and `selection`.
+  returned inspection token and selection. Set
+  `inspectionToken: inspect.data.inspectionToken` and
+  `selection: inspect.data.selection` without modification. Construct the ensure payload's
+  ArticleIdentity only as `source: { arxivId: inspect.data.source.arxivId, version: inspect.data.source.version }`.
+  Do not copy `abstractUrl`, `pdfUrl`, or `metadata` from the full inspection
+  source into the closed `ensure_arxiv_pdf` source object.
 - A unique `reuse` requires verified provenance or a demonstrated matching PDF
   fingerprint. URL or title similarity alone is insufficient.
 - Multiple parent items or PDFs, conflicting provenance, an unverified PDF, or

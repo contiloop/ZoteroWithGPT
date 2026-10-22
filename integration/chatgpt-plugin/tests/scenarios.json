@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "evidenceBoundary": "These are expected workflow decisions for local content validation. They are not evidence that ChatGPT loaded the skill, invoked Mac Safe Files, or completed a Zotero write.",
+  "scenarios": [
+    {
+      "id": "direct-save",
+      "input": {
+        "paper": "https://arxiv.org/abs/2401.01234v2",
+        "conversationMaterial": ["user_question", "assistant_proof"],
+        "request": "Save the proof you just explained and my question to Zotero."
+      },
+      "expected": {
+        "activation": "activate",
+        "clarification": "none",
+        "writes": ["ensure_arxiv_pdf", "create_annotation", "create_annotation"],
+        "guards": ["fresh_connection", "studied_version", "actual_pdf_anchor", "full_readback"],
+        "separateImportApproval": false,
+        "explicitMentionRequired": false
+      }
+    },
+    {
+      "id": "indirect-save",
+      "input": {
+        "paper": "https://arxiv.org/pdf/2401.01234v2.pdf?download=1#page=4",
+        "conversationMaterial": ["assistant_explanation"],
+        "request": "Put that explanation beside the lemma in Zotero."
+      },
+      "expected": {
+        "activation": "activate",
+        "clarification": "none",
+        "writes": ["ensure_arxiv_pdf", "create_annotation"],
+        "normalizedSource": "canonical_https_arxiv_version",
+        "explicitMentionRequired": false
+      }
+    },
+    {
+      "id": "question-only",
+      "input": {
+        "paper": "https://arxiv.org/abs/2401.01234v2",
+        "request": "Why does the denominator stay bounded away from zero?"
+      },
+      "expected": {
+        "activation": "do_not_activate_for_write",
+        "writes": [],
+        "reason": "study_without_save_is_read_only"
+      }
+    },
+    {
+      "id": "missing-setup-or-tools",
+      "input": {
+        "personalConfig": { "bridgeRoot": null },
+        "request": "Save this to Zotero."
+      },
+      "expected": {
+        "activation": "setup_required",
+        "writes": [],
+        "response": "short_actionable_setup_prompt",
+        "repeatFullTutorial": false
+      }
+    },
+    {
+      "id": "unsupported-new-import-url",
+      "input": {
+        "paper": "https://example.org/paper.pdf",
+        "request": "Import this new paper and save our discussion to Zotero."
+      },
+      "expected": {
+        "activation": "clarify",
+        "writes": [],
+        "response": "new_import_requires_supported_arxiv_url"
+      }
+    },
+    {
+      "id": "missing-conversation-material",
+      "input": {
+        "paper": "https://arxiv.org/abs/2401.01234v2",
+        "conversationMaterial": [],
+        "request": "Save the proof we discussed earlier."
+      },
+      "expected": {
+        "activation": "clarify",
+        "writes": [],
+        "response": "ask_for_exact_missing_material",
+        "inventContent": false
+      }
+    },
+    {
+      "id": "clear-import-and-save",
+      "input": {
+        "paper": "http://arxiv.org/pdf/hep-th/9901001v3.pdf?download=1#page=7",
+        "conversationMaterial": ["user_question", "assistant_explanation", "reference_urls"],
+        "request": "Save all three with this passage in Zotero."
+      },
+      "expected": {
+        "activation": "activate",
+        "clarification": "none",
+        "writes": ["ensure_arxiv_pdf", "create_annotation", "create_annotation", "create_annotation"],
+        "libraryDestination": "personal_library_root",
+        "separateConnectionApproval": false,
+        "separateImportApproval": false
+      }
+    },
+    {
+      "id": "version-ambiguity",
+      "input": {
+        "paper": "https://arxiv.org/abs/2401.01234",
+        "conversationMaterial": ["assistant_proof"],
+        "evidence": "The conversation does not establish whether the user studied v1 or the currently resolved v3.",
+        "request": "Save this proof to Zotero."
+      },
+      "expected": {
+        "activation": "clarify",
+        "writes": [],
+        "chosenVersion": null,
+        "response": "ask_which_version_was_studied",
+        "silentLatest": false
+      }
+    },
+    {
+      "id": "verified-duplicate-reuse",
+      "input": {
+        "inspectionDecision": "reuse",
+        "candidateCount": 1,
+        "identity": "verified"
+      },
+      "expected": {
+        "activation": "activate",
+        "writes": ["ensure_arxiv_pdf", "create_annotation"],
+        "itemAction": "reused",
+        "pdfAction": "reused",
+        "createDuplicate": false
+      }
+    },
+    {
+      "id": "unknown-outcome-same-identity",
+      "input": {
+        "operation": "ensure_arxiv_pdf",
+        "resultState": "indeterminate",
+        "errorCode": "unknown_outcome"
+      },
+      "expected": {
+        "activation": "recover",
+        "writes": [],
+        "recovery": {
+          "operationId": "same",
+          "payload": "byte_equivalent",
+          "newWrite": false
+        }
+      }
+    },
+    {
+      "id": "manual-edit-conflict",
+      "input": {
+        "operation": "update_annotation",
+        "resultState": "rejected",
+        "errorCode": "conflict"
+      },
+      "expected": {
+        "activation": "clarify",
+        "writes": [],
+        "rereadCurrentRecord": true,
+        "renewedApprovalRequired": true,
+        "writeBeforeRenewedApproval": false
+      }
+    },
+    {
+      "id": "long-proof",
+      "input": {
+        "conversationMaterial": ["assistant_proof_longer_than_a_typical_note"],
+        "request": "Save the complete proof beside the theorem."
+      },
+      "expected": {
+        "activation": "activate",
+        "writes": ["create_annotation"],
+        "destination": "native_annotation_comment",
+        "completeness": "full",
+        "truncate": false,
+        "createChildNote": false
+      }
+    },
+    {
+      "id": "reference-urls-without-import",
+      "input": {
+        "conversationMaterial": ["reference_urls"],
+        "request": "Save these references with the passage."
+      },
+      "expected": {
+        "activation": "activate",
+        "writes": ["create_annotation"],
+        "destination": "native_annotation_comment",
+        "importReferencedWorks": false,
+        "automaticRemoteResources": false
+      }
+    },
+    {
+      "id": "viewer-failure-after-save",
+      "input": {
+        "operation": "create_annotation",
+        "resultState": "succeeded",
+        "verification": { "storage": "confirmed", "viewer": "failed" }
+      },
+      "expected": {
+        "activation": "report",
+        "writes": [],
+        "reportStorage": "confirmed",
+        "reportViewer": "failed",
+        "retryWrite": false
+      }
+    }
+  ]
+}

@@ -297,6 +297,8 @@ export interface ZoteroLibraryAdapterOptions {
   enabled: boolean;
   accessGate?: ZoteroAccessGate;
   transport: TransportDescription;
+  /** Exact operations backed by the current production composition. */
+  operations?: readonly import("../../protocol/types.js").OperationName[];
 }
 
 /** A single live gate can be shared by the protocol and privileged adapters. */

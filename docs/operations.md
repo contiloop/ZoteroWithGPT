@@ -9,7 +9,7 @@ npm ci
 npm run verify
 ```
 
-The installable result is `artifacts/zotero-ai-research-companion-0.1.0.xpi`; its matching `-client` directory contains plain-text instructions, schemas, and examples. `npm run package` regenerates both after source or bundled-document changes. Compare SHA-256 values before calling a clean build identical to the installed package.
+The installable result is `artifacts/zotero-ai-research-companion-0.2.0.xpi`; its matching `-client` directory contains plain-text instructions, schemas, and examples. `npm run package` regenerates both after source or bundled-document changes. Compare SHA-256 values before calling a clean build identical to the installed package.
 
 ## Install and connect
 

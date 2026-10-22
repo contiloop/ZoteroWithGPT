@@ -1,4 +1,5 @@
 export * from "./anchor-policy.js";
+export * from "./arxiv-selection.js";
 export * from "./authorization.js";
 export * from "./errors.js";
 export * from "./lifecycle.js";

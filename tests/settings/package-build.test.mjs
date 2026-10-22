@@ -57,6 +57,23 @@ async function fixture() {
   await write(root, "docs/uninstall.md", "# Uninstall\n\nDisable before removal.\n");
   await write(root, "docs/troubleshooting.md", "# Troubleshooting\n\nRead the displayed status.\n");
   await write(root, "docs/protocol/v1.md", "# Protocol v1\n");
+  const pluginFiles = [
+    ".app.json",
+    "README.md",
+    "plugin.json",
+    "skills/zotero-study-save/SKILL.md",
+    "skills/zotero-study-save/agents/openai.yaml",
+    "skills/zotero-study-save/resources/personal-config.json",
+    "skills/zotero-study-save/resources/workflow.md",
+  ];
+  for (const member of pluginFiles) {
+    const source = await readFile(path.join(PROJECT_ROOT, "integration", "chatgpt-plugin", member), "utf8");
+    await write(root, `integration/chatgpt-plugin/${member}`, source);
+  }
+  const pluginManifestPath = path.join(root, "integration", "chatgpt-plugin", "plugin.json");
+  const pluginManifest = JSON.parse(await readFile(pluginManifestPath, "utf8"));
+  pluginManifest.version = "1.2.3";
+  await writeFile(pluginManifestPath, `${JSON.stringify(pluginManifest, null, 2)}\n`);
   return root;
 }
 
@@ -105,6 +122,8 @@ test("build produces a deterministic versioned XPI with a validated release surf
   assert.equal(path.basename(first.clientDirectory), "zotero-ai-research-companion-1.2.3-client");
   assert.equal(await sha256(first.outputPath), await sha256(second.outputPath));
   assert.equal(await sha256(first.outputPath), await sha256(inheritedEnvironment.outputPath));
+  assert.equal(await sha256(first.pluginPath), await sha256(second.pluginPath));
+  assert.equal(await sha256(first.pluginPath), await sha256(inheritedEnvironment.pluginPath));
   assert.equal(
     (await directorySha256(first.clientDirectory)).digest("hex"),
     (await directorySha256(second.clientDirectory)).digest("hex"),
@@ -112,6 +131,7 @@ test("build produces a deterministic versioned XPI with a validated release surf
   assert.equal(report.version, "1.2.3");
   assert.deepEqual(report.zoteroCompatibility, { minimum: "10.0.6", maximum: "10.0.*" });
   assert.equal(report.updateURL, MANUAL_UPDATE_SENTINEL);
+  assert.equal(path.basename(report.pluginPath), "zotero-study-save-1.2.3.zip");
   assert.ok(report.members.includes("bootstrap.js"));
   assert.ok(report.members.includes("companion.js"));
   assert.ok(report.members.includes("protocol/v1-request.schema.json"));
@@ -123,6 +143,12 @@ test("build produces a deterministic versioned XPI with a validated release surf
   assert.ok(report.clientMembers.includes("README.md"));
   assert.ok(report.clientMembers.includes("protocol/v1-request.schema.json"));
   assert.ok(report.clientMembers.includes("protocol/examples/create-annotation.request.json"));
+  assert.ok(report.clientMembers.includes("protocol/examples/inspect-arxiv.request.json"));
+  assert.ok(report.clientMembers.includes("protocol/examples/ensure-arxiv-pdf.item-only.response.json"));
+  assert.ok(report.pluginMembers.includes("plugin.json"));
+  assert.ok(report.pluginMembers.includes(
+    "skills/zotero-study-save/resources/client-v1/protocol/examples/ensure-arxiv-pdf.response.json",
+  ));
   assert.match(
     await readFile(path.join(first.clientDirectory, "README.md"), "utf8"),
     /<BRIDGE_ROOT>\/client-v1\/README\.md/u,
@@ -252,6 +278,8 @@ test("every packaged request example passes the runtime protocol-v1 parser", asy
     "read-pdf.request.json",
     "create-annotation.request.json",
     "create-note.request.json",
+    "inspect-arxiv.request.json",
+    "ensure-arxiv-pdf.request.json",
   ];
   for (const example of examples) {
     const content = await readFile(new URL(

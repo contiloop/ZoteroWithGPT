@@ -28,6 +28,27 @@ export interface ArxivHttpPort {
   retrieve(resource: ArxivHttpResource): Promise<ArxivHttpResponse>;
 }
 
+export type ArxivRemoteResourceKind = ArxivHttpResource["kind"];
+
+export interface ArxivRequestAdmissionRequest {
+  kind: ArxivRemoteResourceKind;
+  /** Cancellation authority for this queued or active request attempt. */
+  signal: AbortSignal;
+  /** Admission may wait for ordinary pacing, but never beyond this bound. */
+  maximumWaitMs: number;
+}
+
+export interface ArxivRequestAdmissionLease {
+  /** Records a server-directed cooldown before releasing this request slot. */
+  defer(retryAfterSeconds: number): void;
+  release(): void;
+}
+
+/** Replaceable policy for serializing and pacing outbound arXiv requests. */
+export interface ArxivRequestAdmissionPort {
+  acquire(request: ArxivRequestAdmissionRequest): Promise<ArxivRequestAdmissionLease>;
+}
+
 /** Resolves one URL to exactly one canonical metadata entry and version. */
 export interface ArxivSourceAcquisitionPort {
   inspect(reference: ArxivUrlReference): Promise<ArxivSource>;

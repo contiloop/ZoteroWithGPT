@@ -4,8 +4,13 @@ import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import Ajv2020 from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
+
 const UNZIP_PATH = "/usr/bin/unzip";
 const ARCHIVE_PREFIX = "zotero-ai-research-companion";
+const PLUGIN_ARCHIVE_PREFIX = "zotero-study-save";
+const MAC_SAFE_FILES_APP_ID = "asdk_app_REDACTED_1";
 const MANUAL_UPDATE_SENTINEL =
   "https://updates.invalid/zotero-ai-research-companion/updates.json";
 const REQUIRED_MEMBERS = Object.freeze([
@@ -23,6 +28,11 @@ const REQUIRED_MEMBERS = Object.freeze([
   "protocol/examples/create-annotation.request.json",
   "protocol/examples/create-annotation.response.json",
   "protocol/examples/create-note.request.json",
+  "protocol/examples/ensure-arxiv-pdf.item-only.response.json",
+  "protocol/examples/ensure-arxiv-pdf.request.json",
+  "protocol/examples/ensure-arxiv-pdf.response.json",
+  "protocol/examples/inspect-arxiv.request.json",
+  "protocol/examples/inspect-arxiv.response.json",
   "protocol/examples/read-pdf.request.json",
   "protocol/v1-request.schema.json",
   "protocol/v1-response.schema.json",
@@ -39,6 +49,11 @@ const REQUIRED_CLIENT_MEMBERS = Object.freeze([
   "protocol/examples/create-annotation.request.json",
   "protocol/examples/create-annotation.response.json",
   "protocol/examples/create-note.request.json",
+  "protocol/examples/ensure-arxiv-pdf.item-only.response.json",
+  "protocol/examples/ensure-arxiv-pdf.request.json",
+  "protocol/examples/ensure-arxiv-pdf.response.json",
+  "protocol/examples/inspect-arxiv.request.json",
+  "protocol/examples/inspect-arxiv.response.json",
   "protocol/examples/read-pdf.request.json",
   "protocol/v1-request.schema.json",
   "protocol/v1-response.schema.json",
@@ -57,12 +72,15 @@ const OPERATIONS = new Set([
   "create_note",
   "update_note",
   "verify_annotation",
+  "inspect_arxiv",
+  "ensure_arxiv_pdf",
 ]);
 const MUTATIONS = new Set([
   "create_annotation",
   "update_annotation",
   "create_note",
   "update_note",
+  "ensure_arxiv_pdf",
 ]);
 const PRIVATE_OR_DEVELOPMENT_PATTERN =
   /(?:\/Users\/[^/\s]+\/|[A-Za-z]:\\Users\\|\.dryforge(?:\/|\\)|devplaceholder|developer-owned-native-fixture|ZOTERO_AI_RESEARCH_COMPANION_OWNED_NATIVE_FIXTURE_V1)/u;
@@ -179,6 +197,34 @@ function validateResponseExample(value, filename) {
   }
 }
 
+export function createProtocolSchemaValidators(requestSchema, responseSchema) {
+  // The authored schemas intentionally apply unevaluatedProperties to a
+  // oneOf-composed root without a redundant root type declaration.
+  const ajv = new Ajv2020({
+    allErrors: true,
+    strict: true,
+    strictTypes: false,
+    strictRequired: false,
+  });
+  addFormats(ajv);
+  ajv.addKeyword({
+    keyword: "x-maxUtf8Bytes",
+    type: "string",
+    schemaType: "number",
+    validate: (maximum, value) => Buffer.byteLength(value, "utf8") <= maximum,
+  });
+  return {
+    request: ajv.compile(requestSchema),
+    response: ajv.compile(responseSchema),
+  };
+}
+
+function requireSchemaValid(validate, value, filename) {
+  if (!validate(value)) {
+    throw new Error(`${filename} fails its Draft 2020-12 schema: ${JSON.stringify(validate.errors)}`);
+  }
+}
+
 function validateBootstrap(source) {
   for (const name of [
     "startup",
@@ -253,6 +299,10 @@ function validateThirdParty(metadata, notices, members) {
   if (!Array.isArray(metadata.runtimePackages)) {
     throw new Error("BUILD_METADATA.json lacks runtimePackages");
   }
+  if (metadata.runtimePackages.some((dependency) =>
+    dependency?.name === "ajv" || dependency?.name === "ajv-formats")) {
+    throw new Error("The development-only protocol schema validator was bundled into the XPI");
+  }
   const noticedPackages = noticePackageIdentities(notices);
   for (const dependency of metadata.runtimePackages) {
     if (
@@ -307,6 +357,72 @@ async function validateClientKit(clientDirectory, extractedXpi, version) {
     throw new Error("Client sidecar README lacks the versioned setup path or starter prompt");
   }
   return members;
+}
+
+async function validatePortablePlugin(pluginPath, clientDirectory, version, expectedMembers) {
+  if (path.basename(pluginPath) !== `${PLUGIN_ARCHIVE_PREFIX}-${version}.zip`) {
+    throw new Error("Portable plugin filename does not match its release version");
+  }
+  const listed = (await run(UNZIP_PATH, ["-Z1", pluginPath]))
+    .split(/\r?\n/u)
+    .filter((member) => member.length > 0);
+  const sourceMembers = [
+    ".app.json",
+    "README.md",
+    "plugin.json",
+    "skills/zotero-study-save/SKILL.md",
+    "skills/zotero-study-save/agents/openai.yaml",
+    "skills/zotero-study-save/resources/personal-config.json",
+    "skills/zotero-study-save/resources/workflow.md",
+  ];
+  const clientPrefix = "skills/zotero-study-save/resources/client-v1/";
+  const exactMembers = [
+    ...sourceMembers,
+    ...expectedMembers.map((member) => `${clientPrefix}${member}`),
+  ].sort();
+  if (JSON.stringify([...listed].sort()) !== JSON.stringify(exactMembers)) {
+    throw new Error("Portable plugin does not contain its exact documented allowlist");
+  }
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "study-save-plugin-verify-"));
+  try {
+    await run(UNZIP_PATH, ["-qq", pluginPath, "-d", temporaryDirectory]);
+    const extracted = await listFiles(temporaryDirectory);
+    if (JSON.stringify(extracted) !== JSON.stringify(exactMembers)) {
+      throw new Error("Extracted portable plugin members do not match its central directory");
+    }
+    for (const member of extracted) {
+      validateText(await readFile(path.join(temporaryDirectory, ...member.split("/")), "utf8"),
+        `portable plugin ${member}`);
+    }
+    const manifest = JSON.parse(await readFile(path.join(temporaryDirectory, "plugin.json"), "utf8"));
+    if (manifest.name !== "zotero-study-save" || manifest.version !== version) {
+      throw new Error("Portable plugin identity or version does not match the release");
+    }
+    const appBinding = JSON.parse(await readFile(path.join(temporaryDirectory, ".app.json"), "utf8"));
+    if (
+      Object.keys(appBinding).length !== 1 ||
+      appBinding.apps?.["mac-safe-files"]?.id !== MAC_SAFE_FILES_APP_ID
+    ) {
+      throw new Error("Portable plugin does not retain the verified Mac Safe Files dependency");
+    }
+    const config = JSON.parse(await readFile(
+      path.join(temporaryDirectory, "skills", "zotero-study-save", "resources", "personal-config.json"),
+      "utf8",
+    ));
+    if (Object.keys(config).length !== 1 || config.bridgeRoot !== null) {
+      throw new Error("Portable plugin configuration must contain only a null bridgeRoot");
+    }
+    for (const member of expectedMembers) {
+      const packaged = await readFile(path.join(temporaryDirectory, ...clientPrefix.split("/"), ...member.split("/")));
+      const client = await readFile(path.join(clientDirectory, ...member.split("/")));
+      if (!packaged.equals(client)) {
+        throw new Error(`Portable plugin client resource ${member} differs from the client kit`);
+      }
+    }
+    return extracted;
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
 }
 
 export async function verifyXpi(xpiPath, { expectedProjectRoot } = {}) {
@@ -364,27 +480,43 @@ export async function verifyXpi(xpiPath, { expectedProjectRoot } = {}) {
     if (responseSchema.$schema !== "https://json-schema.org/draft/2020-12/schema") {
       throw new Error("protocol/v1-response.schema.json is not a draft-2020-12 schema");
     }
+    const validators = createProtocolSchemaValidators(schema, responseSchema);
     for (const member of extracted.filter((name) => name.endsWith(".request.json"))) {
-      validateExample(
-        JSON.parse(await readFile(path.join(temporaryDirectory, ...member.split("/")), "utf8")),
-        member,
+      const example = JSON.parse(
+        await readFile(path.join(temporaryDirectory, ...member.split("/")), "utf8"),
       );
+      requireSchemaValid(validators.request, example, member);
+      validateExample(example, member);
     }
     for (const member of extracted.filter((name) => name.endsWith(".response.json"))) {
-      validateResponseExample(
-        JSON.parse(await readFile(path.join(temporaryDirectory, ...member.split("/")), "utf8")),
-        member,
+      const example = JSON.parse(
+        await readFile(path.join(temporaryDirectory, ...member.split("/")), "utf8"),
       );
+      requireSchemaValid(validators.response, example, member);
+      validateResponseExample(example, member);
     }
     const notices = await readFile(path.join(temporaryDirectory, "THIRD_PARTY_NOTICES"), "utf8");
     validateThirdParty(metadata, notices, extracted);
     const clientDirectory = path.join(path.dirname(archive), expectedClientName);
     const clientMembers = await validateClientKit(clientDirectory, temporaryDirectory, version);
+    const expectedPluginName = `${PLUGIN_ARCHIVE_PREFIX}-${version}.zip`;
+    if (metadata.portablePlugin !== expectedPluginName) {
+      throw new Error("BUILD_METADATA.json does not identify the matching portable plugin");
+    }
+    const pluginPath = path.join(path.dirname(archive), expectedPluginName);
+    const pluginMembers = await validatePortablePlugin(
+      pluginPath,
+      clientDirectory,
+      version,
+      clientMembers,
+    );
     return {
       version,
       members: extracted,
       clientDirectory,
       clientMembers,
+      pluginPath,
+      pluginMembers,
       zoteroCompatibility: {
         minimum: manifest.applications.zotero.strict_min_version,
         maximum: manifest.applications.zotero.strict_max_version,

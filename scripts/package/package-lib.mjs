@@ -22,6 +22,7 @@ const ARCHIVE_TIMESTAMP = new Date("2000-01-01T00:00:00.000Z");
 const ZIP_PATH = "/usr/bin/zip";
 const REQUIRED_COMPATIBILITY = Object.freeze({ minimum: "10.0.6", maximum: "10.0.*" });
 const ARCHIVE_PREFIX = "zotero-ai-research-companion";
+const PLUGIN_ARCHIVE_PREFIX = "zotero-study-save";
 const MANUAL_UPDATE_SENTINEL =
   "https://updates.invalid/zotero-ai-research-companion/updates.json";
 const ASSET_DIRECTORY = fileURLToPath(new URL("./assets", import.meta.url));
@@ -46,7 +47,24 @@ const ASSET_FILES = Object.freeze([
   ["protocol/examples/create-annotation.request.json", "protocol/examples/create-annotation.request.json"],
   ["protocol/examples/create-annotation.response.json", "protocol/examples/create-annotation.response.json"],
   ["protocol/examples/create-note.request.json", "protocol/examples/create-note.request.json"],
+  ["protocol/examples/inspect-arxiv.request.json", "protocol/examples/inspect-arxiv.request.json"],
+  ["protocol/examples/inspect-arxiv.response.json", "protocol/examples/inspect-arxiv.response.json"],
+  ["protocol/examples/ensure-arxiv-pdf.request.json", "protocol/examples/ensure-arxiv-pdf.request.json"],
+  ["protocol/examples/ensure-arxiv-pdf.response.json", "protocol/examples/ensure-arxiv-pdf.response.json"],
+  ["protocol/examples/ensure-arxiv-pdf.item-only.response.json", "protocol/examples/ensure-arxiv-pdf.item-only.response.json"],
 ]);
+
+const PORTABLE_PLUGIN_FILES = Object.freeze([
+  ["integration/chatgpt-plugin/plugin.json", "plugin.json"],
+  ["integration/chatgpt-plugin/.app.json", ".app.json"],
+  ["integration/chatgpt-plugin/README.md", "README.md"],
+  ["integration/chatgpt-plugin/skills/zotero-study-save/SKILL.md", "skills/zotero-study-save/SKILL.md"],
+  ["integration/chatgpt-plugin/skills/zotero-study-save/agents/openai.yaml", "skills/zotero-study-save/agents/openai.yaml"],
+  ["integration/chatgpt-plugin/skills/zotero-study-save/resources/personal-config.json", "skills/zotero-study-save/resources/personal-config.json"],
+  ["integration/chatgpt-plugin/skills/zotero-study-save/resources/workflow.md", "skills/zotero-study-save/resources/workflow.md"],
+]);
+
+const MAC_SAFE_FILES_APP_ID = "asdk_app_REDACTED_1";
 
 const CLIENT_PROJECT_FILES = Object.freeze([
   ["docs/install.md", "docs/install.md"],
@@ -230,6 +248,53 @@ async function stageClientKit(projectRoot, directory, version) {
   return { members, readme };
 }
 
+async function stagePortablePlugin(projectRoot, directory, clientDirectory, version) {
+  const manifest = await readJson(path.join(projectRoot, "integration", "chatgpt-plugin", "plugin.json"));
+  if (manifest.version !== version) {
+    throw new Error(
+      `portable plugin version ${String(manifest.version)} does not match package version ${version}`,
+    );
+  }
+  const appBinding = await readJson(
+    path.join(projectRoot, "integration", "chatgpt-plugin", ".app.json"),
+  );
+  if (appBinding.apps?.["mac-safe-files"]?.id !== MAC_SAFE_FILES_APP_ID) {
+    throw new Error("portable plugin must retain the verified Mac Safe Files dependency identity");
+  }
+  const personalConfig = await readJson(path.join(
+    projectRoot,
+    "integration",
+    "chatgpt-plugin",
+    "skills",
+    "zotero-study-save",
+    "resources",
+    "personal-config.json",
+  ));
+  if (
+    Object.keys(personalConfig).length !== 1 ||
+    !Object.hasOwn(personalConfig, "bridgeRoot") ||
+    personalConfig.bridgeRoot !== null
+  ) {
+    throw new Error("portable plugin personal-config.json must contain only a null bridgeRoot");
+  }
+  await mkdir(directory, { recursive: true });
+  for (const [source, destination] of PORTABLE_PLUGIN_FILES) {
+    await copyText(
+      path.join(projectRoot, ...source.split("/")),
+      path.join(directory, ...destination.split("/")),
+      `portable plugin ${source}`,
+    );
+  }
+  await cp(
+    clientDirectory,
+    path.join(directory, "skills", "zotero-study-save", "resources", "client-v1"),
+    { recursive: true, errorOnExist: true, preserveTimestamps: true },
+  );
+  const members = (await allFiles(directory)).sort();
+  await normalizeArchiveMetadata(directory, members);
+  return { members };
+}
+
 async function runZip(stagingDirectory, outputPath, members) {
   await rm(outputPath, { force: true });
   const environment = { ...process.env, COPYFILE_DISABLE: "1", LC_ALL: "C", TZ: "UTC" };
@@ -263,6 +328,7 @@ export async function buildXpi({
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "research-companion-xpi-"));
   const stagingDirectory = path.join(temporaryDirectory, "package");
   const clientStagingDirectory = path.join(temporaryDirectory, "client");
+  const pluginStagingDirectory = path.join(temporaryDirectory, "plugin");
   const outputPath = path.resolve(
     outputDirectory,
     `${ARCHIVE_PREFIX}-${version}.xpi`,
@@ -271,10 +337,15 @@ export async function buildXpi({
     outputDirectory,
     `${ARCHIVE_PREFIX}-${version}-client`,
   );
+  const pluginPath = path.resolve(
+    outputDirectory,
+    `${PLUGIN_ARCHIVE_PREFIX}-${version}.zip`,
+  );
   let published = false;
 
   try {
     await rm(outputPath, { force: true });
+    await rm(pluginPath, { force: true });
     await rm(clientDirectory, { recursive: true, force: true });
     await mkdir(stagingDirectory, { recursive: true });
     for (const [source, destination] of STATIC_FILES) {
@@ -293,6 +364,12 @@ export async function buildXpi({
     }
     await writeFile(path.join(stagingDirectory, "prefs.js"), DEFAULT_PREFERENCES, "utf8");
     const clientKit = await stageClientKit(projectRoot, clientStagingDirectory, version);
+    const portablePlugin = await stagePortablePlugin(
+      projectRoot,
+      pluginStagingDirectory,
+      clientStagingDirectory,
+      version,
+    );
     await mkdir(path.join(stagingDirectory, "client"), { recursive: true });
     await writeFile(
       path.join(stagingDirectory, "client", "README.md"),
@@ -330,6 +407,7 @@ export async function buildXpi({
     const buildMetadata = {
       artifact: `${ARCHIVE_PREFIX}-${version}.xpi`,
       clientKit: `${ARCHIVE_PREFIX}-${version}-client`,
+      portablePlugin: `${PLUGIN_ARCHIVE_PREFIX}-${version}.zip`,
       version,
       projectLicense: null,
       distribution: "manual",
@@ -351,6 +429,7 @@ export async function buildXpi({
         target: "firefox140",
         archive: "/usr/bin/zip -X with sorted members and fixed UTC timestamps",
         clientKit: "plain UTF-8 files with the same fixed timestamps",
+        portablePlugin: "explicit source allowlist plus exact client-kit bytes",
       },
     };
     await writeFile(
@@ -363,6 +442,7 @@ export async function buildXpi({
     await normalizeArchiveMetadata(stagingDirectory, members);
     await mkdir(path.dirname(outputPath), { recursive: true });
     await runZip(stagingDirectory, outputPath, members);
+    await runZip(pluginStagingDirectory, pluginPath, portablePlugin.members);
     await cp(clientStagingDirectory, clientDirectory, {
       recursive: true,
       preserveTimestamps: true,
@@ -372,14 +452,17 @@ export async function buildXpi({
     return {
       outputPath,
       clientDirectory,
+      pluginPath,
       version,
       members,
       clientMembers: clientKit.members,
+      pluginMembers: portablePlugin.members,
       runtimePackages: buildMetadata.runtimePackages,
     };
   } finally {
     if (!published) {
       await rm(outputPath, { force: true });
+      await rm(pluginPath, { force: true });
       await rm(clientDirectory, { recursive: true, force: true });
     }
     await rm(temporaryDirectory, { recursive: true, force: true });

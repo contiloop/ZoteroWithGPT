@@ -246,7 +246,7 @@ class NativeApiDouble {
   }
 }
 
-function adapter(native = new NativeApiDouble()) {
+function adapter(native = new NativeApiDouble(), options = {}) {
   const noteContent = new DomPurifyNativeNoteContentPolicy({ window: new JSDOM("").window });
   return new ZoteroLibraryAdapter({
     native,
@@ -256,6 +256,7 @@ function adapter(native = new NativeApiDouble()) {
     pluginVersion: "0.1.0",
     enabled: true,
     transport: { kind: "custom", description: "Test transport" },
+    ...options,
   });
 }
 
@@ -285,6 +286,21 @@ test("connection status advertises only the twelve currently wired operations", 
   assert.equal(result.capabilities.operations.includes("inspect_arxiv"), false);
   assert.equal(result.capabilities.operations.includes("ensure_arxiv_pdf"), false);
   assert.equal(result.capabilities.operations.includes("verify_annotation"), true);
+});
+
+test("connection status advertises arXiv operations when production composition activates them", async () => {
+  const operations = [
+    "connection_status", "search_papers", "read_pdf", "list_annotations", "list_notes",
+    "read_note", "resolve_anchor", "create_annotation", "update_annotation", "create_note",
+    "update_note", "verify_annotation", "inspect_arxiv", "ensure_arxiv_pdf",
+  ];
+  const result = await adapter(new NativeApiDouble(), { operations }).connectionStatus({
+    protocolVersion: 1,
+    operationId: "op-connection-arxiv-capabilities",
+    operation: "connection_status",
+    payload: {},
+  });
+  assert.deepEqual(result.capabilities.operations, operations);
 });
 
 test("paper discovery returns ambiguous titles and every PDF candidate", async () => {

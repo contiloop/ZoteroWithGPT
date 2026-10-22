@@ -19,4 +19,4 @@ const result = await buildXpi({
   projectRoot,
   outputDirectory: outputDirectory(process.argv.slice(2), projectRoot),
 });
-process.stdout.write(`${result.outputPath}\n${result.clientDirectory}\n`);
+process.stdout.write(`${result.outputPath}\n${result.clientDirectory}\n${result.pluginPath}\n`);

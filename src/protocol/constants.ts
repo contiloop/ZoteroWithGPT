@@ -22,7 +22,7 @@ export const NATIVE_ANNOTATION_COLORS = [
   "#aaaaaa",
 ] as const satisfies readonly NativeAnnotationColor[];
 
-export const OPERATION_NAMES = [
+export const BASE_OPERATION_NAMES = [
   "connection_status",
   "search_papers",
   "read_pdf",
@@ -35,8 +35,16 @@ export const OPERATION_NAMES = [
   "create_note",
   "update_note",
   "verify_annotation",
+] as const satisfies readonly OperationName[];
+
+export const ARXIV_OPERATION_NAMES = [
   "inspect_arxiv",
   "ensure_arxiv_pdf",
+] as const satisfies readonly OperationName[];
+
+export const OPERATION_NAMES = [
+  ...BASE_OPERATION_NAMES,
+  ...ARXIV_OPERATION_NAMES,
 ] as const satisfies readonly OperationName[];
 
 export const MUTATION_OPERATION_NAMES = [

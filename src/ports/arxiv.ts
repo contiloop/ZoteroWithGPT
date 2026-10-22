@@ -3,11 +3,12 @@ import type {
   ArxivCandidate,
   ArxivSource,
   ArxivUrlReference,
-  EnsureArxivPdfResult,
   ImportSelection,
-  VerificationDetail,
 } from "../protocol/types.js";
-import type { OperationIdentity } from "./execution.js";
+import type {
+  OperationExecutionOutcome,
+  OperationIdentity,
+} from "./execution.js";
 
 /**
  * The HTTP adapter receives typed arXiv resources, never a caller-controlled
@@ -38,8 +39,14 @@ export interface AcquiredArxivPdf {
   body: Uint8Array;
 }
 
+export interface VerifiedArxivPdf extends AcquiredArxivPdf {
+  fingerprint: string;
+  byteLength: number;
+  pageCount: number;
+}
+
 export interface ArxivPdfAcquisitionPort {
-  acquire(source: ArticleIdentity): Promise<AcquiredArxivPdf>;
+  acquire(source: ArticleIdentity): Promise<VerifiedArxivPdf>;
 }
 
 /** Opaque staging identity; concrete paths never cross this boundary. */
@@ -48,10 +55,11 @@ export interface StagedArxivPdf {
   source: ArticleIdentity;
   fingerprint: string;
   byteLength: number;
+  pageCount: number;
 }
 
 export interface ArxivPdfStagingPort {
-  stage(pdf: AcquiredArxivPdf): Promise<StagedArxivPdf>;
+  stage(pdf: VerifiedArxivPdf): Promise<StagedArxivPdf>;
   discard(stagingId: string): Promise<void>;
 }
 
@@ -73,16 +81,15 @@ export interface ArxivInspectionTokenPort {
 export interface ArxivNativeImportInput {
   source: ArxivSource;
   selection: ImportSelection;
-  stagedPdf?: StagedArxivPdf;
+  inspectionToken: string;
+  /** Captured before source re-resolution or other awaited ensure work. */
+  accessFence: string;
   identity: OperationIdentity;
 }
 
-/** Native-only parent/PDF inspection, commit, and exact storage readback. */
+/** Native inspection plus staged, recoverable parent/PDF commit workflow. */
 export interface ArxivNativeImportPort {
+  captureAccessFence(): string;
   inspect(source: ArxivSource): Promise<ArxivNativeInspection>;
-  ensure(input: ArxivNativeImportInput): Promise<EnsureArxivPdfResult>;
-  confirm(
-    result: EnsureArxivPdfResult,
-    identity: OperationIdentity,
-  ): Promise<VerificationDetail>;
+  ensure(input: ArxivNativeImportInput): Promise<OperationExecutionOutcome>;
 }

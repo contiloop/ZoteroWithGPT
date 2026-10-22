@@ -1,7 +1,7 @@
 import type {
-  AcquiredArxivPdf,
   ArxivHttpPort,
   ArxivPdfAcquisitionPort,
+  VerifiedArxivPdf,
 } from "../../ports/arxiv.js";
 import type { PayloadDigestPort } from "../../ports/digest.js";
 import type { ArticleIdentity } from "../../protocol/types.js";
@@ -16,12 +16,6 @@ export interface ArxivPdfReadability {
 /** Implementations must retain or clone bytes before passing them to a transferable worker API. */
 export interface ArxivPdfReadabilityPort {
   inspect(bytes: Uint8Array): Promise<ArxivPdfReadability>;
-}
-
-export interface VerifiedArxivPdf extends AcquiredArxivPdf {
-  fingerprint: string;
-  byteLength: number;
-  pageCount: number;
 }
 
 function hasPdfHeader(bytes: Uint8Array): boolean {

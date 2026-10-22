@@ -138,6 +138,34 @@ export function validateArxivImportSelection(
         "The selected arXiv parent changed after inspection",
       );
     }
+    if (candidates.some((inspected) => inspected.attachments.some(
+      (attachment) => exactVerifiedAttachment(source, attachment, {}),
+    ))) {
+      throw new CoreOperationError(
+        "conflict",
+        "The inspected library already has the requested concrete arXiv PDF; inspect again",
+      );
+    }
+    if (evidence.expectedPdfFingerprint !== undefined) {
+      const possibleManualMatches = candidates.flatMap((inspected) =>
+        inspected.attachments
+          .filter(
+            (attachment) =>
+              attachment.identity === "unverified" &&
+              attachment.fingerprint === evidence.expectedPdfFingerprint,
+          )
+          .map((attachment) => ({ itemKey: inspected.itemKey, attachment })),
+      );
+      if (
+        possibleManualMatches.length > 1 ||
+        possibleManualMatches.some((match) => match.itemKey !== candidate.itemKey)
+      ) {
+        throw new CoreOperationError(
+          "conflict",
+          "The canonical PDF bytes already have an ambiguous native attachment; inspect again",
+        );
+      }
+    }
     return;
   }
 

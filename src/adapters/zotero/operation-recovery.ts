@@ -28,13 +28,24 @@ function isAnnotation(record: NativeAnnotationRecord | NativeNoteRecord): record
 export class ZoteroOperationRecovery implements OperationRecoveryPort {
   readonly #native: ZoteroNativeApi;
   readonly #digest: PayloadDigestPort;
+  readonly #arxiv: OperationRecoveryPort | undefined;
 
-  constructor(native: ZoteroNativeApi, digest: PayloadDigestPort) {
+  constructor(
+    native: ZoteroNativeApi,
+    digest: PayloadDigestPort,
+    arxiv?: OperationRecoveryPort,
+  ) {
     this.#native = native;
     this.#digest = digest;
+    this.#arxiv = arxiv;
   }
 
   async reconcile(record: OperationRecord): Promise<OperationExecutionOutcome> {
+    if (record.operation === "ensure_arxiv_pdf") {
+      return this.#arxiv?.reconcile(record) ?? unknown(
+        "The interrupted arXiv import has no configured native recovery adapter",
+      );
+    }
     const marker = operationIdentityMarker({
       operationId: record.operationId,
       requestDigest: record.requestDigest,

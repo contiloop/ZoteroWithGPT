@@ -1,4 +1,7 @@
-import type { OperationRecord } from "../core/operation-record.js";
+import type {
+  NativeOperationEvidence,
+  OperationRecord,
+} from "../core/operation-record.js";
 import type { OperationState } from "../protocol/types.js";
 
 export type OperationClaim =
@@ -14,6 +17,11 @@ export interface OperationPersistencePort {
   load(operationId: string): Promise<OperationRecord | undefined>;
   /** Returns durable queued/running records for startup recovery. */
   listPending(): Promise<OperationRecord[]>;
+  /** Atomically persists monotonic native recovery evidence on a running claim. */
+  checkpointNativeEvidence(
+    operationId: string,
+    evidence: NativeOperationEvidence,
+  ): Promise<OperationRecord>;
   transition(
     operationId: string,
     expectedState: OperationState,

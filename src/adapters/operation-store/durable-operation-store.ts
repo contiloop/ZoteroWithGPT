@@ -1,10 +1,18 @@
-import type { OperationRecord } from "../../core/operation-record.js";
+import type {
+  ArxivImportRecoveryEvidence,
+  NativeOperationEvidence,
+  OperationRecord,
+} from "../../core/operation-record.js";
 import type {
   MutationSerializationPort,
   OperationClaim,
   OperationPersistencePort,
 } from "../../ports/operation-persistence.js";
 import type { OperationState } from "../../protocol/types.js";
+import {
+  isEnsureArxivReadyResult,
+  validateArxivSource,
+} from "../../protocol/validation.js";
 
 export interface AtomicTextFile {
   /** Returns undefined when the file does not exist. */
@@ -37,6 +45,145 @@ function ownOperation(
   return Object.hasOwn(operations, operationId) ? operations[operationId] : undefined;
 }
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function nonemptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  const actual = Object.keys(value).sort();
+  return actual.length === expected.length &&
+    actual.every((key, index) => key === [...expected].sort()[index]);
+}
+
+function validSelection(value: unknown): boolean {
+  if (!isObject(value)) return false;
+  if (value.kind === "create") return hasOnlyKeys(value, ["kind"]);
+  if (value.kind === "attach") {
+    return hasOnlyKeys(value, ["kind", "itemKey", "expectedItemRevision"]) &&
+      nonemptyString(value.itemKey) && nonemptyString(value.expectedItemRevision);
+  }
+  return value.kind === "reuse" &&
+    hasOnlyKeys(value, ["kind", "itemKey", "attachmentKey", "expectedFingerprint"]) &&
+    nonemptyString(value.itemKey) &&
+    nonemptyString(value.attachmentKey) &&
+    nonemptyString(value.expectedFingerprint);
+}
+
+function validCandidates(value: unknown): boolean {
+  return Array.isArray(value) && value.every((candidate) =>
+    isObject(candidate) &&
+    hasOnlyKeys(candidate, ["itemKey", "itemRevision", "title", "attachments"]) &&
+    nonemptyString(candidate.itemKey) &&
+    nonemptyString(candidate.itemRevision) &&
+    typeof candidate.title === "string" &&
+    Array.isArray(candidate.attachments) &&
+    candidate.attachments.every((attachment) =>
+      isObject(attachment) &&
+      hasOnlyKeys(attachment, ["attachmentKey", "fingerprint", "version", "identity"]) &&
+      nonemptyString(attachment.attachmentKey) &&
+      (attachment.fingerprint === null || nonemptyString(attachment.fingerprint)) &&
+      (attachment.version === null ||
+        (Number.isSafeInteger(attachment.version) && (attachment.version as number) > 0)) &&
+      (attachment.identity === "verified" || attachment.identity === "unverified")
+    )
+  );
+}
+
+function assertNativeEvidenceShape(value: unknown, operationId: string): void {
+  if (!isObject(value) || value.kind !== "arxiv_import") {
+    throw new Error(`Durable operation '${operationId}' has invalid native recovery evidence`);
+  }
+  const evidence = value as unknown as ArxivImportRecoveryEvidence;
+  let sourceValid = true;
+  try {
+    validateArxivSource(evidence.source, `$operation[${operationId}].nativeEvidence.source`);
+  } catch {
+    sourceValid = false;
+  }
+  const byteLengthValid = evidence.expectedPdf?.byteLength === null ||
+    (Number.isSafeInteger(evidence.expectedPdf?.byteLength) &&
+      (evidence.expectedPdf?.byteLength ?? 0) > 0);
+  const pageCountValid = evidence.expectedPdf?.pageCount === null ||
+    (Number.isSafeInteger(evidence.expectedPdf?.pageCount) &&
+      (evidence.expectedPdf?.pageCount ?? 0) > 0);
+  const stagingIdValid = evidence.expectedPdf?.stagingId === null ||
+    nonemptyString(evidence.expectedPdf?.stagingId);
+  const selectionActionValid =
+    (evidence.selection?.kind === "create" && evidence.itemAction === "created") ||
+    ((evidence.selection?.kind === "attach" || evidence.selection?.kind === "reuse") &&
+      evidence.itemAction === "reused");
+  const pdfActionValid = evidence.pdfAction === "downloaded" || evidence.pdfAction === "reused";
+  const pdfActionSelectionValid =
+    (evidence.pdfAction === "downloaded" && evidence.selection?.kind !== "reuse") ||
+    (evidence.pdfAction === "reused" &&
+      evidence.itemAction === "reused" &&
+      (evidence.selection?.kind === "reuse" || evidence.selection?.kind === "attach"));
+  const reuseFingerprintValid = evidence.selection?.kind !== "reuse" ||
+    evidence.selection.expectedFingerprint === evidence.expectedPdf?.fingerprint;
+  const selectionTargetValid = evidence.selection?.kind === "create" ||
+    (evidence.selection?.itemKey === evidence.itemKey &&
+      (evidence.selection.kind !== "reuse" ||
+        evidence.selection.attachmentKey === evidence.attachmentKey));
+  const expectedPdfShapeValid = isObject(evidence.expectedPdf) &&
+    hasOnlyKeys(evidence.expectedPdf, ["fingerprint", "byteLength", "pageCount", "stagingId"]);
+  const acquisitionEvidenceValid = evidence.pdfAction === "reused"
+    ? evidence.expectedPdf?.stagingId === null &&
+      (evidence.selection?.kind === "reuse"
+        ? evidence.expectedPdf?.byteLength === null
+        : evidence.expectedPdf?.byteLength !== null) &&
+      evidence.expectedPdf?.pageCount !== null &&
+      evidence.stage !== "parent_committed" &&
+      evidence.stage !== "attachment_committed"
+    : evidence.expectedPdf?.byteLength !== null &&
+      evidence.expectedPdf?.pageCount !== null &&
+      evidence.expectedPdf?.stagingId !== null;
+  const readyResultValid = evidence.stage !== "ready" || (
+    isEnsureArxivReadyResult(evidence.result) &&
+    evidence.result.source.arxivId === evidence.source.arxivId &&
+    evidence.result.source.version === evidence.source.version &&
+    evidence.result.libraryId === evidence.libraryId &&
+    evidence.result.itemKey === evidence.itemKey &&
+    evidence.result.itemAction === evidence.itemAction &&
+    evidence.result.attachmentKey === evidence.attachmentKey &&
+    evidence.result.attachmentFingerprint === evidence.expectedPdf.fingerprint &&
+    evidence.result.pdfAction === evidence.pdfAction
+  );
+  if (
+    !["prepared", "parent_committed", "attachment_committed", "ready"].includes(evidence.stage) ||
+    !sourceValid ||
+    !nonemptyString(evidence.libraryId) ||
+    !nonemptyString(evidence.inspectionToken) ||
+    !validSelection(evidence.selection) ||
+    !validCandidates(evidence.initialCandidates) ||
+    !expectedPdfShapeValid ||
+    !nonemptyString(evidence.expectedPdf.fingerprint) ||
+    !byteLengthValid ||
+    !pageCountValid ||
+    !stagingIdValid ||
+    !nonemptyString(evidence.itemKey) ||
+    !nonemptyString(evidence.attachmentKey) ||
+    !nonemptyString(evidence.operationMarker) ||
+    !nonemptyString(evidence.parentProvenance) ||
+    !nonemptyString(evidence.attachmentProvenance) ||
+    (evidence.itemAction !== "created" && evidence.itemAction !== "reused") ||
+    !pdfActionValid ||
+    !pdfActionSelectionValid ||
+    !selectionActionValid ||
+    !selectionTargetValid ||
+    !reuseFingerprintValid ||
+    !acquisitionEvidenceValid ||
+    (evidence.stage === "ready" && !isObject(evidence.result)) ||
+    (evidence.stage !== "ready" && evidence.result !== undefined) ||
+    !readyResultValid
+  ) {
+    throw new Error(`Durable operation '${operationId}' has invalid native recovery evidence`);
+  }
+}
+
 function assertRecordShape(value: unknown, operationId: string): asserts value is OperationRecord {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Durable operation '${operationId}' is not an object`);
@@ -56,6 +203,12 @@ function assertRecordShape(value: unknown, operationId: string): asserts value i
     record.response.state !== record.state
   ) {
     throw new Error(`Durable operation '${operationId}' is invalid`);
+  }
+  if (record.nativeEvidence !== undefined) {
+    if (record.operation !== "ensure_arxiv_pdf" || record.state === "queued") {
+      throw new Error(`Durable operation '${operationId}' has misplaced native recovery evidence`);
+    }
+    assertNativeEvidenceShape(record.nativeEvidence, operationId);
   }
 }
 
@@ -96,12 +249,52 @@ function assertTransitionIdentity(current: OperationRecord, next: OperationRecor
     next.requestDigest !== current.requestDigest ||
     next.operation !== current.operation ||
     next.profileId !== current.profileId ||
-    next.mutation !== current.mutation
+    next.mutation !== current.mutation ||
+    JSON.stringify(next.nativeEvidence ?? null) !== JSON.stringify(current.nativeEvidence ?? null)
   ) {
     throw new Error("A durable transition cannot replace immutable operation identity");
   }
   if (next.response.operationId !== next.operationId || next.response.state !== next.state) {
     throw new Error("A durable transition response must match the operation ID and state");
+  }
+}
+
+const ARXIV_STAGE_ORDER: Record<ArxivImportRecoveryEvidence["stage"], number> = {
+  prepared: 0,
+  parent_committed: 1,
+  attachment_committed: 2,
+  ready: 3,
+};
+
+function immutableArxivEvidence(evidence: ArxivImportRecoveryEvidence): object {
+  const { stage: _stage, result: _result, ...immutable } = evidence;
+  return immutable;
+}
+
+function assertEvidenceProgression(
+  current: NativeOperationEvidence | undefined,
+  next: NativeOperationEvidence,
+): void {
+  if (current === undefined) {
+    if (next.stage !== "prepared") {
+      throw new Error("The first native recovery checkpoint must be prepared");
+    }
+    return;
+  }
+  if (
+    JSON.stringify(immutableArxivEvidence(current)) !==
+    JSON.stringify(immutableArxivEvidence(next))
+  ) {
+    throw new Error("Native recovery evidence identity is immutable after its first checkpoint");
+  }
+  if (ARXIV_STAGE_ORDER[next.stage] < ARXIV_STAGE_ORDER[current.stage]) {
+    throw new Error("Native recovery evidence cannot move to an earlier stage");
+  }
+  if (
+    ARXIV_STAGE_ORDER[next.stage] === ARXIV_STAGE_ORDER[current.stage] &&
+    JSON.stringify(next) !== JSON.stringify(current)
+  ) {
+    throw new Error("A native recovery stage cannot be replaced with different evidence");
   }
 }
 
@@ -153,6 +346,35 @@ export class DurableOperationStore implements OperationPersistencePort {
         .filter((record) => record.state === "queued" || record.state === "running")
         .sort((left, right) => left.operationId.localeCompare(right.operationId))
         .map((record) => clone(record));
+    });
+  }
+
+  async checkpointNativeEvidence(
+    operationId: string,
+    evidence: NativeOperationEvidence,
+  ): Promise<OperationRecord> {
+    assertNativeEvidenceShape(evidence, operationId);
+    return this.#exclusive(async () => {
+      const document = await this.#loadOrCreate();
+      const current = ownOperation(document.operations, operationId);
+      if (current === undefined) {
+        throw new Error(`Durable operation '${operationId}' does not exist`);
+      }
+      if (
+        current.operation !== "ensure_arxiv_pdf" ||
+        !current.mutation ||
+        current.state !== "running"
+      ) {
+        throw new Error("Native recovery evidence requires a running arXiv import");
+      }
+      assertEvidenceProgression(current.nativeEvidence, evidence);
+      if (JSON.stringify(current.nativeEvidence ?? null) === JSON.stringify(evidence)) {
+        return clone(current);
+      }
+      const next: OperationRecord = { ...current, nativeEvidence: clone(evidence) };
+      document.operations[operationId] = clone(next);
+      await this.#write(document);
+      return clone(next);
     });
   }
 

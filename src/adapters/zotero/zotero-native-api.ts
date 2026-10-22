@@ -1,12 +1,30 @@
 import { CoreOperationError } from "../../core/errors.js";
-import type { NativeRectangle, ResolvedAnchor } from "../../protocol/types.js";
+import { canonicalizeJson } from "../../protocol/canonical.js";
+import type {
+  ArxivCandidate,
+  ArxivSource,
+  NativeRectangle,
+  ResolvedAnchor,
+} from "../../protocol/types.js";
+import { isValidArxivId, parseArxivUrl } from "../../protocol/validation.js";
 import type { WebCryptoLike } from "../operation-store/web-crypto-digest.js";
 import type { NativePageChar, NativeRectTuple } from "../anchors/text-layer.js";
 import {
+  ARXIV_PROVENANCE_RELATION_PREDICATE,
+  arxivAttachmentProvenance,
   isSafeNativeNoteContent,
   OPERATION_RELATION_PREDICATE,
 } from "./record-utils.js";
 import type {
+  NativeArxivAttachmentCreate,
+  NativeArxivAttachmentRecord,
+  NativeArxivKeyPlan,
+  NativeArxivOperationObject,
+  NativeArxivParentCreate,
+  NativeArxivParentRecord,
+  NativeArxivPdfInstall,
+  NativeArxivSynchronousFileFingerprintPort,
+  NativeArxivStagedFileInstaller,
   NativeAnnotationCreate,
   NativeAnnotationRecord,
   NativeAnnotationUpdate,
@@ -41,6 +59,8 @@ interface ZoteroItemLike {
   version?: number;
   dateModified?: string;
   attachmentContentType?: string;
+  attachmentLinkMode?: number;
+  attachmentPath?: string;
   annotationType?: string;
   annotationText?: string;
   annotationComment?: string;
@@ -54,9 +74,12 @@ interface ZoteroItemLike {
   isNote(): boolean;
   isEditable(): boolean;
   getField(field: string, unformatted?: boolean, includeBaseMapped?: boolean): unknown;
+  setField(field: string, value: unknown): unknown;
   getDisplayTitle(): string;
   getCreators?(): ZoteroCreatorLike[];
+  setCreators?(creators: Array<ZoteroCreatorLike & { creatorType: "author" }>): void;
   getAttachments?(includeTrashed?: boolean): number[];
+  getCollections?(): number[];
   getAnnotations?(): ZoteroItemLike[];
   getNotes?(includeTrashed?: boolean): number[];
   getFilePathAsync(): Promise<string | false | undefined>;
@@ -66,6 +89,8 @@ interface ZoteroItemLike {
   getNoteTitle?(): string;
   setNote?(content: string): void;
   loadAllData?(): Promise<unknown>;
+  getFilePath(): string | false;
+  save(options?: Record<string, unknown>): Promise<unknown>;
   saveTx(options?: Record<string, unknown>): Promise<unknown>;
 }
 
@@ -144,14 +169,29 @@ interface ReaderLike {
 
 interface ZoteroLibraryLike {
   libraryID?: number;
+  clientVersion?: number;
   waitForDataLoad?(type: string): Promise<unknown>;
 }
 
 export interface ZoteroHostGlobal {
   version?: string;
   Profile?: { name?: string };
-  Libraries: { getAll(): ZoteroLibraryLike[] };
+  DB: {
+    executeTransaction<T>(work: () => Promise<T>): Promise<T>;
+    inTransaction(): boolean;
+  };
+  Libraries: {
+    userLibraryID: number;
+    getAll(): ZoteroLibraryLike[];
+    get?(libraryId: number): ZoteroLibraryLike | undefined;
+  };
   Items: {
+    getAll(
+      libraryId: number,
+      onlyTopLevel?: boolean,
+      includeDeleted?: boolean,
+      asIds?: false,
+    ): Promise<ZoteroItemLike[]>;
     getByLibraryAndKeyAsync(
       libraryId: number,
       key: string,
@@ -162,6 +202,10 @@ export interface ZoteroHostGlobal {
       options?: { noCache?: boolean },
     ): Promise<ZoteroItemLike | ZoteroItemLike[] | false | undefined>;
     get(id: number): ZoteroItemLike | false | undefined;
+  };
+  Attachments: {
+    LINK_MODE_IMPORTED_FILE: number;
+    getStorageDirectory(item: ZoteroItemLike): { path: string };
   };
   Search: new () => ZoteroSearchLike;
   Item: new (type: string) => ZoteroItemLike;
@@ -199,6 +243,8 @@ export interface ZoteroNativeEnvironment {
   cloneInto<T>(value: T, target: object): T;
   noteContent: NativeNoteContentPolicy;
   accessGate?: ZoteroAccessGate;
+  arxivStaging?: NativeArxivStagedFileInstaller;
+  arxivFileFingerprint?: NativeArxivSynchronousFileFingerprintPort;
 }
 
 interface QueryNodeLike {
@@ -531,6 +577,210 @@ function mapPageChars(value: unknown): NativePageChar[] {
   return output;
 }
 
+interface ArxivIdentityEvidence {
+  arxivId: string;
+  version?: number;
+}
+
+interface ArxivPdfProvenance extends ArxivIdentityEvidence {
+  version: number;
+  fingerprint: string;
+}
+
+function parseIdentityText(value: unknown): ArxivIdentityEvidence | undefined {
+  if (typeof value !== "string") return undefined;
+  let candidate = value.trim().replace(/^arxiv\s*:\s*/iu, "");
+  candidate = candidate.split(/[\s[]/u, 1)[0] ?? "";
+  candidate = candidate.replace(/\.pdf$/iu, "");
+  const versionMatch = /^(.*)v([1-9][0-9]*)$/u.exec(candidate);
+  const arxivId = versionMatch?.[1] ?? candidate;
+  if (!isValidArxivId(arxivId)) return undefined;
+  if (versionMatch === null) return { arxivId };
+  const version = Number(versionMatch[2]);
+  return Number.isSafeInteger(version) ? { arxivId, version } : undefined;
+}
+
+function parseOfficialArxivField(value: unknown): ArxivIdentityEvidence | undefined {
+  if (typeof value !== "string" || value.trim().length === 0) return undefined;
+  try {
+    return parseArxivUrl(value.trim());
+  } catch {
+    return undefined;
+  }
+}
+
+function extraLines(item: ZoteroItemLike): string[] {
+  return String(item.getField("extra") ?? "").split(/\r?\n/u);
+}
+
+function parentIdentityEvidence(item: ZoteroItemLike): ArxivIdentityEvidence[] {
+  const evidence: ArxivIdentityEvidence[] = [];
+  const fromUrl = parseOfficialArxivField(item.getField("url"));
+  if (fromUrl !== undefined) evidence.push(fromUrl);
+  const fromArchive = parseIdentityText(item.getField("archiveID"));
+  if (fromArchive !== undefined) evidence.push(fromArchive);
+  const extraIdentities: ArxivIdentityEvidence[] = [];
+  const extraVersions: number[] = [];
+  for (const line of extraLines(item)) {
+    const identity = /^\s*arxiv\s*:\s*(.+?)\s*$/iu.exec(line)?.[1];
+    if (identity !== undefined) {
+      const parsed = parseIdentityText(identity);
+      if (parsed !== undefined) extraIdentities.push(parsed);
+    }
+    const version = /^\s*version\s*:\s*([1-9][0-9]*)\s*$/iu.exec(line)?.[1];
+    if (version !== undefined) {
+      const parsed = Number(version);
+      if (Number.isSafeInteger(parsed)) extraVersions.push(parsed);
+    }
+  }
+  for (const extraIdentity of extraIdentities) {
+    evidence.push(extraIdentity);
+    for (const extraVersion of extraVersions) {
+      if (extraIdentity.version !== extraVersion) {
+        evidence.push({ arxivId: extraIdentity.arxivId, version: extraVersion });
+      }
+    }
+  }
+  return evidence;
+}
+
+function allParentIdentityEvidence(item: ZoteroItemLike): ArxivIdentityEvidence[] {
+  return [
+    ...parentIdentityEvidence(item),
+    ...item
+      .getRelationsByPredicate(ARXIV_PROVENANCE_RELATION_PREDICATE)
+      .map(parseParentProvenance)
+      .filter((entry): entry is ArxivIdentityEvidence => entry !== undefined),
+  ];
+}
+
+function attachmentIdentityEvidence(item: ZoteroItemLike): ArxivIdentityEvidence[] {
+  const fromUrl = parseOfficialArxivField(item.getField("url"));
+  const fromProvenance = item
+    .getRelationsByPredicate(ARXIV_PROVENANCE_RELATION_PREDICATE)
+    .map(parsePdfProvenance)
+    .filter((entry): entry is ArxivPdfProvenance => entry !== undefined)
+    .map(({ arxivId, version }) => ({ arxivId, version }));
+  return [...(fromUrl === undefined ? [] : [fromUrl]), ...fromProvenance];
+}
+
+function parseParentProvenance(value: string): ArxivIdentityEvidence | undefined {
+  const match = /^urn:zotero-ai-research-companion:arxiv-parent:(.+):v([1-9][0-9]*)$/u.exec(
+    value,
+  );
+  if (match === null) return undefined;
+  try {
+    const arxivId = decodeURIComponent(match[1] as string);
+    const version = Number(match[2]);
+    return isValidArxivId(arxivId) && Number.isSafeInteger(version)
+      ? { arxivId, version }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function parsePdfProvenance(value: string): ArxivPdfProvenance | undefined {
+  const match =
+    /^urn:zotero-ai-research-companion:arxiv-pdf:(.+):v([1-9][0-9]*):(.+)$/u.exec(value);
+  if (match === null) return undefined;
+  try {
+    const arxivId = decodeURIComponent(match[1] as string);
+    const version = Number(match[2]);
+    const fingerprint = decodeURIComponent(match[3] as string);
+    return isValidArxivId(arxivId) && Number.isSafeInteger(version) && fingerprint.length > 0
+      ? { arxivId, version, fingerprint }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function sortedRelations(item: ZoteroItemLike, predicate: string): string[] {
+  return [...item.getRelationsByPredicate(predicate)].sort();
+}
+
+function targetVersions(
+  source: ArxivSource,
+  evidence: readonly ArxivIdentityEvidence[],
+): number[] {
+  return [
+    ...new Set(
+      evidence
+        .filter((entry) => entry.arxivId === source.arxivId)
+        .map((entry) => entry.version)
+        .filter((version): version is number => version !== undefined),
+    ),
+  ].sort((left, right) => left - right);
+}
+
+function identifiesSource(
+  source: ArxivSource,
+  evidence: readonly ArxivIdentityEvidence[],
+): boolean {
+  return evidence.some((entry) => entry.arxivId === source.arxivId);
+}
+
+function sourceExtraValue(item: ZoteroItemLike, field: "published" | "updated"): string | undefined {
+  const expression = new RegExp(`^\\s*${field}\\s*:\\s*(.+?)\\s*$`, "iu");
+  for (const line of extraLines(item)) {
+    const value = expression.exec(line)?.[1];
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function arxivFileName(source: ArxivSource): string {
+  const safeId = source.arxivId.replace(/[^A-Za-z0-9._-]/gu, "_");
+  return `arxiv-${safeId}-v${String(source.version)}.pdf`;
+}
+
+function sameCandidates(
+  left: readonly ArxivCandidate[],
+  right: readonly ArxivCandidate[],
+): boolean {
+  return canonicalizeJson(left) === canonicalizeJson(right);
+}
+
+interface ArxivLibraryFence {
+  libraryId: number;
+  clientVersion: number;
+}
+
+interface PreparedArxivFileEvidence {
+  expectedFingerprint: string | null;
+  attachment: ZoteroItemLike;
+}
+
+const MAX_SYNCHRONOUS_ARXIV_FILE_BYTES = 64 * 1024 * 1024;
+const MAX_SYNCHRONOUS_ARXIV_TOTAL_BYTES = 128 * 1024 * 1024;
+
+type ArxivCommitAttempt<T> =
+  | { kind: "saved"; value: T }
+  | { kind: "blocked"; error: CoreOperationError };
+
+function arxivParentMetadataMaterial(parent: ZoteroItemLike): object {
+  return {
+    libraryId: requiredNumber(parent.libraryID, "library ID"),
+    itemKey: requiredString(parent.key, "parent item key"),
+    deleted: parent.deleted === true,
+    itemType: parent.itemType ?? null,
+    version: parent.version ?? null,
+    dateModified: parent.dateModified ?? null,
+    title: String(parent.getField("title") ?? ""),
+    abstractNote: String(parent.getField("abstractNote") ?? ""),
+    date: String(parent.getField("date") ?? ""),
+    url: String(parent.getField("url") ?? ""),
+    extra: String(parent.getField("extra") ?? ""),
+    archiveID: String(parent.getField("archiveID") ?? ""),
+    DOI: String(parent.getField("DOI") ?? ""),
+    creators: (parent.getCreators?.() ?? []).map((creator) => creatorName(creator) ?? null),
+    collections: [...(parent.getCollections?.() ?? [])].sort((left, right) => left - right),
+    operationMarkers: sortedRelations(parent, OPERATION_RELATION_PREDICATE),
+    provenanceMarkers: sortedRelations(parent, ARXIV_PROVENANCE_RELATION_PREDICATE),
+  };
+}
+
 export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
   readonly #zotero: ZoteroHostGlobal;
   readonly #io: ZoteroNativeEnvironment["IOUtils"];
@@ -538,6 +788,10 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
   readonly #cloneInto: ZoteroNativeEnvironment["cloneInto"];
   readonly #noteContent: NativeNoteContentPolicy;
   readonly #accessGate: ZoteroAccessGate | undefined;
+  readonly #arxivStaging: NativeArxivStagedFileInstaller | undefined;
+  readonly #arxivFileFingerprint:
+    | NativeArxivSynchronousFileFingerprintPort
+    | undefined;
 
   constructor(environment: ZoteroNativeEnvironment) {
     this.#zotero = environment.Zotero;
@@ -546,6 +800,8 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     this.#cloneInto = environment.cloneInto;
     this.#noteContent = environment.noteContent;
     this.#accessGate = environment.accessGate;
+    this.#arxivStaging = environment.arxivStaging;
+    this.#arxivFileFingerprint = environment.arxivFileFingerprint;
   }
 
   async runtimeStatus(): Promise<NativeRuntimeStatus> {
@@ -554,6 +810,556 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
       zoteroVersion: this.#zotero.version ?? "unknown",
       ...(profileName === undefined ? {} : { profileName }),
     };
+  }
+
+  captureArxivAccessFence(): string {
+    if (this.#accessGate === undefined) {
+      throw new CoreOperationError(
+        "unsupported_capability",
+        "The native arXiv importer requires a shared live access gate",
+      );
+    }
+    if (!this.#accessGate.isEnabled()) {
+      throw new CoreOperationError(
+        "permission_denied",
+        "Zotero companion access is disabled",
+      );
+    }
+    return this.#accessGate.capture();
+  }
+
+  assertArxivAccessFence(fence: string): void {
+    this.#assertArxivFence(fence);
+  }
+
+  async inspectArxiv(source: ArxivSource): Promise<import("../../ports/arxiv.js").ArxivNativeInspection> {
+    const personalLibraryId = requiredNumber(
+      this.#zotero.Libraries.userLibraryID,
+      "personal library ID",
+    );
+    await this.#zotero.Libraries.get?.(personalLibraryId)?.waitForDataLoad?.("item");
+    const loaded = await this.#zotero.Items.getAll(personalLibraryId, true, false, false);
+    const candidates: ArxivCandidate[] = [];
+    for (const cached of loaded) {
+      if (cached.key === undefined) continue;
+      const item = await this.#fresh(String(personalLibraryId), cached.key);
+      if (item === undefined || item.deleted === true || !item.isRegularItem()) {
+        continue;
+      }
+      if (!identifiesSource(source, await this.#familyIdentityEvidence(item))) continue;
+      candidates.push(await this.#arxivCandidate(source, item));
+    }
+    candidates.sort((left, right) => left.itemKey.localeCompare(right.itemKey));
+    return { libraryId: String(personalLibraryId), candidates };
+  }
+
+  async planArxivImportKeys(createParent: boolean): Promise<NativeArxivKeyPlan> {
+    const personalLibraryId = requiredNumber(
+      this.#zotero.Libraries.userLibraryID,
+      "personal library ID",
+    );
+    const nextKey = async (): Promise<string> => {
+      for (let attempt = 0; attempt < 32; attempt += 1) {
+        const key = this.#zotero.DataObjectUtilities.generateKey();
+        if (typeof key !== "string" || !/^[A-Za-z0-9]+$/u.test(key)) continue;
+        const existing = await this.#zotero.Items.getByLibraryAndKeyAsync(personalLibraryId, key, {
+          noCache: true,
+        });
+        if (!existing) return key;
+      }
+      throw new Error("Zotero could not allocate a unique prospective item key");
+    };
+    const itemKey = createParent ? await nextKey() : "existing-parent";
+    const attachmentKey = await nextKey();
+    return { itemKey, attachmentKey };
+  }
+
+  async getArxivParent(
+    source: ArxivSource,
+    itemKey: string,
+  ): Promise<NativeArxivParentRecord | undefined> {
+    const personalLibraryId = String(
+      requiredNumber(this.#zotero.Libraries.userLibraryID, "personal library ID"),
+    );
+    const item = await this.#fresh(personalLibraryId, itemKey);
+    if (
+      item === undefined ||
+      item.deleted === true ||
+      !item.isRegularItem() ||
+      !identifiesSource(source, await this.#familyIdentityEvidence(item))
+    ) {
+      return undefined;
+    }
+    const candidate = await this.#arxivCandidate(source, item);
+    return this.#arxivParentRecord(source, item, candidate);
+  }
+
+  async getArxivAttachment(
+    source: ArxivSource,
+    itemKey: string,
+    attachmentKey: string,
+  ): Promise<NativeArxivAttachmentRecord | undefined> {
+    const personalLibraryId = String(
+      requiredNumber(this.#zotero.Libraries.userLibraryID, "personal library ID"),
+    );
+    const parent = await this.#fresh(personalLibraryId, itemKey);
+    const attachment = await this.#fresh(personalLibraryId, attachmentKey);
+    if (
+      parent === undefined ||
+      parent.deleted === true ||
+      !parent.isRegularItem() ||
+      !identifiesSource(source, await this.#familyIdentityEvidence(parent)) ||
+      attachment === undefined ||
+      attachment.deleted === true ||
+      !attachment.isPDFAttachment() ||
+      attachment.parentItemID !== parent.id
+    ) {
+      return undefined;
+    }
+    const pdfCount = await this.#pdfChildCount(parent);
+    return this.#arxivAttachmentRecord(source, parent, attachment, pdfCount, true);
+  }
+
+  async createArxivParent(input: NativeArxivParentCreate): Promise<NativeArxivParentRecord> {
+    const personalLibraryId = requiredNumber(
+      this.#zotero.Libraries.userLibraryID,
+      "personal library ID",
+    );
+    let commitBoundaryReached = false;
+    let attempt: ArxivCommitAttempt<ZoteroItemLike>;
+    try {
+      attempt = await this.#zotero.DB.executeTransaction<
+        ArxivCommitAttempt<ZoteroItemLike>
+      >(async () => {
+        const accessProblem = this.#arxivAccessProblem(input.accessFence);
+        if (accessProblem !== undefined) return { kind: "blocked", error: accessProblem };
+        const libraryFence = this.#captureArxivLibraryFence(true);
+        const current = await this.inspectArxiv(input.source);
+        const existing = await this.#zotero.Items.getByLibraryAndKeyAsync(
+          personalLibraryId,
+          input.itemKey,
+          { noCache: true },
+        );
+        const fileEvidence = await this.#prepareArxivFileEvidence(current.candidates);
+        const preparationProblem = this.#arxivPrecommitProblem(
+          input.accessFence,
+          libraryFence,
+          true,
+        );
+        if (preparationProblem !== undefined) {
+          return { kind: "blocked", error: preparationProblem };
+        }
+        if (!sameCandidates(current.candidates, input.expectedCandidates)) {
+          return {
+            kind: "blocked",
+            error: new CoreOperationError(
+              "conflict",
+              "The complete canonical arXiv parent set changed during parent preparation",
+            ),
+          };
+        }
+        if (existing) {
+          return {
+            kind: "blocked",
+            error: new CoreOperationError(
+              "conflict",
+              "The prospective arXiv parent key is already used",
+            ),
+          };
+        }
+
+        const parent = new this.#zotero.Item("preprint");
+        this.#assertArxivFence(input.accessFence);
+        parent.libraryID = personalLibraryId;
+        this.#assertArxivFence(input.accessFence);
+        parent.key = input.itemKey;
+        for (const [field, value] of [
+          ["title", input.source.metadata.title],
+          ["abstractNote", input.source.metadata.abstract],
+          ["date", input.source.metadata.published],
+          ["url", input.source.abstractUrl],
+          [
+            "extra",
+            [
+              `arXiv:${input.source.arxivId}`,
+              `version: ${String(input.source.version)}`,
+              `published: ${input.source.metadata.published}`,
+              `updated: ${input.source.metadata.updated}`,
+            ].join("\n"),
+          ],
+        ] as const) {
+          this.#assertArxivFence(input.accessFence);
+          parent.setField(field, value);
+        }
+        if (input.source.metadata.doi !== undefined) {
+          this.#assertArxivFence(input.accessFence);
+          parent.setField("DOI", input.source.metadata.doi);
+        }
+        this.#assertArxivFence(input.accessFence);
+        parent.setCreators?.(
+          input.source.metadata.authors.map((name) => ({
+            name,
+            creatorType: "author" as const,
+          })),
+        );
+        this.#assertArxivFence(input.accessFence);
+        parent.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
+        this.#assertArxivFence(input.accessFence);
+        parent.addRelation(ARXIV_PROVENANCE_RELATION_PREDICATE, input.parentProvenance);
+        this.#assertArxivFence(input.accessFence);
+        this.#assertPreparedArxivFiles(fileEvidence);
+        await parent.save({ skipSelect: true });
+        this.#assertArxivFence(input.accessFence);
+        if (!this.#zotero.DB.inTransaction()) {
+          throw new CoreOperationError(
+            "conflict",
+            "The native arXiv parent transaction ended before commit",
+          );
+        }
+        this.#assertPreparedArxivFiles(fileEvidence);
+        commitBoundaryReached = true;
+        return { kind: "saved", value: parent };
+      });
+    } catch (error) {
+      if (commitBoundaryReached) {
+        throw new CoreOperationError(
+          "unknown_outcome",
+          "The native arXiv parent commit completed its callback but its final outcome is unknown",
+        );
+      }
+      throw error;
+    }
+    if (attempt.kind === "blocked") throw attempt.error;
+    try {
+      this.#assertArxivFence(input.accessFence);
+      const record = await this.getArxivParent(input.source, input.itemKey);
+      if (
+        record === undefined ||
+        !record.metadataMatchesSource ||
+        record.operationMarkers.length !== 1 ||
+        record.operationMarkers[0] !== input.operationMarker ||
+        record.provenanceMarkers.length !== 1 ||
+        record.provenanceMarkers[0] !== input.parentProvenance
+      ) {
+        throw new Error("The committed arXiv parent failed exact native readback");
+      }
+      return record;
+    } catch {
+      throw new CoreOperationError(
+        "unknown_outcome",
+        "The native arXiv parent committed but current readback could not be confirmed",
+      );
+    }
+  }
+
+  async createArxivAttachment(
+    input: NativeArxivAttachmentCreate,
+  ): Promise<NativeArxivAttachmentRecord> {
+    const personalLibraryId = requiredNumber(
+      this.#zotero.Libraries.userLibraryID,
+      "personal library ID",
+    );
+    let commitBoundaryReached = false;
+    let attempt: ArxivCommitAttempt<{
+      parent: ZoteroItemLike;
+      attachment: ZoteroItemLike;
+    }>;
+    try {
+      attempt = await this.#zotero.DB.executeTransaction<
+        ArxivCommitAttempt<{ parent: ZoteroItemLike; attachment: ZoteroItemLike }>
+      >(async () => {
+        const accessProblem = this.#arxivAccessProblem(input.accessFence);
+        if (accessProblem !== undefined) return { kind: "blocked", error: accessProblem };
+        const libraryFence = this.#captureArxivLibraryFence(true);
+        const current = await this.inspectArxiv(input.source);
+        const parent = await this.#fresh(String(personalLibraryId), input.itemKey);
+        const parentIdentifiesSource =
+          parent !== undefined &&
+          parent.deleted !== true &&
+          parent.isRegularItem() &&
+          parent.isEditable() &&
+          identifiesSource(input.source, await this.#familyIdentityEvidence(parent));
+        const existing = await this.#zotero.Items.getByLibraryAndKeyAsync(
+          personalLibraryId,
+          input.attachmentKey,
+          { noCache: true },
+        );
+        const fileEvidence = await this.#prepareArxivFileEvidence(current.candidates);
+        const preparationProblem = this.#arxivPrecommitProblem(
+          input.accessFence,
+          libraryFence,
+          true,
+        );
+        if (preparationProblem !== undefined) {
+          return { kind: "blocked", error: preparationProblem };
+        }
+        if (!sameCandidates(current.candidates, input.expectedCandidates)) {
+          return {
+            kind: "blocked",
+            error: new CoreOperationError(
+              "conflict",
+              "The complete canonical arXiv attachment set changed during attachment preparation",
+            ),
+          };
+        }
+        if (!parentIdentifiesSource || parent === undefined) {
+          return {
+            kind: "blocked",
+            error: new CoreOperationError(
+              "conflict",
+              "The selected canonical arXiv parent changed",
+            ),
+          };
+        }
+        if (existing) {
+          return {
+            kind: "blocked",
+            error: new CoreOperationError(
+              "conflict",
+              "The prospective arXiv attachment key is already used",
+            ),
+          };
+        }
+
+        const attachment = new this.#zotero.Item("attachment");
+        this.#assertArxivFence(input.accessFence);
+        attachment.libraryID = personalLibraryId;
+        this.#assertArxivFence(input.accessFence);
+        attachment.key = input.attachmentKey;
+        this.#assertArxivFence(input.accessFence);
+        attachment.parentID = requiredNumber(parent.id, "parent item ID");
+        this.#assertArxivFence(input.accessFence);
+        attachment.attachmentLinkMode = this.#zotero.Attachments.LINK_MODE_IMPORTED_FILE;
+        this.#assertArxivFence(input.accessFence);
+        attachment.attachmentContentType = "application/pdf";
+        this.#assertArxivFence(input.accessFence);
+        attachment.attachmentPath = `storage:${arxivFileName(input.source)}`;
+        this.#assertArxivFence(input.accessFence);
+        attachment.setField(
+          "title",
+          `arXiv:${input.source.arxivId}v${String(input.source.version)} PDF`,
+        );
+        this.#assertArxivFence(input.accessFence);
+        attachment.setField("url", input.source.pdfUrl);
+        this.#assertArxivFence(input.accessFence);
+        attachment.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
+        this.#assertArxivFence(input.accessFence);
+        attachment.addRelation(
+          ARXIV_PROVENANCE_RELATION_PREDICATE,
+          input.attachmentProvenance,
+        );
+        this.#assertArxivFence(input.accessFence);
+        this.#assertPreparedArxivFiles(fileEvidence);
+        await attachment.save({ skipSelect: true });
+        this.#assertArxivFence(input.accessFence);
+        if (!this.#zotero.DB.inTransaction()) {
+          throw new CoreOperationError(
+            "conflict",
+            "The native arXiv attachment transaction ended before commit",
+          );
+        }
+        this.#assertPreparedArxivFiles(fileEvidence);
+        commitBoundaryReached = true;
+        return { kind: "saved", value: { parent, attachment } };
+      });
+    } catch (error) {
+      if (commitBoundaryReached) {
+        throw new CoreOperationError(
+          "unknown_outcome",
+          "The native arXiv attachment commit completed its callback but its final outcome is unknown",
+        );
+      }
+      throw error;
+    }
+    if (attempt.kind === "blocked") throw attempt.error;
+    try {
+      this.#assertArxivFence(input.accessFence);
+      const { parent, attachment } = attempt.value;
+      const pdfCount = await this.#pdfChildCount(parent);
+      const record = await this.#arxivAttachmentRecord(
+        input.source,
+        parent,
+        attachment,
+        pdfCount,
+        false,
+      );
+      if (
+        record.operationMarkers.length !== 1 ||
+        record.operationMarkers[0] !== input.operationMarker ||
+        record.provenanceMarkers.length !== 1 ||
+        record.provenanceMarkers[0] !== input.attachmentProvenance
+      ) {
+        throw new Error("The committed arXiv attachment identity failed native readback");
+      }
+      return record;
+    } catch {
+      throw new CoreOperationError(
+        "unknown_outcome",
+        "The native arXiv attachment committed but current readback could not be confirmed",
+      );
+    }
+  }
+
+  async installArxivPdf(input: NativeArxivPdfInstall): Promise<NativeArxivAttachmentRecord> {
+    const current = await this.inspectArxiv(input.source);
+    if (!sameCandidates(current.candidates, input.expectedCandidates)) {
+      throw new CoreOperationError(
+        "conflict",
+        "The complete canonical arXiv attachment set changed before file installation",
+      );
+    }
+    const personalLibraryId = String(
+      requiredNumber(this.#zotero.Libraries.userLibraryID, "personal library ID"),
+    );
+    const parent = await this.#fresh(personalLibraryId, input.itemKey);
+    const attachment = await this.#fresh(personalLibraryId, input.attachmentKey);
+    if (
+      parent === undefined ||
+      !parent.isRegularItem() ||
+      parent.deleted === true ||
+      !identifiesSource(input.source, await this.#familyIdentityEvidence(parent)) ||
+      attachment === undefined ||
+      !attachment.isPDFAttachment() ||
+      attachment.deleted === true ||
+      attachment.parentItemID !== parent.id
+    ) {
+      throw new CoreOperationError("conflict", "The planned arXiv attachment changed");
+    }
+    const expectedProvenance = arxivAttachmentProvenance(
+      input.source,
+      input.stagedPdf.fingerprint,
+    );
+    if (
+      !attachment
+        .getRelationsByPredicate(ARXIV_PROVENANCE_RELATION_PREDICATE)
+        .includes(expectedProvenance)
+    ) {
+      throw new CoreOperationError("conflict", "The planned arXiv attachment lost provenance");
+    }
+    let existingFingerprint: string | undefined;
+    try {
+      existingFingerprint = await this.#fingerprint(attachment);
+    } catch {
+      existingFingerprint = undefined;
+    }
+    const preinstall = await this.inspectArxiv(input.source);
+    this.#assertArxivFence(input.accessFence);
+    if (!sameCandidates(preinstall.candidates, input.expectedCandidates)) {
+      throw new CoreOperationError(
+        "conflict",
+        "The complete canonical arXiv attachment set changed during file preparation",
+      );
+    }
+    if (existingFingerprint !== undefined) {
+      if (existingFingerprint !== input.stagedPdf.fingerprint) {
+        throw new CoreOperationError(
+          "stale_attachment",
+          "The planned arXiv attachment already contains different bytes",
+        );
+      }
+      const existing = await this.getArxivAttachment(
+        input.source,
+        input.itemKey,
+        input.attachmentKey,
+      );
+      if (existing !== undefined) return existing;
+    }
+    if (this.#arxivStaging === undefined) {
+      throw new CoreOperationError(
+        "unsupported_capability",
+        "No native staged-file installer is configured for arXiv import",
+      );
+    }
+    const destination = this.#zotero.Attachments.getStorageDirectory(attachment).path;
+    this.#assertArxivFence(input.accessFence);
+    let fileCreateAttempted = false;
+    try {
+      await this.#arxivStaging.installCreateOnly(
+        input.stagedPdf.stagingId,
+        destination,
+        arxivFileName(input.source),
+        async (createImmediately) => {
+          this.#assertArxivFence(input.accessFence);
+          const libraryFence = this.#captureArxivLibraryFence(false);
+          const finalInspection = await this.inspectArxiv(input.source);
+          const fileEvidence = await this.#prepareArxivFileEvidence(
+            finalInspection.candidates,
+          );
+          const preparationProblem = this.#arxivPrecommitProblem(
+            input.accessFence,
+            libraryFence,
+            false,
+          );
+          if (preparationProblem !== undefined) throw preparationProblem;
+          if (!sameCandidates(finalInspection.candidates, input.expectedCandidates)) {
+            throw new CoreOperationError(
+              "conflict",
+              "The complete canonical arXiv attachment set changed during file preparation",
+            );
+          }
+          this.#assertArxivFence(input.accessFence);
+          this.#assertArxivLibraryFence(libraryFence, false);
+          this.#assertPreparedArxivFiles(fileEvidence);
+          fileCreateAttempted = true;
+          createImmediately();
+        },
+      );
+    } catch (error) {
+      if (fileCreateAttempted) {
+        throw new CoreOperationError(
+          "unknown_outcome",
+          "The native arXiv file create was attempted but its final outcome is unknown",
+        );
+      }
+      throw error;
+    }
+    try {
+      this.#assertArxivFence(input.accessFence);
+      const installed = await this.getArxivAttachment(
+        input.source,
+        input.itemKey,
+        input.attachmentKey,
+      );
+      if (installed === undefined) {
+        throw new Error("The installed arXiv PDF attachment could not be reloaded");
+      }
+      return installed;
+    } catch {
+      throw new CoreOperationError(
+        "unknown_outcome",
+        "The native arXiv file was created but current readback could not be confirmed",
+      );
+    }
+  }
+
+  async findArxivByOperationMarker(marker: string): Promise<NativeArxivOperationObject[]> {
+    const values = await this.#zotero.Relations.getByPredicateAndObject(
+      "item",
+      OPERATION_RELATION_PREDICATE,
+      marker,
+    );
+    const records: NativeArxivOperationObject[] = [];
+    for (const value of values) {
+      if (value.key === undefined || value.libraryID !== this.#zotero.Libraries.userLibraryID) {
+        continue;
+      }
+      const fresh = await this.#fresh(String(value.libraryID), value.key);
+      if (fresh === undefined || fresh.deleted === true) continue;
+      if (fresh.isRegularItem()) {
+        records.push({ kind: "parent", itemKey: value.key });
+      } else if (fresh.isPDFAttachment() && typeof fresh.parentItemID === "number") {
+        const parent = await this.#zotero.Items.getAsync(fresh.parentItemID, { noCache: true });
+        if (Array.isArray(parent) || !parent || parent.key === undefined) continue;
+        records.push({
+          kind: "attachment",
+          itemKey: parent.key,
+          attachmentKey: value.key,
+        });
+      }
+    }
+    return records.sort((left, right) =>
+      JSON.stringify(left).localeCompare(JSON.stringify(right)),
+    );
   }
 
   async searchPapers(query: string, limit: number): Promise<NativePaperRecord[]> {
@@ -1103,6 +1909,473 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     return records;
   }
 
+  async #pdfChildren(parent: ZoteroItemLike): Promise<ZoteroItemLike[]> {
+    const attachmentIds = parent.getAttachments?.(true);
+    if (!Array.isArray(attachmentIds)) {
+      throw new CoreOperationError(
+        "unsupported_capability",
+        "Zotero did not expose the complete child attachment set",
+      );
+    }
+    const children: ZoteroItemLike[] = [];
+    for (const attachmentId of attachmentIds) {
+      if (!Number.isSafeInteger(attachmentId) || attachmentId <= 0) {
+        throw new Error("Zotero returned an invalid child attachment identity");
+      }
+      const loaded = await this.#zotero.Items.getAsync(attachmentId, { noCache: true });
+      if (Array.isArray(loaded) || !loaded) {
+        throw new CoreOperationError(
+          "storage_error",
+          "Zotero could not load the complete child attachment set",
+          true,
+        );
+      }
+      if (loaded.isPDFAttachment()) children.push(loaded);
+    }
+    return children.sort((left, right) =>
+      requiredString(left.key, "attachment key").localeCompare(
+        requiredString(right.key, "attachment key"),
+      ),
+    );
+  }
+
+  async #pdfChildCount(parent: ZoteroItemLike): Promise<number> {
+    return (await this.#pdfChildren(parent)).length;
+  }
+
+  async #familyIdentityEvidence(parent: ZoteroItemLike): Promise<ArxivIdentityEvidence[]> {
+    await parent.loadAllData?.();
+    const evidence = allParentIdentityEvidence(parent);
+    for (const child of await this.#pdfChildren(parent)) {
+      await child.loadAllData?.();
+      evidence.push(...attachmentIdentityEvidence(child));
+    }
+    return evidence;
+  }
+
+  async #arxivCandidate(source: ArxivSource, parent: ZoteroItemLike): Promise<ArxivCandidate> {
+    await parent.loadAllData?.();
+    const children = await this.#pdfChildren(parent);
+    const attachments: NativeArxivAttachmentRecord[] = [];
+    for (const child of children) {
+      attachments.push(
+        await this.#arxivAttachmentRecord(source, parent, child, children.length, false),
+      );
+    }
+    const material = {
+      ...arxivParentMetadataMaterial(parent),
+      attachments: children.map((child, index) => ({
+        attachmentKey: requiredString(child.key, "attachment key"),
+        deleted: child.deleted === true,
+        version: child.version ?? null,
+        dateModified: child.dateModified ?? null,
+        contentType: child.attachmentContentType ?? null,
+        linkMode: child.attachmentLinkMode ?? null,
+        path: child.attachmentPath ?? null,
+        title: String(child.getField("title") ?? ""),
+        url: String(child.getField("url") ?? ""),
+        operationMarkers: sortedRelations(child, OPERATION_RELATION_PREDICATE),
+        provenanceMarkers: sortedRelations(child, ARXIV_PROVENANCE_RELATION_PREDICATE),
+        fingerprint: attachments[index]?.fingerprint ?? null,
+        canonicalVersion: attachments[index]?.version ?? null,
+        canonicalIdentity: attachments[index]?.identity ?? "unverified",
+      })),
+    };
+    return {
+      itemKey: requiredString(parent.key, "parent item key"),
+      itemRevision: await this.#digestText(canonicalizeJson(material)),
+      title: parent.getDisplayTitle(),
+      attachments: attachments.map((attachment) => ({
+        attachmentKey: attachment.attachmentKey,
+        fingerprint: attachment.fingerprint,
+        version: attachment.version,
+        identity: attachment.identity,
+      })),
+    };
+  }
+
+  async #arxivParentRecord(
+    source: ArxivSource,
+    item: ZoteroItemLike,
+    candidate: ArxivCandidate,
+  ): Promise<NativeArxivParentRecord> {
+    const parentEvidence = allParentIdentityEvidence(item);
+    const evidence = await this.#familyIdentityEvidence(item);
+    const creators = (item.getCreators?.() ?? [])
+      .map(creatorName)
+      .filter((name): name is string => name !== undefined);
+    const sourceDoi = source.metadata.doi;
+    const metadataMatchesSource =
+      item.itemType === "preprint" &&
+      targetVersions(source, parentEvidence).includes(source.version) &&
+      String(item.getField("title") ?? "") === source.metadata.title &&
+      String(item.getField("abstractNote") ?? "") === source.metadata.abstract &&
+      String(item.getField("date") ?? "") === source.metadata.published &&
+      String(item.getField("url") ?? "") === source.abstractUrl &&
+      sourceExtraValue(item, "published") === source.metadata.published &&
+      sourceExtraValue(item, "updated") === source.metadata.updated &&
+      creators.length === source.metadata.authors.length &&
+      creators.every((name, index) => name === source.metadata.authors[index]) &&
+      (sourceDoi === undefined
+        ? String(item.getField("DOI") ?? "") === ""
+        : String(item.getField("DOI") ?? "") === sourceDoi) &&
+      (item.getCollections?.() ?? []).length === 0;
+    return {
+      libraryId: String(requiredNumber(item.libraryID, "library ID")),
+      itemKey: candidate.itemKey,
+      itemRevision: candidate.itemRevision,
+      metadataRevision: await this.#digestText(
+        canonicalizeJson(arxivParentMetadataMaterial(item)),
+      ),
+      title: candidate.title,
+      canonicalVersions: targetVersions(source, evidence),
+      metadataMatchesSource,
+      operationMarkers: sortedRelations(item, OPERATION_RELATION_PREDICATE),
+      provenanceMarkers: sortedRelations(item, ARXIV_PROVENANCE_RELATION_PREDICATE),
+      deepLink: `zotero://select/library/items/${encodeURIComponent(candidate.itemKey)}`,
+    };
+  }
+
+  async #arxivAttachmentRecord(
+    source: ArxivSource,
+    parent: ZoteroItemLike,
+    attachment: ZoteroItemLike,
+    pdfCount: number,
+    verifyReadable: boolean,
+  ): Promise<NativeArxivAttachmentRecord> {
+    await attachment.loadAllData?.();
+    const deleted = attachment.deleted === true;
+    let fingerprint: string | null = null;
+    if (!deleted) {
+      try {
+        fingerprint = await this.#fingerprint(attachment);
+      } catch {
+        fingerprint = null;
+      }
+    }
+
+    const provenanceMarkers = sortedRelations(
+      attachment,
+      ARXIV_PROVENANCE_RELATION_PREDICATE,
+    );
+    const provenance = provenanceMarkers
+      .map(parsePdfProvenance)
+      .filter((entry): entry is ArxivPdfProvenance => entry !== undefined);
+    const ownEvidence = attachmentIdentityEvidence(attachment);
+    const explicitVersions = [
+      ...new Set(
+        ownEvidence
+          .filter((entry) => entry.arxivId === source.arxivId)
+          .map((entry) => entry.version)
+          .filter((version): version is number => version !== undefined),
+      ),
+    ];
+    const parentEvidence = allParentIdentityEvidence(parent);
+    const parentVersions = targetVersions(source, parentEvidence);
+    let version: number | null = explicitVersions.length === 1 ? explicitVersions[0] as number : null;
+    if (
+      version === null &&
+      explicitVersions.length === 0 &&
+      ownEvidence.some(
+        (entry) => entry.arxivId === source.arxivId && entry.version === undefined,
+      ) &&
+      parentVersions.length === 1 &&
+      pdfCount === 1
+    ) {
+      version = parentVersions[0] as number;
+    }
+    const identityConflict =
+      ownEvidence.some((entry) => entry.arxivId !== source.arxivId) ||
+      explicitVersions.length > 1 ||
+      parentEvidence.some((entry) => entry.arxivId !== source.arxivId) ||
+      parentVersions.length > 1;
+    const provenanceConsistent =
+      provenance.length > 0 &&
+      provenanceMarkers.length === provenance.length &&
+      provenance.every(
+        (entry) =>
+          entry.arxivId === source.arxivId &&
+          entry.version === version &&
+          fingerprint !== null &&
+          entry.fingerprint === fingerprint,
+      );
+    const hasCanonicalAttachmentEvidence = ownEvidence.some(
+      (entry) => entry.arxivId === source.arxivId,
+    );
+    const hasCanonicalParentEvidence = parentEvidence.some(
+      (entry) =>
+        entry.arxivId === source.arxivId &&
+        (entry.version === undefined || entry.version === source.version),
+    );
+    const canonicalSourceEvidence =
+      (hasCanonicalAttachmentEvidence || hasCanonicalParentEvidence) &&
+      !identityConflict &&
+      provenanceMarkers.length === provenance.length &&
+      explicitVersions.every((entry) => entry === source.version);
+    const identity =
+      !deleted &&
+      fingerprint !== null &&
+      version !== null &&
+      hasCanonicalAttachmentEvidence &&
+      !identityConflict &&
+      provenanceConsistent
+        ? "verified"
+        : "unverified";
+
+    let readable = false;
+    let pageCount: number | null = null;
+    if (verifyReadable && fingerprint !== null && !deleted) {
+      try {
+        const result = await this.#withReader(
+          requiredNumber(attachment.id, "attachment ID"),
+          true,
+          async (_reader, view) => {
+            const document = view._iframeWindow?.PDFViewerApplication?.pdfDocument;
+            const count = document?.numPages;
+            if (
+              document === undefined ||
+              !Number.isSafeInteger(count) ||
+              (count as number) <= 0 ||
+              (await this.#readerFingerprint(document)) !== fingerprint
+            ) {
+              return null;
+            }
+            return count as number;
+          },
+        );
+        if (result !== null) {
+          readable = true;
+          pageCount = result;
+        }
+      } catch {
+        readable = false;
+        pageCount = null;
+      }
+    }
+    const attachmentKey = requiredString(attachment.key, "attachment key");
+    return {
+      libraryId: String(requiredNumber(attachment.libraryID, "library ID")),
+      itemKey: requiredString(parent.key, "parent item key"),
+      attachmentKey,
+      fingerprint,
+      readable,
+      pageCount,
+      version,
+      identity,
+      canonicalSourceEvidence,
+      operationMarkers: sortedRelations(attachment, OPERATION_RELATION_PREDICATE),
+      provenanceMarkers,
+      deepLink: `zotero://open-pdf/library/items/${encodeURIComponent(attachmentKey)}`,
+    };
+  }
+
+  async #prepareArxivFileEvidence(
+    candidates: readonly ArxivCandidate[],
+  ): Promise<PreparedArxivFileEvidence[]> {
+    const personalLibraryId = String(
+      requiredNumber(this.#zotero.Libraries.userLibraryID, "personal library ID"),
+    );
+    const prepared: PreparedArxivFileEvidence[] = [];
+    for (const candidate of candidates) {
+      const parent = await this.#fresh(personalLibraryId, candidate.itemKey);
+      if (
+        parent === undefined ||
+        parent.deleted === true ||
+        !parent.isRegularItem()
+      ) {
+        throw new CoreOperationError(
+          "conflict",
+          "A canonical arXiv parent changed during PDF freshness preparation",
+        );
+      }
+      for (const evidence of candidate.attachments) {
+        const attachment = await this.#fresh(personalLibraryId, evidence.attachmentKey);
+        if (
+          attachment === undefined ||
+          attachment.deleted === true ||
+          !attachment.isPDFAttachment() ||
+          attachment.parentItemID !== parent.id
+        ) {
+          throw new CoreOperationError(
+            "conflict",
+            "A canonical arXiv PDF changed during freshness preparation",
+          );
+        }
+        prepared.push({
+          expectedFingerprint: evidence.fingerprint,
+          attachment,
+        });
+      }
+    }
+    return prepared;
+  }
+
+  #assertPreparedArxivFiles(evidence: readonly PreparedArxivFileEvidence[]): void {
+    let remainingBytes = MAX_SYNCHRONOUS_ARXIV_TOTAL_BYTES;
+    const fingerprintsByPath = new Map<
+      string,
+      { fingerprint: string; byteLength: number } | null
+    >();
+    for (const entry of evidence) {
+      let path: string | false;
+      try {
+        path = entry.attachment.getFilePath();
+      } catch {
+        throw new CoreOperationError(
+          "unsupported_capability",
+          "Zotero could not synchronously resolve a relevant PDF path",
+        );
+      }
+      if (path === false) {
+        if (entry.expectedFingerprint !== null) {
+          throw new CoreOperationError(
+            "conflict",
+            "Existing PDF bytes changed during native arXiv preparation",
+          );
+        }
+        continue;
+      }
+      let actual = fingerprintsByPath.get(path);
+      if (!fingerprintsByPath.has(path)) {
+        if (this.#arxivFileFingerprint === undefined) {
+          throw new CoreOperationError(
+            "unsupported_capability",
+            "No synchronous native PDF fingerprint provider is configured",
+          );
+        }
+        const maximumByteLength = Math.min(
+          MAX_SYNCHRONOUS_ARXIV_FILE_BYTES,
+          remainingBytes,
+        );
+        try {
+          actual = this.#arxivFileFingerprint.fingerprintNow(path, maximumByteLength);
+        } catch {
+          throw new CoreOperationError(
+            "unsupported_capability",
+            "A relevant PDF could not be fingerprinted synchronously within the safety bound",
+          );
+        }
+        if (
+          actual !== null &&
+          (
+            !Number.isSafeInteger(actual.byteLength) ||
+            actual.byteLength < 0 ||
+            actual.byteLength > maximumByteLength ||
+            !/^sha256:[0-9a-f]{64}$/u.test(actual.fingerprint)
+          )
+        ) {
+          throw new CoreOperationError(
+            "unsupported_capability",
+            "The synchronous native PDF fingerprint provider returned invalid evidence",
+          );
+        }
+        fingerprintsByPath.set(path, actual ?? null);
+        if (actual !== null) remainingBytes -= actual.byteLength;
+      }
+      if (actual === undefined) actual = null;
+      const actualFingerprint = actual === null ? null : actual.fingerprint;
+      if (actualFingerprint !== entry.expectedFingerprint) {
+        throw new CoreOperationError(
+          "conflict",
+          "Existing PDF bytes changed during native arXiv preparation",
+        );
+      }
+    }
+  }
+
+  #arxivAccessProblem(fence: string): CoreOperationError | undefined {
+    return this.#accessGate === undefined || !this.#accessGate.isCurrent(fence)
+      ? new CoreOperationError(
+          "permission_denied",
+          "Zotero companion access changed before native arXiv commit",
+        )
+      : undefined;
+  }
+
+  #personalLibrary(): ZoteroLibraryLike {
+    const libraryId = requiredNumber(
+      this.#zotero.Libraries.userLibraryID,
+      "personal library ID",
+    );
+    const library = this.#zotero.Libraries.get?.(libraryId);
+    if (library === undefined || library.libraryID !== libraryId) {
+      throw new CoreOperationError(
+        "unsupported_capability",
+        "Zotero did not expose the personal library revision fence",
+      );
+    }
+    return library;
+  }
+
+  #captureArxivLibraryFence(transactionRequired: boolean): ArxivLibraryFence {
+    if (this.#zotero.DB.inTransaction() !== transactionRequired) {
+      throw new CoreOperationError(
+        "conflict",
+        transactionRequired
+          ? "The native arXiv commit is outside its serialized transaction"
+          : "A native transaction is active during arXiv file preparation",
+      );
+    }
+    const library = this.#personalLibrary();
+    if (!Number.isSafeInteger(library.clientVersion) || (library.clientVersion ?? -1) < 0) {
+      throw new CoreOperationError(
+        "unsupported_capability",
+        "Zotero did not expose a valid personal library client revision",
+      );
+    }
+    return {
+      libraryId: requiredNumber(library.libraryID, "personal library ID"),
+      clientVersion: library.clientVersion as number,
+    };
+  }
+
+  #assertArxivLibraryFence(
+    fence: ArxivLibraryFence,
+    transactionRequired: boolean,
+  ): void {
+    if (this.#zotero.DB.inTransaction() !== transactionRequired) {
+      throw new CoreOperationError(
+        "conflict",
+        transactionRequired
+          ? "The native arXiv transaction ended during preparation"
+          : "A native transaction began during arXiv file preparation",
+      );
+    }
+    const library = this.#personalLibrary();
+    if (
+      library.libraryID !== fence.libraryId ||
+      library.clientVersion !== fence.clientVersion
+    ) {
+      throw new CoreOperationError(
+        "conflict",
+        transactionRequired
+          ? "The personal library changed during native arXiv commit preparation"
+          : "The personal library changed during file preparation for arXiv import",
+      );
+    }
+  }
+
+  #arxivPrecommitProblem(
+    accessFence: string,
+    libraryFence: ArxivLibraryFence,
+    transactionRequired: boolean,
+  ): CoreOperationError | undefined {
+    const accessProblem = this.#arxivAccessProblem(accessFence);
+    if (accessProblem !== undefined) return accessProblem;
+    try {
+      this.#assertArxivLibraryFence(libraryFence, transactionRequired);
+      return undefined;
+    } catch (error) {
+      if (error instanceof CoreOperationError) return error;
+      throw error;
+    }
+  }
+
+  #assertArxivFence(fence: string): void {
+    const problem = this.#arxivAccessProblem(fence);
+    if (problem !== undefined) throw problem;
+  }
+
   async #fresh(requestedLibraryId: string, key: string): Promise<ZoteroItemLike | undefined> {
     const value = await this.#zotero.Items.getByLibraryAndKeyAsync(
       libraryId(requestedLibraryId),
@@ -1124,6 +2397,10 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
       throw new CoreOperationError("not_found", "The PDF attachment file is unavailable");
     }
     const bytes = await this.#io.read(path);
+    const byteLength = bytes instanceof Uint8Array ? bytes.byteLength : bytes.byteLength;
+    if (byteLength === 0) {
+      throw new CoreOperationError("not_found", "The PDF attachment file is empty");
+    }
     return this.#fingerprintBytes(bytes);
   }
 

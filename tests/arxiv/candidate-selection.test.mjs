@@ -97,6 +97,66 @@ test("explicit choice can select an inspected parent but cannot bypass it with c
   assert.equal(conflict.code, "conflict");
 });
 
+test("explicit attachment cannot duplicate an exact version or acquired bytes on another parent", async () => {
+  const selected = parent({ itemKey: "ITEM0001", itemRevision: "rev:1" });
+  const competing = parent({
+    itemKey: "ITEM0002",
+    itemRevision: "rev:2",
+    attachments: [attachment({
+      attachmentKey: "ATTACH02",
+      fingerprint: "sha256:matching",
+      identity: "unverified",
+      version: null,
+    })],
+  });
+  const matchingBytes = await captureError(async () => validateArxivImportSelection(
+    source,
+    [selected, competing],
+    { kind: "attach", itemKey: "ITEM0001", expectedItemRevision: "rev:1" },
+    { expectedPdfFingerprint: "sha256:matching" },
+  ));
+  assert.equal(matchingBytes.code, "conflict");
+
+  competing.attachments[0] = attachment({ attachmentKey: "ATTACH02" });
+  const matchingVersion = await captureError(async () => validateArxivImportSelection(
+    source,
+    [selected, competing],
+    { kind: "attach", itemKey: "ITEM0001", expectedItemRevision: "rev:1" },
+  ));
+  assert.equal(matchingVersion.code, "conflict");
+});
+
+test("canonical acquired bytes may identify one manual PDF on the selected parent", async () => {
+  const manual = attachment({
+    attachmentKey: "MANUALPDF",
+    fingerprint: "sha256:canonical",
+    identity: "unverified",
+    version: null,
+  });
+  const selection = {
+    kind: "attach",
+    itemKey: "ITEM0001",
+    expectedItemRevision: "rev:1",
+  };
+  assert.doesNotThrow(() => validateArxivImportSelection(
+    source,
+    [parent({ attachments: [manual] })],
+    selection,
+    { expectedPdfFingerprint: "sha256:canonical" },
+  ));
+
+  const ambiguous = await captureError(async () => validateArxivImportSelection(
+    source,
+    [parent({ attachments: [
+      manual,
+      { ...manual, attachmentKey: "MANUALPDF2" },
+    ] })],
+    selection,
+    { expectedPdfFingerprint: "sha256:canonical" },
+  ));
+  assert.equal(ambiguous.code, "conflict");
+});
+
 test("explicit reuse still requires current exact verified attachment evidence", async () => {
   const candidates = [parent({ attachments: [
     attachment(),

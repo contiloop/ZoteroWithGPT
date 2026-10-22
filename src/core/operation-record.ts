@@ -37,6 +37,8 @@ export interface ArxivImportRecoveryEvidence {
   };
   itemKey: string;
   itemAction: "created" | "reused";
+  /** Whether this operation owns staged bytes or only confirmed existing native bytes. */
+  pdfAction: "downloaded" | "reused";
   attachmentKey: string;
   operationMarker: string;
   parentProvenance: string;

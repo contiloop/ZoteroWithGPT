@@ -435,6 +435,7 @@ test("a running arXiv import checkpoints immutable native recovery evidence atom
     },
     itemKey: "ITEMPLAN1",
     itemAction: "created",
+    pdfAction: "downloaded",
     attachmentKey: "ATTPLAN1",
     operationMarker: "urn:operation:a",
     parentProvenance: "urn:arxiv:parent:a",

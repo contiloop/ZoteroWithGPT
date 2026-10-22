@@ -610,23 +610,24 @@ function parentIdentityEvidence(item: ZoteroItemLike): ArxivIdentityEvidence[] {
   if (fromUrl !== undefined) evidence.push(fromUrl);
   const fromArchive = parseIdentityText(item.getField("archiveID"));
   if (fromArchive !== undefined) evidence.push(fromArchive);
-  let extraIdentity: ArxivIdentityEvidence | undefined;
-  let extraVersion: number | undefined;
+  const extraIdentities: ArxivIdentityEvidence[] = [];
+  const extraVersions: number[] = [];
   for (const line of extraLines(item)) {
     const identity = /^\s*arxiv\s*:\s*(.+?)\s*$/iu.exec(line)?.[1];
-    if (identity !== undefined) extraIdentity = parseIdentityText(identity);
+    if (identity !== undefined) {
+      const parsed = parseIdentityText(identity);
+      if (parsed !== undefined) extraIdentities.push(parsed);
+    }
     const version = /^\s*version\s*:\s*([1-9][0-9]*)\s*$/iu.exec(line)?.[1];
     if (version !== undefined) {
       const parsed = Number(version);
-      if (Number.isSafeInteger(parsed)) extraVersion = parsed;
+      if (Number.isSafeInteger(parsed)) extraVersions.push(parsed);
     }
   }
-  if (extraIdentity !== undefined) {
-    if (extraIdentity.version === undefined && extraVersion !== undefined) {
-      evidence.push({ ...extraIdentity, version: extraVersion });
-    } else {
-      evidence.push(extraIdentity);
-      if (extraVersion !== undefined && extraVersion !== extraIdentity.version) {
+  for (const extraIdentity of extraIdentities) {
+    evidence.push(extraIdentity);
+    for (const extraVersion of extraVersions) {
+      if (extraIdentity.version !== extraVersion) {
         evidence.push({ arxivId: extraIdentity.arxivId, version: extraVersion });
       }
     }
@@ -1126,8 +1127,19 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
       input.stagedPdf.stagingId,
       destination,
       arxivFileName(input.source),
-      () => this.#assertArxivFence(input.accessFence),
+      async () => {
+        this.#assertArxivFence(input.accessFence);
+        const finalInspection = await this.inspectArxiv(input.source);
+        this.#assertArxivFence(input.accessFence);
+        if (!sameCandidates(finalInspection.candidates, input.expectedCandidates)) {
+          throw new CoreOperationError(
+            "conflict",
+            "The complete canonical arXiv attachment set changed during file preparation",
+          );
+        }
+      },
     );
+    this.#assertArxivFence(input.accessFence);
     const installed = await this.getArxivAttachment(
       input.source,
       input.itemKey,
@@ -1897,6 +1909,7 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
       parentEvidence.some((entry) => entry.arxivId !== source.arxivId) ||
       parentVersions.length > 1;
     const provenanceConsistent =
+      provenance.length > 0 &&
       provenanceMarkers.length === provenance.length &&
       provenance.every(
         (entry) =>
@@ -1908,6 +1921,16 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     const hasCanonicalAttachmentEvidence = ownEvidence.some(
       (entry) => entry.arxivId === source.arxivId,
     );
+    const hasCanonicalParentEvidence = parentEvidence.some(
+      (entry) =>
+        entry.arxivId === source.arxivId &&
+        (entry.version === undefined || entry.version === source.version),
+    );
+    const canonicalSourceEvidence =
+      (hasCanonicalAttachmentEvidence || hasCanonicalParentEvidence) &&
+      !identityConflict &&
+      provenanceMarkers.length === provenance.length &&
+      explicitVersions.every((entry) => entry === source.version);
     const identity =
       !deleted &&
       fingerprint !== null &&
@@ -1958,6 +1981,7 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
       pageCount,
       version,
       identity,
+      canonicalSourceEvidence,
       operationMarkers: sortedRelations(attachment, OPERATION_RELATION_PREDICATE),
       provenanceMarkers,
       deepLink: `zotero://open-pdf/library/items/${encodeURIComponent(attachmentKey)}`,

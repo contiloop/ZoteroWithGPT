@@ -90,7 +90,6 @@ function unknown(message: string): OperationExecutionOutcome {
 function ready(
   evidence: ArxivImportRecoveryEvidence,
   attachment: NativeArxivAttachmentRecord,
-  pdfAction: "downloaded" | "reused",
 ): EnsureArxivPdfResult & { completion: "ready" } {
   return {
     source: identity(evidence.source),
@@ -100,7 +99,7 @@ function ready(
     itemAction: evidence.itemAction,
     attachmentKey: attachment.attachmentKey,
     attachmentFingerprint: attachment.fingerprint as string,
-    pdfAction,
+    pdfAction: evidence.pdfAction,
     deepLink: attachment.deepLink,
   };
 }
@@ -220,16 +219,37 @@ function expectedAttachmentIsReady(
   evidence: ArxivImportRecoveryEvidence,
   attachment: NativeArxivAttachmentRecord,
 ): boolean {
-  return (
+  const readableBytesMatch =
     attachment.itemKey === evidence.itemKey &&
     attachment.fingerprint === evidence.expectedPdf.fingerprint &&
     attachment.readable &&
     attachment.pageCount !== null &&
     attachment.pageCount > 0 &&
     (evidence.expectedPdf.pageCount === null ||
-      attachment.pageCount === evidence.expectedPdf.pageCount) &&
+      attachment.pageCount === evidence.expectedPdf.pageCount);
+  if (!readableBytesMatch) return false;
+  if (evidence.pdfAction === "downloaded" || evidence.selection.kind === "reuse") {
+    return attachment.version === evidence.source.version && attachment.identity === "verified";
+  }
+  return (
+    evidence.selection.kind === "attach" &&
+    attachment.canonicalSourceEvidence &&
+    (attachment.version === null || attachment.version === evidence.source.version)
+  );
+}
+
+function ownedAttachmentIdentityMatches(
+  evidence: ArxivImportRecoveryEvidence,
+  attachment: NativeArxivAttachmentRecord,
+): boolean {
+  return (
+    attachment.itemKey === evidence.itemKey &&
     attachment.version === evidence.source.version &&
-    attachment.identity === "verified"
+    attachment.canonicalSourceEvidence &&
+    attachment.operationMarkers.length === 1 &&
+    attachment.operationMarkers[0] === evidence.operationMarker &&
+    attachment.provenanceMarkers.length === 1 &&
+    attachment.provenanceMarkers[0] === evidence.attachmentProvenance
   );
 }
 
@@ -305,10 +325,11 @@ export class ZoteroArxivNativeImport
           stagingId: null,
           itemKey: input.selection.itemKey,
           itemAction: "reused",
+          pdfAction: "reused",
           attachmentKey: input.selection.attachmentKey,
         });
         await this.#checkpoint(input.identity.operationId, evidence);
-        const result = ready(evidence, attachment, "reused");
+        const result = ready(evidence, attachment);
         await this.#checkpoint(input.identity.operationId, {
           ...evidence,
           stage: "ready",
@@ -328,6 +349,62 @@ export class ZoteroArxivNativeImport
           "The acquired PDF identity does not match the resolved arXiv version",
         );
       }
+      let current = await this.#validatedInspection(input, acquired.fingerprint);
+      if (input.selection.kind === "attach") {
+        const attachSelection = input.selection;
+        const selected = current.candidates.find(
+          (candidate) => candidate.itemKey === attachSelection.itemKey,
+        );
+        const matchingManual = selected?.attachments.filter(
+          (attachment) =>
+            attachment.identity === "unverified" &&
+            attachment.fingerprint === acquired.fingerprint,
+        ) ?? [];
+        if (matchingManual.length === 1) {
+          const candidate = matchingManual[0] as ArxivCandidate["attachments"][number];
+          if (candidate.version === null || candidate.version === input.source.version) {
+            const attachment = await this.#native.getArxivAttachment(
+              input.source,
+              attachSelection.itemKey,
+              candidate.attachmentKey,
+            );
+            this.#native.assertArxivAccessFence(input.accessFence);
+            evidence = this.#evidence(input, current, {
+              fingerprint: acquired.fingerprint,
+              byteLength: acquired.byteLength,
+              pageCount: acquired.pageCount,
+              stagingId: null,
+              itemKey: attachSelection.itemKey,
+              itemAction: "reused",
+              pdfAction: "reused",
+              attachmentKey: candidate.attachmentKey,
+            });
+            if (attachment === undefined || !expectedAttachmentIsReady(evidence, attachment)) {
+              throw new CoreOperationError(
+                "conflict",
+                "The matching manual PDF lacks unambiguous canonical source evidence",
+              );
+            }
+            const reuseInspection = await this.#native.inspectArxiv(input.source);
+            this.#native.assertArxivAccessFence(input.accessFence);
+            if (!sameCandidateSnapshot(current.candidates, reuseInspection.candidates)) {
+              throw new CoreOperationError(
+                "conflict",
+                "The complete canonical arXiv set changed during manual PDF readback",
+              );
+            }
+            await this.#checkpoint(input.identity.operationId, evidence);
+            const result = ready(evidence, attachment);
+            await this.#checkpoint(input.identity.operationId, {
+              ...evidence,
+              stage: "ready",
+              result,
+            });
+            return { kind: "completed", data: result, verification: confirmed };
+          }
+        }
+      }
+
       staged = await this.#staging.stage(acquired);
       this.#native.assertArxivAccessFence(input.accessFence);
       if (
@@ -343,7 +420,7 @@ export class ZoteroArxivNativeImport
         );
       }
 
-      const current = await this.#validatedInspection(input, acquired.fingerprint);
+      current = await this.#validatedInspection(input, acquired.fingerprint);
       const plan = await this.#native.planArxivImportKeys(input.selection.kind === "create");
       this.#native.assertArxivAccessFence(input.accessFence);
       const itemKey =
@@ -355,6 +432,7 @@ export class ZoteroArxivNativeImport
         stagingId: staged.stagingId,
         itemKey,
         itemAction: input.selection.kind === "create" ? "created" : "reused",
+        pdfAction: "downloaded",
         attachmentKey: plan.attachmentKey,
       });
       await this.#checkpoint(input.identity.operationId, evidence);
@@ -553,7 +631,7 @@ export class ZoteroArxivNativeImport
           "The complete native snapshot contains an ambiguous duplicate of the imported arXiv PDF",
         );
       }
-      const result = ready(evidence, attachment, "downloaded");
+      const result = ready(evidence, attachment);
       await this.#checkpoint(input.identity.operationId, {
         ...evidence,
         stage: "ready",
@@ -588,12 +666,15 @@ export class ZoteroArxivNativeImport
       requestDigest: record.requestDigest,
     });
     const selectionMatches =
-      (evidence.selection.kind === "create" && evidence.itemAction === "created") ||
+      (evidence.selection.kind === "create" &&
+        evidence.itemAction === "created" &&
+        evidence.pdfAction === "downloaded") ||
       (evidence.selection.kind === "attach" &&
         evidence.itemAction === "reused" &&
         evidence.selection.itemKey === evidence.itemKey) ||
       (evidence.selection.kind === "reuse" &&
         evidence.itemAction === "reused" &&
+        evidence.pdfAction === "reused" &&
         evidence.selection.itemKey === evidence.itemKey &&
         evidence.selection.attachmentKey === evidence.attachmentKey &&
         evidence.selection.expectedFingerprint === evidence.expectedPdf.fingerprint);
@@ -661,6 +742,7 @@ export class ZoteroArxivNativeImport
       stagingId: string | null;
       itemKey: string;
       itemAction: "created" | "reused";
+      pdfAction: "downloaded" | "reused";
       attachmentKey: string;
     },
   ): ArxivImportRecoveryEvidence {
@@ -680,6 +762,7 @@ export class ZoteroArxivNativeImport
       },
       itemKey: values.itemKey,
       itemAction: values.itemAction,
+      pdfAction: values.pdfAction,
       attachmentKey: values.attachmentKey,
       operationMarker: operationIdentityMarker(input.identity),
       parentProvenance: arxivParentProvenance(input.source),
@@ -728,7 +811,7 @@ export class ZoteroArxivNativeImport
           entry.attachmentKey !== evidence.attachmentKey,
       ) ||
       parentMarkers.length > (evidence.itemAction === "created" ? 1 : 0) ||
-      attachmentMarkers.length > 1 ||
+      attachmentMarkers.length > (evidence.pdfAction === "downloaded" ? 1 : 0) ||
       (evidence.itemAction === "reused" && parentMarkers.length !== 0)
     ) {
       return unknown("The native operation identity markers are ambiguous");
@@ -755,16 +838,20 @@ export class ZoteroArxivNativeImport
       evidence.itemKey,
       evidence.attachmentKey,
     );
+    if (
+      attachment !== undefined &&
+      evidence.pdfAction === "downloaded" &&
+      !ownedAttachmentIdentityMatches(evidence, attachment)
+    ) {
+      return unknown("The retained arXiv PDF lacks the durable native import identity");
+    }
+    if (
+      evidence.pdfAction === "reused" &&
+      (attachment === undefined || !expectedAttachmentIsReady(evidence, attachment))
+    ) {
+      return unknown("The historically reused arXiv PDF can no longer be verified exactly");
+    }
     if (attachment !== undefined && expectedAttachmentIsReady(evidence, attachment)) {
-      if (
-        evidence.selection.kind !== "reuse" &&
-        (attachment.operationMarkers.length !== 1 ||
-          attachment.operationMarkers[0] !== evidence.operationMarker ||
-          attachment.provenanceMarkers.length !== 1 ||
-          attachment.provenanceMarkers[0] !== evidence.attachmentProvenance)
-      ) {
-        return unknown("The readable arXiv PDF lacks the expected native import identity");
-      }
       let finalInspection: ArxivNativeInspection;
       try {
         finalInspection = await this.#native.inspectArxiv(evidence.source);
@@ -782,11 +869,7 @@ export class ZoteroArxivNativeImport
       if (matches.length !== 1 || matches[0]?.attachmentKey !== attachment.attachmentKey) {
         return unknown("The complete native snapshot contains competing arXiv PDF identities");
       }
-      const result = ready(
-        evidence,
-        attachment,
-        evidence.selection.kind === "reuse" ? "reused" : "downloaded",
-      );
+      const result = ready(evidence, attachment);
       try {
         await this.#checkpoint(operationId, { ...evidence, stage: "ready", result });
       } catch {
@@ -820,6 +903,9 @@ export class ZoteroArxivNativeImport
       return unknown(
         "The historical arXiv PDF attachment is absent; it may have been deleted and will not be recreated",
       );
+    }
+    if (evidence.pdfAction === "reused") {
+      return unknown("The interrupted reuse did not leave a provable partial native outcome");
     }
     const parentWasRetained =
       (evidence.itemAction === "created" && parentMarkers.length === 1) ||

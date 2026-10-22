@@ -136,6 +136,8 @@ export interface NativeArxivAttachmentRecord {
   pageCount: number | null;
   version: number | null;
   identity: "verified" | "unverified";
+  /** Canonical source/version evidence is present and has no conflicting native identity. */
+  canonicalSourceEvidence: boolean;
   operationMarkers: string[];
   provenanceMarkers: string[];
   deepLink: string;
@@ -188,8 +190,12 @@ export interface NativeArxivStagedFileInstaller {
     stagingId: string,
     destinationDirectory: string,
     fileName: string,
-    /** Called after installer preparation and immediately before file creation. */
-    assertAuthorized: () => void,
+    /**
+     * Awaited after all installer preparation and immediately before exclusive
+     * file creation. The installer performs no further preparation or await
+     * between this validation and the create-only write.
+     */
+    validateImmediatelyBeforeCreate: () => Promise<void>,
   ): Promise<void>;
 }
 

@@ -221,6 +221,8 @@ class FixtureNativeArxiv {
       pageCount: attachment.pageCount ?? null,
       version: attachment.version ?? null,
       identity: attachment.identity ?? "unverified",
+      canonicalSourceEvidence: attachment.canonicalSourceEvidence ??
+        attachment.identity === "verified",
       operationMarkers: [...attachment.operationMarkers],
       provenanceMarkers: [...attachment.provenanceMarkers],
       deepLink: attachment.deepLink,
@@ -261,6 +263,7 @@ class FixtureNativeArxiv {
       pageCount: null,
       version: source.version,
       identity: "unverified",
+      canonicalSourceEvidence: true,
       operationMarkers: [input.operationMarker],
       provenanceMarkers: [input.attachmentProvenance],
       deepLink: `zotero://open-pdf/library/items/${input.attachmentKey}`,
@@ -425,7 +428,7 @@ test("fixture facade: verified exact reuse performs readback without adding nati
   assert.deepEqual(context.native.parents.get("MANUAL1"), before);
 });
 
-test("fixture facade: explicit attach cannot duplicate already acquired matching bytes with unknown provenance", async () => {
+test("fixture facade: canonical acquisition reuses one matching manual PDF without native metadata writes", async () => {
   const context = await fixture({
     parents: [{
       itemKey: "MANUAL1",
@@ -434,6 +437,9 @@ test("fixture facade: explicit attach cannot duplicate already acquired matching
         fingerprint: verifiedPdf.fingerprint,
         version: null,
         identity: "unverified",
+        canonicalSourceEvidence: true,
+        readable: true,
+        pageCount: verifiedPdf.pageCount,
       }],
     }],
   });
@@ -446,10 +452,17 @@ test("fixture facade: explicit attach cannot duplicate already acquired matching
     input(context, "op-no-matching-byte-duplicate", selection),
   );
 
-  assert.equal(outcome.kind, "rejected");
-  assert.equal(outcome.error.code, "conflict");
+  assert.equal(outcome.kind, "completed");
+  assert.equal(outcome.data.pdfAction, "reused");
+  assert.equal(outcome.data.attachmentKey, "UNVERIFIED");
+  assert.equal(context.acquisition.calls, 1);
+  assert.equal(context.staging.staged, 0);
   assert.equal(context.native.createAttachmentCalls, 0);
   assert.equal(context.native.parents.get("MANUAL1").attachments.size, 1);
+  assert.deepEqual(
+    context.native.parents.get("MANUAL1").attachments.get("UNVERIFIED").operationMarkers,
+    [],
+  );
 });
 
 test("fixture facade: explicit attachment allows a different version or unknown provenance while preserving it", async () => {
@@ -469,6 +482,8 @@ test("fixture facade: explicit attachment allows a different version or unknown 
       input(context, `op-explicit-${prior.attachmentKey}`, selection),
     );
     assert.equal(outcome.kind, "completed");
+    assert.equal(outcome.data.pdfAction, "downloaded");
+    assert.equal(context.acquisition.calls, 1);
     assert.equal(context.native.parents.get("MANUAL1").attachments.has(prior.attachmentKey), true);
     assert.equal(context.native.parents.get("MANUAL1").attachments.size, 2);
   }
@@ -571,6 +586,40 @@ test("fixture facade: ambiguous markers and mismatched bytes are unknown, while 
   assert.equal(mismatchOutcome.error.code, "unknown_outcome");
 });
 
+test("fixture facade: malformed committed attachment identity never recovers as confirmed item-only", async () => {
+  for (const [label, mutate] of [
+    ["missing operation marker", (attachment) => { attachment.operationMarkers = []; }],
+    ["conflicting provenance", (attachment) => {
+      attachment.provenanceMarkers = ["urn:conflicting-provenance"];
+    }],
+    ["wrong version", (attachment) => { attachment.version = 1; }],
+  ]) {
+    const context = await fixture();
+    const operationId = `op-invalid-recovery-${label.replaceAll(" ", "-")}`;
+    context.native.installMode = "throw";
+    const initial = await context.adapter.ensure(
+      input(context, operationId, { kind: "create" }),
+    );
+    assert.equal(initial.data.completion, "item_only");
+    const evidence = context.operations.values.get(operationId);
+    const attachment = context.native.parents
+      .get(evidence.itemKey)
+      .attachments.get(evidence.attachmentKey);
+    mutate(attachment);
+
+    const recovered = await context.adapter.reconcile({
+      operation: "ensure_arxiv_pdf",
+      operationId,
+      requestDigest: `digest-${operationId}`,
+      nativeEvidence: evidence,
+    });
+
+    assert.equal(recovered.kind, "indeterminate", label);
+    assert.equal(recovered.error.code, "unknown_outcome", label);
+    assert.equal("data" in recovered, false, label);
+  }
+});
+
 test("fixture facade: recovery returns historical ready, preserves deletions, and never downloads or creates", async () => {
   const successful = await fixture();
   const completed = await successful.adapter.ensure(
@@ -660,7 +709,7 @@ class StableDigest {
   }
 }
 
-function ensureRequest(operationId, token) {
+function ensureRequest(operationId, token, selection = { kind: "create" }) {
   return validateProtocolRequest({
     protocolVersion: 1,
     operationId,
@@ -673,7 +722,7 @@ function ensureRequest(operationId, token) {
     payload: {
       source: { arxivId: source.arxivId, version: source.version },
       inspectionToken: token,
-      selection: { kind: "create" },
+      selection,
     },
   });
 }
@@ -720,6 +769,73 @@ test("actual coordinator serialization prevents two operation IDs from creating 
   assert.equal(native.parents.size, 1);
   assert.equal([...native.parents.values()][0].attachments.size, 1);
   assert.equal(acquisition.calls, 1);
+});
+
+test("actual coordinator cross-ID reuse of canonical manual bytes never creates a second PDF", async () => {
+  const native = new FixtureNativeArxiv();
+  native.addParent({
+    itemKey: "MANUAL1",
+    attachments: [{
+      attachmentKey: "MANUALPDF",
+      fingerprint: verifiedPdf.fingerprint,
+      version: source.version,
+      identity: "unverified",
+      canonicalSourceEvidence: true,
+      readable: true,
+      pageCount: verifiedPdf.pageCount,
+    }],
+  });
+  const tokens = new SnapshotTokens();
+  const initial = await native.inspectArxiv(source);
+  const token = await tokens.issue({ source, ...initial });
+  const selection = {
+    kind: "attach",
+    itemKey: "MANUAL1",
+    expectedItemRevision: initial.candidates[0].itemRevision,
+  };
+  const operations = new DurableOperationStore(new MemoryAtomicFile(), {
+    generateProfileId: () => "profile-A",
+  });
+  const acquisition = new FixtureAcquisition();
+  const staging = new FixtureStaging();
+  const adapter = new ZoteroArxivNativeImport({
+    native,
+    acquisition,
+    staging,
+    tokens,
+    operations,
+  });
+  const coordinator = new OperationCoordinator({
+    store: operations,
+    digest: new StableDigest(),
+    serializer: new KeyedMutationSerializer(),
+  });
+  const execute = (request, operationIdentity) => adapter.ensure({
+    source,
+    selection: request.payload.selection,
+    inspectionToken: request.payload.inspectionToken,
+    accessFence: adapter.captureAccessFence(),
+    identity: operationIdentity,
+  });
+
+  const outcomes = await Promise.all([
+    coordinator.submit(
+      ensureRequest("op-manual-cross-id-1", token, selection),
+      "profile-A",
+      execute,
+    ),
+    coordinator.submit(
+      ensureRequest("op-manual-cross-id-2", token, selection),
+      "profile-A",
+      execute,
+    ),
+  ]);
+
+  assert.deepEqual(outcomes.map((entry) => entry.state), ["succeeded", "succeeded"]);
+  assert.equal(acquisition.calls, 2);
+  assert.equal(staging.staged, 0);
+  assert.equal(native.createAttachmentCalls, 0);
+  assert.equal(native.parents.get("MANUAL1").attachments.size, 1);
 });
 
 test("a restarted durable ready-stage journal reconciles historically without repeating native or network work", async () => {

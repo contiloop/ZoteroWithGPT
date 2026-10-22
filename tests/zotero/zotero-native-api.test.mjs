@@ -953,6 +953,21 @@ test("native arXiv inspection finds every canonical manual parent and keeps miss
     attachmentContentType: "application/pdf",
     fields: { title: "Manual PDF", url: "https://arxiv.org/pdf/2401.01234v2" },
   });
+  const provenPdf = new FakeItem(host, "attachment", {
+    id: host.nextId++,
+    key: "PROVEN01",
+    parentItemID: manual.id,
+    attachmentContentType: "application/pdf",
+    fields: { title: "Provenance PDF", url: "https://arxiv.org/pdf/2401.01234v2" },
+  });
+  const provenDigest = await webcrypto.subtle.digest("SHA-256", host.diskBytes);
+  const provenFingerprint = `sha256:${[...new Uint8Array(provenDigest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")}`;
+  provenPdf.addRelation(
+    ARXIV_PROVENANCE_RELATION_PREDICATE,
+    arxivAttachmentProvenance(arxivSource, provenFingerprint),
+  );
   const missingPdf = new FakeItem(host, "attachment", {
     id: host.nextId++,
     key: "MISSING1",
@@ -978,6 +993,14 @@ test("native arXiv inspection finds every canonical manual parent and keeps miss
     key: "TITLEONLY",
     fields: { title: arxivSource.metadata.title },
   });
+  const conflictingExtra = new FakeItem(host, "journalArticle", {
+    id: host.nextId++,
+    key: "CONFLICTX",
+    fields: {
+      title: "Repeated conflicting Extra identities",
+      extra: "arXiv:2401.01234v2\narXiv:2401.05678v2\narXiv:2401.01234v2",
+    },
+  });
   const attachmentOnly = new FakeItem(host, "journalArticle", {
     id: host.nextId++,
     key: "CHILDURL1",
@@ -993,9 +1016,11 @@ test("native arXiv inspection finds every canonical manual parent and keeps miss
   for (const item of [
     manual,
     exactPdf,
+    provenPdf,
     missingPdf,
     relationOnly,
     titleOnly,
+    conflictingExtra,
     attachmentOnly,
     attachmentOnlyPdf,
   ]) {
@@ -1007,18 +1032,20 @@ test("native arXiv inspection finds every canonical manual parent and keeps miss
 
   assert.deepEqual(inspection.candidates.map((candidate) => candidate.itemKey), [
     "CHILDURL1",
+    "CONFLICTX",
     "MANUAL01",
     "RELATION1",
   ]);
   const candidate = inspection.candidates.find((entry) => entry.itemKey === "MANUAL01");
   assert.equal(candidate.title, "Human-authored title");
-  assert.equal(candidate.attachments.length, 2);
-  assert.equal(candidate.attachments.find((entry) => entry.attachmentKey === "MANPDF01").identity, "verified");
+  assert.equal(candidate.attachments.length, 3);
+  assert.equal(candidate.attachments.find((entry) => entry.attachmentKey === "MANPDF01").identity, "unverified");
   assert.equal(candidate.attachments.find((entry) => entry.attachmentKey === "MANPDF01").version, 2);
+  assert.equal(candidate.attachments.find((entry) => entry.attachmentKey === "PROVEN01").identity, "verified");
   assert.equal(candidate.attachments.find((entry) => entry.attachmentKey === "MISSING1").fingerprint, null);
   assert.equal(candidate.attachments.find((entry) => entry.attachmentKey === "MISSING1").identity, "unverified");
   const childUrlCandidate = inspection.candidates.find((entry) => entry.itemKey === "CHILDURL1");
-  assert.equal(childUrlCandidate.attachments[0].identity, "verified");
+  assert.equal(childUrlCandidate.attachments[0].identity, "unverified");
   assert.equal(childUrlCandidate.attachments[0].version, 2);
   assert.equal(inspection.candidates.some((entry) => entry.itemKey === "TITLEONLY"), false);
 });
@@ -1032,14 +1059,18 @@ test("native arXiv creation commits prospective identities, installs create-only
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("")}`;
   const installs = [];
+  let beforeFileCreate;
+  let fileCreates = 0;
   env.accessGate = gate;
   env.arxivStaging = {
     async installCreateOnly(stagingId, destination, fileName, assertAuthorized) {
       installs.push({ stagingId, destination, fileName });
       assert.equal(typeof assertAuthorized, "function");
-      assertAuthorized();
+      await beforeFileCreate?.();
+      await assertAuthorized();
       const path = `${destination}/${fileName}`;
       assert.equal(host.diskByPath.has(path), false);
+      fileCreates += 1;
       host.diskByPath.set(path, Uint8Array.from(stagedBytes));
       host.readerBytes = Uint8Array.from(stagedBytes);
     },
@@ -1096,6 +1127,7 @@ test("native arXiv creation commits prospective identities, installs create-only
   assert.equal(installed.readable, true);
   assert.equal(installed.pageCount, 1);
   assert.equal(installed.identity, "verified");
+  assert.equal(installed.canonicalSourceEvidence, true);
   assert.equal(installed.version, 2);
   assert.deepEqual(installed.operationMarkers, [marker]);
   assert.deepEqual(installs, [{
@@ -1104,4 +1136,92 @@ test("native arXiv creation commits prospective identities, installs create-only
     fileName: "arxiv-2401.01234-v2.pdf",
   }]);
   assert.equal(host.items.get(1).getDisplayTitle(), "Fixture paper");
+
+  const guardedPlan = await native.planArxivImportKeys(false);
+  const beforeGuardedAttachment = await native.inspectArxiv(arxivSource);
+  await native.createArxivAttachment({
+    source: arxivSource,
+    itemKey: plan.itemKey,
+    attachmentKey: guardedPlan.attachmentKey,
+    operationMarker: `${marker}:guarded`,
+    attachmentProvenance: arxivAttachmentProvenance(arxivSource, fingerprint),
+    expectedCandidates: beforeGuardedAttachment.candidates,
+    accessFence: fence,
+  });
+  const beforeGuardedInstall = await native.inspectArxiv(arxivSource);
+  beforeFileCreate = async () => {
+    parentItem.setField("title", "Concurrent manual title edit during installer preparation");
+    await parentItem.saveTx();
+    beforeFileCreate = undefined;
+  };
+  await assert.rejects(
+    native.installArxivPdf({
+      source: arxivSource,
+      itemKey: plan.itemKey,
+      attachmentKey: guardedPlan.attachmentKey,
+      stagedPdf: {
+        stagingId: "owned-guarded-stage",
+        source: { arxivId: arxivSource.arxivId, version: arxivSource.version },
+        fingerprint,
+        byteLength: stagedBytes.byteLength,
+        pageCount: 1,
+      },
+      expectedCandidates: beforeGuardedInstall.candidates,
+      accessFence: fence,
+    }),
+    /changed during file preparation/i,
+  );
+  assert.equal(fileCreates, 1);
+  assert.equal(
+    host.diskByPath.has(`/storage/${guardedPlan.attachmentKey}/arxiv-2401.01234-v2.pdf`),
+    false,
+  );
+
+  const duplicateGuardPlan = await native.planArxivImportKeys(false);
+  const beforeDuplicateAttachment = await native.inspectArxiv(arxivSource);
+  await native.createArxivAttachment({
+    source: arxivSource,
+    itemKey: plan.itemKey,
+    attachmentKey: duplicateGuardPlan.attachmentKey,
+    operationMarker: `${marker}:duplicate-guarded`,
+    attachmentProvenance: arxivAttachmentProvenance(arxivSource, fingerprint),
+    expectedCandidates: beforeDuplicateAttachment.candidates,
+    accessFence: fence,
+  });
+  const beforeDuplicateInstall = await native.inspectArxiv(arxivSource);
+  beforeFileCreate = async () => {
+    const duplicateParent = new FakeItem(host, "journalArticle", {
+      key: "RACEPARENT",
+      fields: {
+        title: "Concurrent canonical parent",
+        extra: "arXiv:2401.01234v2",
+      },
+    });
+    await duplicateParent.saveTx();
+    beforeFileCreate = undefined;
+  };
+  await assert.rejects(
+    native.installArxivPdf({
+      source: arxivSource,
+      itemKey: plan.itemKey,
+      attachmentKey: duplicateGuardPlan.attachmentKey,
+      stagedPdf: {
+        stagingId: "owned-duplicate-guarded-stage",
+        source: { arxivId: arxivSource.arxivId, version: arxivSource.version },
+        fingerprint,
+        byteLength: stagedBytes.byteLength,
+        pageCount: 1,
+      },
+      expectedCandidates: beforeDuplicateInstall.candidates,
+      accessFence: fence,
+    }),
+    /changed during file preparation/i,
+  );
+  assert.equal(fileCreates, 1);
+  assert.equal(
+    host.diskByPath.has(
+      `/storage/${duplicateGuardPlan.attachmentKey}/arxiv-2401.01234-v2.pdf`,
+    ),
+    false,
+  );
 });

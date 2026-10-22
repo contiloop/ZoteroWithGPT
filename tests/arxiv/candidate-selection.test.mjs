@@ -126,6 +126,37 @@ test("explicit attachment cannot duplicate an exact version or acquired bytes on
   assert.equal(matchingVersion.code, "conflict");
 });
 
+test("canonical acquired bytes may identify one manual PDF on the selected parent", async () => {
+  const manual = attachment({
+    attachmentKey: "MANUALPDF",
+    fingerprint: "sha256:canonical",
+    identity: "unverified",
+    version: null,
+  });
+  const selection = {
+    kind: "attach",
+    itemKey: "ITEM0001",
+    expectedItemRevision: "rev:1",
+  };
+  assert.doesNotThrow(() => validateArxivImportSelection(
+    source,
+    [parent({ attachments: [manual] })],
+    selection,
+    { expectedPdfFingerprint: "sha256:canonical" },
+  ));
+
+  const ambiguous = await captureError(async () => validateArxivImportSelection(
+    source,
+    [parent({ attachments: [
+      manual,
+      { ...manual, attachmentKey: "MANUALPDF2" },
+    ] })],
+    selection,
+    { expectedPdfFingerprint: "sha256:canonical" },
+  ));
+  assert.equal(ambiguous.code, "conflict");
+});
+
 test("explicit reuse still requires current exact verified attachment evidence", async () => {
   const candidates = [parent({ attachments: [
     attachment(),

@@ -116,6 +116,12 @@ function assertNativeEvidenceShape(value: unknown, operationId: string): void {
     (evidence.selection?.kind === "create" && evidence.itemAction === "created") ||
     ((evidence.selection?.kind === "attach" || evidence.selection?.kind === "reuse") &&
       evidence.itemAction === "reused");
+  const pdfActionValid = evidence.pdfAction === "downloaded" || evidence.pdfAction === "reused";
+  const pdfActionSelectionValid =
+    (evidence.pdfAction === "downloaded" && evidence.selection?.kind !== "reuse") ||
+    (evidence.pdfAction === "reused" &&
+      evidence.itemAction === "reused" &&
+      (evidence.selection?.kind === "reuse" || evidence.selection?.kind === "attach"));
   const reuseFingerprintValid = evidence.selection?.kind !== "reuse" ||
     evidence.selection.expectedFingerprint === evidence.expectedPdf?.fingerprint;
   const selectionTargetValid = evidence.selection?.kind === "create" ||
@@ -124,9 +130,11 @@ function assertNativeEvidenceShape(value: unknown, operationId: string): void {
         evidence.selection.attachmentKey === evidence.attachmentKey));
   const expectedPdfShapeValid = isObject(evidence.expectedPdf) &&
     hasOnlyKeys(evidence.expectedPdf, ["fingerprint", "byteLength", "pageCount", "stagingId"]);
-  const acquisitionEvidenceValid = evidence.selection?.kind === "reuse"
-    ? evidence.expectedPdf?.byteLength === null &&
-      evidence.expectedPdf?.stagingId === null &&
+  const acquisitionEvidenceValid = evidence.pdfAction === "reused"
+    ? evidence.expectedPdf?.stagingId === null &&
+      (evidence.selection?.kind === "reuse"
+        ? evidence.expectedPdf?.byteLength === null
+        : evidence.expectedPdf?.byteLength !== null) &&
       evidence.expectedPdf?.pageCount !== null &&
       evidence.stage !== "parent_committed" &&
       evidence.stage !== "attachment_committed"
@@ -142,7 +150,7 @@ function assertNativeEvidenceShape(value: unknown, operationId: string): void {
     evidence.result.itemAction === evidence.itemAction &&
     evidence.result.attachmentKey === evidence.attachmentKey &&
     evidence.result.attachmentFingerprint === evidence.expectedPdf.fingerprint &&
-    evidence.result.pdfAction === (evidence.selection.kind === "reuse" ? "reused" : "downloaded")
+    evidence.result.pdfAction === evidence.pdfAction
   );
   if (
     !["prepared", "parent_committed", "attachment_committed", "ready"].includes(evidence.stage) ||
@@ -162,6 +170,8 @@ function assertNativeEvidenceShape(value: unknown, operationId: string): void {
     !nonemptyString(evidence.parentProvenance) ||
     !nonemptyString(evidence.attachmentProvenance) ||
     (evidence.itemAction !== "created" && evidence.itemAction !== "reused") ||
+    !pdfActionValid ||
+    !pdfActionSelectionValid ||
     !selectionActionValid ||
     !selectionTargetValid ||
     !reuseFingerprintValid ||

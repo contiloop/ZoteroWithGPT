@@ -1,4 +1,5 @@
 export * from "./anchor.js";
+export * from "./arxiv.js";
 export * from "./digest.js";
 export * from "./execution.js";
 export * from "./operation-persistence.js";

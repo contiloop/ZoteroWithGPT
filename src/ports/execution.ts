@@ -1,5 +1,6 @@
 import type { OperationRecord } from "../core/operation-record.js";
 import type {
+  EnsureArxivPdfResult,
   ProtocolError,
   ProtocolRequest,
   VerificationSummary,
@@ -17,7 +18,24 @@ export type OperationExecutionOutcome<D extends object = object> =
       verification: VerificationSummary;
     }
   | {
-      kind: "rejected" | "failed" | "indeterminate";
+      kind: "rejected" | "indeterminate";
+      error: ProtocolError;
+      verification: VerificationSummary;
+      data?: never;
+    }
+  | {
+      kind: "failed";
+      error: ProtocolError;
+      verification: VerificationSummary;
+      data?: never;
+    }
+  | {
+      /**
+       * The only retained failure shape: a confirmed native parent remains
+       * after ensure_arxiv_pdf could not establish a usable PDF attachment.
+       */
+      kind: "failed";
+      data: EnsureArxivPdfResult & { completion: "item_only" };
       error: ProtocolError;
       verification: VerificationSummary;
     };

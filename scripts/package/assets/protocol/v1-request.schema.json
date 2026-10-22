@@ -15,7 +15,9 @@
     { "$ref": "#/$defs/updateAnnotationRequest" },
     { "$ref": "#/$defs/createNoteRequest" },
     { "$ref": "#/$defs/updateNoteRequest" },
-    { "$ref": "#/$defs/verifyAnnotationRequest" }
+    { "$ref": "#/$defs/verifyAnnotationRequest" },
+    { "$ref": "#/$defs/inspectArxivRequest" },
+    { "$ref": "#/$defs/ensureArxivPdfRequest" }
   ],
   "$defs": {
     "identifier": {
@@ -27,6 +29,53 @@
     "operationId": {
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "articleIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["arxivId", "version"],
+      "properties": {
+        "arxivId": {
+          "type": "string",
+          "description": "Canonical unversioned modern YYMM.NNNN/NNNNN or legacy archive/YYMMNNN arXiv identifier.",
+          "oneOf": [
+            { "pattern": "^[0-9]{2}(?:0[1-9]|1[0-2])\\.(?!0{4,5}$)[0-9]{4,5}$" },
+            { "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*/[0-9]{2}(?:0[1-9]|1[0-2])(?!000$)[0-9]{3}$" }
+          ]
+        },
+        "version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      }
+    },
+    "importSelection": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "create" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "itemKey", "expectedItemRevision"],
+          "properties": {
+            "kind": { "const": "attach" },
+            "itemKey": { "$ref": "#/$defs/identifier" },
+            "expectedItemRevision": { "$ref": "#/$defs/identifier" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "itemKey", "attachmentKey", "expectedFingerprint"],
+          "properties": {
+            "kind": { "const": "reuse" },
+            "itemKey": { "$ref": "#/$defs/identifier" },
+            "attachmentKey": { "$ref": "#/$defs/identifier" },
+            "expectedFingerprint": { "$ref": "#/$defs/identifier" }
+          }
+        }
+      ]
     },
     "authorization": {
       "type": "object",
@@ -288,6 +337,31 @@
         "annotationKey": { "$ref": "#/$defs/identifier" }
       }
     },
+    "inspectArxivPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "x-maxUtf8Bytes": 4096,
+          "description": "Official uncredentialed HTTPS arXiv abs/PDF URL. Runtime validation rejects query, fragment, invalid numeric components, zero versions, and all-zero serials.",
+          "pattern": "^https://(?:www\\.)?arxiv\\.org/(?:abs|pdf)/.+$"
+        }
+      }
+    },
+    "ensureArxivPdfPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "inspectionToken", "selection"],
+      "properties": {
+        "source": { "$ref": "#/$defs/articleIdentity" },
+        "inspectionToken": { "$ref": "#/$defs/identifier" },
+        "selection": { "$ref": "#/$defs/importSelection" }
+      }
+    },
     "connectionStatusRequest": {
       "allOf": [
         { "$ref": "#/$defs/envelope" },
@@ -308,6 +382,7 @@
     "readNoteRequest": { "$ref": "#/$defs/readOperationNote" },
     "resolveAnchorRequest": { "$ref": "#/$defs/readOperationResolve" },
     "verifyAnnotationRequest": { "$ref": "#/$defs/readOperationVerify" },
+    "inspectArxivRequest": { "$ref": "#/$defs/readOperationInspectArxiv" },
     "readOperationSearch": {
       "allOf": [{ "$ref": "#/$defs/profiledRead" }, { "properties": { "operation": { "const": "search_papers" }, "payload": { "$ref": "#/$defs/searchPapersPayload" } } }],
       "unevaluatedProperties": false
@@ -336,6 +411,10 @@
       "allOf": [{ "$ref": "#/$defs/profiledRead" }, { "properties": { "operation": { "const": "verify_annotation" }, "payload": { "$ref": "#/$defs/verifyAnnotationPayload" } } }],
       "unevaluatedProperties": false
     },
+    "readOperationInspectArxiv": {
+      "allOf": [{ "$ref": "#/$defs/profiledRead" }, { "properties": { "operation": { "const": "inspect_arxiv" }, "payload": { "$ref": "#/$defs/inspectArxivPayload" } } }],
+      "unevaluatedProperties": false
+    },
     "createAnnotationRequest": {
       "allOf": [{ "$ref": "#/$defs/authorizedMutation" }, { "properties": { "operation": { "const": "create_annotation" }, "payload": { "$ref": "#/$defs/createAnnotationPayload" } } }],
       "unevaluatedProperties": false
@@ -350,6 +429,10 @@
     },
     "updateNoteRequest": {
       "allOf": [{ "$ref": "#/$defs/authorizedMutation" }, { "properties": { "operation": { "const": "update_note" }, "payload": { "$ref": "#/$defs/updateNotePayload" } } }],
+      "unevaluatedProperties": false
+    },
+    "ensureArxivPdfRequest": {
+      "allOf": [{ "$ref": "#/$defs/authorizedMutation" }, { "properties": { "operation": { "const": "ensure_arxiv_pdf" }, "payload": { "$ref": "#/$defs/ensureArxivPdfPayload" } } }],
       "unevaluatedProperties": false
     }
   }

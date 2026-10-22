@@ -1,0 +1,15 @@
+{
+  "protocolVersion": 1,
+  "operationId": "example-ensure-arxiv-1",
+  "operation": "ensure_arxiv_pdf",
+  "profileId": "profile-A",
+  "authorization": {
+    "kind": "explicit_request",
+    "scope": "Import arXiv 2401.01234v2 using the inspected create decision."
+  },
+  "payload": {
+    "source": { "arxivId": "2401.01234", "version": 2 },
+    "inspectionToken": "inspection-example-2401.01234-v2",
+    "selection": { "kind": "create" }
+  }
+}

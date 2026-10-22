@@ -15,3 +15,7 @@ Gecko IOUtils does not expose a no-follow directory-handle read. A same-user att
 ## Public distribution decision
 
 Bundled dependencies have evaluated notices, but the project's own license and publication channel have not been selected. Public publication needs that decision and authorization. Local packaging and installation are available without asserting a public redistribution license.
+
+## arXiv metadata verification deferred
+
+The actual Zotero 10.0.6 metadata request to the fixed arXiv Atom endpoint returned HTTP 429 in the 2026-10-22 preflight. The bounded read-only PDF request succeeded, but that does not prove concrete-version metadata retrieval. The user explicitly approved continuing implementation with this external verification deferred. Respect request limits; do not silently substitute HTML metadata or another transport. Real metadata and end-to-end native/Web acceptance remain completion requirements. See [the preflight record](../plugin-connection-validation.md).

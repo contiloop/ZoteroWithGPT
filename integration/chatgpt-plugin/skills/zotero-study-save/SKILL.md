@@ -19,7 +19,8 @@ unaccepted assistant suggestion never authorizes a mutation.
 If `bridgeRoot` is null, the personal resource is missing, Mac Safe Files tools
 are unavailable, or access is denied, stop writes and give one short actionable
 setup prompt. Do not reproduce the full installation guide unless the user asks
-for it. Never bypass a platform or macOS access decision.
+for it, and do not ask the user to paste a path into each conversation. Never
+bypass a platform or macOS access decision.
 
 Use only conversation material currently available in full. Preserve the
 user's language and distinguish the user's question, the paper's claims, the
@@ -30,4 +31,7 @@ it or silently choosing one.
 Report the concrete paper version, whether the item and PDF were reused or
 added, every stored native record and deep link, conflicts or unresolved
 records, and storage and viewer evidence separately. A retained parent item is
-not a completed PDF import or completed study save.
+not a completed PDF import or completed study save. A failed, item-only, or
+terminal indeterminate import stops subsequent annotation writes for that
+attempt; never issue a replacement mutation merely because the planned native
+keys cannot be found.

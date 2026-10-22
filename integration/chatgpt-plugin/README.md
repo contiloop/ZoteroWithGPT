@@ -13,8 +13,9 @@ remain separate installable components.
 2. Approve that exact dedicated root in Mac Safe Files using the platform and
    macOS prompts. Do not broaden access to a home directory, Desktop, Zotero
    data directory, or shared research directory.
-3. Create a private personal plugin from the portable archive. In the personal
-   plugin instance only, edit
+3. Create a private personal plugin from the matching portable archive and keep
+   its declared Mac Safe Files dependency. In the personal plugin instance
+   only, edit
    `skills/zotero-study-save/resources/personal-config.json` so `bridgeRoot`
    contains the exact root displayed by Zotero. The portable source keeps this
    value `null`; do not add profile IDs, session IDs, request/result paths,
@@ -35,16 +36,24 @@ failed request.
 
 ## Update or reinstall
 
-Update the Zotero XPI and its matching client kit together. Update the existing
-personal ChatGPT plugin so its identity and Mac Safe Files binding remain the
-same. Keep the personalized `personal-config.json` when the update flow supports
-partial file overlays; otherwise restore only its `bridgeRoot` value after the
-update. A reinstall follows the same one-value restore. No secret is involved.
+Update the Zotero XPI, matching client kit, and portable ChatGPT plugin together
+at the same release version. Account plugin releases are versioned: update the
+existing personal plugin with a strictly greater semantic version so its owned
+identity and Mac Safe Files binding remain stable. Keep the personalized
+`personal-config.json` when the update flow supports partial file overlays;
+otherwise restore only its `bridgeRoot` value after the update. A reinstall
+follows the same one-value restore. No secret is involved.
 
 Do not copy a descriptor, profile ID, session ID, operation ID, pending request,
 result path, or historical result into the plugin package. Zotero publishes a
 fresh session after enable or reconnect, and the workflow performs a new
 descriptor/status/descriptor and `connection_status` check.
+
+An archive downloaded back from the authenticated account may include a
+platform-generated `.codex-plugin/plugin.json` and account-owned author
+metadata. That configured archive also contains the personal `bridgeRoot`.
+Treat it as private account state; use the versioned portable release archive,
+whose `bridgeRoot` is null, for distribution or clean setup.
 
 ## Remove
 
@@ -77,7 +86,7 @@ skills/zotero-study-save/resources/client-v1/protocol/v1-response.schema.json
 skills/zotero-study-save/resources/client-v1/protocol/examples/*.json
 ```
 
-The final-package integration must render
+The final-package integration renders
 `scripts/package/assets/client/README.md` with the matching package version and
 copy it to the resource `client-v1/README.md`. It must copy `docs/install.md`,
 `docs/uninstall.md`, `docs/troubleshooting.md`, and `docs/protocol/v1.md` to the
@@ -87,8 +96,8 @@ rewrite, summarize, or fork that protocol material. The archive excludes
 `AGENTS.md`, local tests, repository scripts, build output, and personalized
 configuration. The resource path
 `client-v1/protocol/v1-request.schema.json` is therefore stable for the skill.
-For the planned release, T6 must set the root package, XPI, client kit, and this
-plugin manifest to `0.2.0` and verify their equality in final packaging.
+The root package, XPI, client kit, and ChatGPT plugin manifest must carry the
+same semantic version, and final packaging verifies that equality.
 
 Run the local source gate before staging the final archive:
 

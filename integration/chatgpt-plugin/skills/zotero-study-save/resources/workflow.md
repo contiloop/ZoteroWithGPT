@@ -110,6 +110,13 @@ write because an error says `retryable`. Only a definitive rejected
 interrupted-queued result proves no write ran. After that result, reread the
 target and obtain renewed mutation intent before using a new ID.
 
+Recovery publication applies only while no terminal result is available, such
+as after losing a session during polling. Once an operation returns terminal
+`indeterminate`, preserve and report that historical result. Replaying its ID
+only retrieves history; do not publish the mutation again under that or a new
+ID. An empty search result does not prove that an unknown native commit never
+happened.
+
 The fourteen protocol operations are:
 
 - reads: `connection_status`, `inspect_arxiv`, `search_papers`, `read_pdf`,
@@ -176,11 +183,19 @@ item was retained and read back but no ready PDF exists; report it as incomplete
 and do not annotate. After a new explicit save, inspect again and attach the PDF
 to that retained parent at most once after the prior outcome is definitive.
 
-An `indeterminate` or `unknown_outcome` import is recovered using the same
-operation ID and byte-equivalent payload. A ready PDF remains in Zotero if a
-later anchor or annotation step fails. Do not repeat the import to repair that
-later failure. Replaying a historical success after its native record was
-manually deleted returns history; it is not permission to recreate the record.
+If polling was interrupted before any terminal response, recover the import
+using the same operation ID and byte-equivalent payload. A terminal
+`indeterminate` or `unknown_outcome` response remains historical unknown
+evidence. A ready PDF remains in Zotero if a later anchor or annotation step
+fails. Do not repeat the import to repair that later failure. Replaying a
+historical success after its native record was manually deleted returns
+history; it is not permission to recreate the record.
+
+If the ensure result is `failed`, `rejected`, `item_only`, or terminal
+`indeterminate`, stop before `read_pdf`, `resolve_anchor`, or any annotation
+mutation against its planned identities. Report the paper/import outcome and
+the requested study records as not stored. Do not describe a parent-only or
+unknown outcome as a completed save.
 
 ## Resolve a native passage target
 

@@ -34,6 +34,36 @@ does not enable processing. If a directory is already shown, Enable starts a
 fresh session. **Reconnect** closes the current session and starts another
 fresh session in the same directory.
 
+## An ordinary ChatGPT save request does not activate Zotero Study Save
+
+In ChatGPT plugin management, confirm that the owned private **Zotero Study
+Save** plugin is installed and enabled and that its Mac Safe Files dependency
+is connected. Confirm that the private
+`skills/zotero-study-save/resources/personal-config.json` contains exactly one
+non-null setting, `bridgeRoot`, and that it equals the dedicated root displayed
+by Zotero. Do not paste that path into each conversation or store current
+profile/session values in the plugin.
+
+Start a fresh ordinary conversation and use explicit save wording after the
+paper and requested material are clear. A plugin `@` mention may help diagnose
+selection, but it is not the normal activation requirement. Merely opening a
+paper link, studying it, or asking a question intentionally does not authorize
+or trigger a Zotero mutation.
+
+If ChatGPT reports that Mac Safe Files is unavailable or access is denied,
+follow that connection owner's setup or permission flow. Do not broaden access
+to a home directory, Desktop, Zotero data directory, or another plugin's
+directory, and do not bypass a platform or macOS denial.
+
+## The personal plugin reports a version mismatch
+
+The Zotero XPI, copied `client-v1` kit, and portable ChatGPT plugin must have the
+same release version. Install the matching XPI and client kit, update the
+existing private ChatGPT plugin with a strictly greater matching version, and
+restore only its private `bridgeRoot` if needed. Enable Zotero, start a fresh
+chat, and let the workflow read a fresh descriptor/status/descriptor. Do not
+copy an old descriptor, session, or pending request into the plugin.
+
 ## Enable reports an error
 
 The selected root must already exist and be an absolute canonical directory. It
@@ -99,8 +129,13 @@ IDs; historical IDs return historical observations.
 - `too_large`: obey the size limit published in the current descriptor and the
   field limits in `protocol/v1.md`. Do not truncate approved content silently.
 
-An `indeterminate` result means the native outcome is unknown. Do not retry it
-under a new ID. Keep its original identity and follow the recovery rules above.
+An `indeterminate` result means the native outcome is unknown. Once that
+terminal result exists, keep it as historical evidence. Do not republish it as
+a new mutation, retry it under a new ID, or infer from an absent search result
+that nothing committed. Report the incomplete save and use bounded read-only
+inspection to understand current state. A later distinct write requires the
+uncertainty to be resolved and a new explicit user request for that known
+target; reinstall or reconnect does not supply that authority.
 
 ## A native save exists but viewer verification failed
 
@@ -117,7 +152,8 @@ already dispatched can finish. The active status file is authoritative. The
 uninstall procedure retains native records and the operation identity journal;
 see `uninstall.md` for the exact optional transient files and preference keys.
 
-Do not delete Zotero data, other plugin files, an MCP server, or a tunnel while
-diagnosing this XPI. Mac Safe Files and tunnel setup belong to their owner's
-runbook. ChatGPT Work remains independently unverified, and local package
-success does not establish ChatGPT Web end-to-end acceptance.
+Do not delete Zotero data, another ChatGPT or Zotero plugin, an MCP server, or a
+tunnel while diagnosing this XPI. Mac Safe Files and tunnel setup belong to
+their owner's runbook. ChatGPT Work remains independently unverified, and local
+package success does not establish ordinary-chat activation or end-to-end
+native acceptance on a different account or Mac.

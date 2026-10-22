@@ -4,15 +4,19 @@ This release supports Zotero 10.0.6 through 10.0.x on macOS. It uses local
 protocol-v1 request and result files. It does not need a model API key and does
 not contain an automatic update service.
 
-Obtain the two matching items from the release bundle:
+Obtain the three matching items from the release bundle:
 
 ```text
 zotero-ai-research-companion-<version>.xpi
 zotero-ai-research-companion-<version>-client/
+zotero-study-save-<version>.zip
 ```
 
 The second item is an ordinary folder of plain UTF-8 client instructions,
-schemas, and examples. Keep both items at the same version.
+schemas, and examples. The ZIP is the portable source for the private personal
+ChatGPT plugin. Keep all three items at the same version. The portable ZIP has
+`bridgeRoot` set to `null`; a configured account copy is private and is not a
+replacement distribution artifact.
 
 ## Install the XPI
 
@@ -66,24 +70,54 @@ and require the descriptor to be unchanged.
 Choose **Disable** before changing the directory. A new selection is not used
 until Enable is chosen explicitly.
 
-## Connect a local-file client
+## Set up the personal ChatGPT plugin once
+
+The normal ChatGPT Web route uses the private **Zotero Study Save** personal
+plugin and the already authenticated **Mac Safe Files** app. This repository
+does not contain a public Mac Safe Files installer, account credential, tunnel,
+or connection policy. Use the connection owner's supported setup before this
+step.
+
+1. In ChatGPT's supported personal-plugin creation flow, create a private
+   plugin from `zotero-study-save-<version>.zip`.
+2. Keep the archive's Mac Safe Files dependency. Approve only the dedicated
+   bridge root through the platform and macOS permission surfaces; those
+   decisions remain authoritative.
+3. In that private plugin instance, set only
+   `skills/zotero-study-save/resources/personal-config.json` → `bridgeRoot` to
+   the exact absolute root shown by Zotero. Do not add a profile ID, session
+   ID, descriptor, operation ID, credential, or study content.
+4. Confirm that the private plugin is installed and enabled. Start a fresh
+   ordinary ChatGPT conversation and make a normal request such as “Save the
+   proof you just explained and my question to Zotero.” A plugin `@` mention is
+   optional for diagnosis and is not part of the normal workflow.
+
+The plugin discovers the current descriptor, enabled status, profile, session,
+relative paths, limits, and supported operations on every workflow. Users do
+not paste the bridge path or repeat a manual connection command in each
+conversation. Configuring the root does not authorize a Zotero write: a current
+save request or acceptance of an exact save proposal is still required. Merely
+studying, linking, or asking questions remains read-only.
+
+## Other local-file clients
 
 The XPI and matching plain-text client kit include `protocol/v1.md`, request and
 response schemas, and complete examples. Replace `<BRIDGE_ROOT>` in the starter
 prompt in `<BRIDGE_ROOT>/client-v1/README.md` with the exact absolute directory
-displayed by Zotero. The two currently documented client routes are:
+displayed by Zotero only when using a direct local-file client instead of the
+personal ChatGPT plugin. The documented alternatives are:
 
 - **Direct Codex local files:** start a local Codex task that has access to the
   selected directory, then have it follow the descriptor-status-descriptor
   handshake and protocol-v1 filename rules. This route completed real local
   round trips in the project validation environment. A different Mac may show
   an access prompt or deny the directory under its own policy.
-- **Mac Safe Files MCP:** use it only when the connection owner or administrator
-  has already supplied its versioned server package and setup runbook. Give it
-  access only to the selected directory and keep its action policy at
-  **Always ask**. This repository does not contain a public installer for that
-  server. Do not copy another person's tunnel profile, runtime key, credential
-  files, or organization configuration.
+- **Mac Safe Files without the personal workflow:** use it only for bounded
+  diagnosis when the connection owner or administrator has already supplied
+  its versioned package and setup runbook. Give it access only to the selected
+  directory and keep its action policy at **Always ask**. Ordinary ChatGPT Web
+  use should go through the configured personal plugin so the user does not
+  need to paste the root or protocol instructions.
 
 For either route, the client must read the relative paths and limits from the
 current descriptor instead of guessing them. Publish a complete request with a
@@ -91,11 +125,10 @@ create-only atomic write, then poll only the matching result path. Mutations
 require a current explicit request or approved proposal from the user.
 
 ChatGPT Work local-file availability has not been independently verified. A
-successful Codex or MCP run does not prove Work access. Actual ChatGPT Web
-with the existing Mac Safe Files connection completed real paper reading,
-approved annotation saving, conflict protection, and visible native-editor
-verification on the validation Mac. A new account or Mac still requires its own
-connection and reader check; package verification alone does not establish it.
+successful Codex, personal-plugin, or MCP run does not prove Work access. A new
+account or Mac requires its own private plugin, connection check, and reader
+check; package verification alone does not establish account activation or
+native viewer behavior.
 
 ## Confirm the setup
 
@@ -105,6 +138,8 @@ setup has all of the following:
 
 - the Zotero settings dialog shows the intended directory and **Ready**;
 - `<BRIDGE_ROOT>/client-v1/README.md` is readable by the chosen local client;
+- the personal plugin is enabled with Mac Safe Files connected and its private
+  `bridgeRoot` equals the exact dedicated root;
 - `bridge-v1.json` and its status file report the same profile and session;
 - the `connection_status` response read from that session's result directory
   has a `data.profile.id` matching the descriptor profile;
@@ -121,3 +156,5 @@ after an ordinary reconnect, update, or reinstall.
 An interrupted queued operation is rejected without being executed. After that
 definitive non-writing result, re-read the target and obtain renewed mutation
 approval before submitting a new ID. Keep the original ID for unknown outcomes.
+A terminal `indeterminate` result is historical evidence, not a prompt to
+publish the mutation again or substitute a new ID.

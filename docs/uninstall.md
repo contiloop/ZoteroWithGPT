@@ -1,5 +1,10 @@
 # Disable, uninstall, and reinstall
 
+The Zotero extension, private ChatGPT plugin, and Mac Safe Files connection are
+separate components. Remove or update each through its own product surface.
+Removing one component does not authorize deleting another component's files,
+connection, credentials, or native Zotero records.
+
 ## Disable processing
 
 Choose **Tools → Research Companion Settings…**, then choose **Disable**. The
@@ -72,15 +77,40 @@ Removing a Mac Safe Files connection or secure tunnel is a separate product
 operation. Follow its owner's runbook. Uninstalling this XPI does not authorize
 changes to a shared MCP server, organization connection, or tunnel.
 
+## Remove the private ChatGPT plugin
+
+In ChatGPT plugin management, find the owned private **Zotero Study Save**
+plugin and use its normal uninstall or delete action. Verify its exact owned
+identity before removal. Leave unrelated plugins and the independently
+connected Mac Safe Files app in place.
+
+Removing the ChatGPT plugin stops its workflow from appearing in new chats. It
+does not remove the Zotero XPI, dedicated bridge directory, operation identity
+journal, imported papers, PDFs, annotations, or notes. An account download of a
+configured private plugin can contain the personal `bridgeRoot` and
+account-generated metadata; treat it as private and do not redistribute it as
+the portable release ZIP.
+
 ## Reinstall
 
-Install the versioned XPI through the Plugins Manager, open **Research
-Companion Settings…**, select a dedicated existing directory, and choose
-**Enable**. Reinstall creates a fresh session and publishes a new descriptor.
-Never copy pending request files from an older session into the new one
-automatically.
+Install the versioned XPI through the Plugins Manager, copy the matching client
+kit, open **Research Companion Settings…**, select a dedicated existing
+directory, and choose **Enable**. Reinstall creates a fresh session and
+publishes a new descriptor. Never copy pending request files from an older
+session into the new one automatically.
+
+Update the existing private ChatGPT plugin with the matching portable plugin
+archive using a strictly greater semantic version. Preserve its owned identity
+and Mac Safe Files dependency. Restore only the private `bridgeRoot` if the
+account update flow does not retain it. Do not copy a profile ID, session,
+descriptor, pending request, result, credential, or study content into the
+plugin. Start a fresh ordinary chat after the update; the workflow will
+rediscover the current Zotero session internally.
 
 The retained journal preserves the Zotero profile identity and prior operation
 results. A client recovering an earlier authorized operation uses the same ID
 and identical payload in the current session. A changed target or changed
 content requires a new ID and new user authorization.
+
+A terminal `indeterminate` result remains historical unknown evidence across
+reinstall. Reinstall must not turn it into a new import or a new save.

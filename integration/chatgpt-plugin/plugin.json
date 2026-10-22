@@ -1,0 +1,23 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "zotero-study-save",
+  "version": "0.2.0",
+  "description": "Save approved ChatGPT study questions, explanations, proofs, and references as passage-linked native Zotero annotations.",
+  "author": {
+    "name": "Zotero AI Research Companion Project"
+  },
+  "extensions": {
+    "com.openai": {
+      "apps": "./.app.json",
+      "interface": {
+        "displayName": "Zotero Study Save",
+        "shortDescription": "Save studies to Zotero",
+        "longDescription": "Save approved questions, explanations, proofs, and reference links from ChatGPT study conversations as full passage-linked native Zotero annotations, importing the studied arXiv PDF when needed.",
+        "developerName": "Zotero AI Research Companion Project",
+        "category": "Productivity",
+        "capabilities": [],
+        "defaultPrompt": "Save the proof you just explained and my question to Zotero."
+      }
+    }
+  }
+}

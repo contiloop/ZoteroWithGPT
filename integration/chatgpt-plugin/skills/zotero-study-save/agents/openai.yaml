@@ -1,0 +1,6 @@
+interface:
+  display_name: Zotero Study Save
+  short_description: Save studies to Zotero
+  default_prompt: Save the proof you just explained and my question to Zotero.
+policy:
+  allow_implicit_invocation: true

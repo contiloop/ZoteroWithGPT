@@ -290,13 +290,16 @@ export class OperationCoordinator {
     outcome: OperationExecutionOutcome,
   ): Promise<OperationRecord> {
     if (outcome.kind === "completed") {
-      if (running.operation === "ensure_arxiv_pdf" && !isEnsureArxivReadyResult(outcome.data)) {
+      if (
+        running.operation === "ensure_arxiv_pdf" &&
+        (!isEnsureArxivReadyResult(outcome.data) || outcome.verification.viewer !== "not_checked")
+      ) {
         const indeterminate = coreErrorResponse(
           running.operationId,
           "indeterminate",
           new CoreOperationError(
             "unknown_outcome",
-            "The arXiv import returned invalid completion evidence; its native outcome must be reconciled",
+            "The arXiv import returned invalid completion or viewer evidence; its native outcome must be reconciled",
           ),
           outcome.verification,
         );

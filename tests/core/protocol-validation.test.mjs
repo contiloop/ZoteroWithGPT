@@ -433,6 +433,28 @@ test("inspect_arxiv response validation enforces the complete strict result shap
     { ...inspectData, source: { ...arxivSource, abstractUrl: "https://evil.example/a" } },
     { ...inspectData, source: { ...arxivSource, metadata: { ...arxivSource.metadata, authors: [""] } } },
     { ...inspectData, source: { ...arxivSource, metadata: { ...arxivSource.metadata, abstract: null } } },
+    {
+      ...inspectData,
+      source: {
+        ...arxivSource,
+        metadata: {
+          ...arxivSource.metadata,
+          published: "2024-02-30T03:04:05Z",
+          updated: "2024-03-05T04:05:06Z",
+        },
+      },
+    },
+    {
+      ...inspectData,
+      source: {
+        ...arxivSource,
+        metadata: {
+          ...arxivSource.metadata,
+          published: "2023-02-29T03:04:05Z",
+          updated: "2023-03-05T04:05:06Z",
+        },
+      },
+    },
   ];
   for (const data of invalidData) {
     expectCode(
@@ -440,6 +462,38 @@ test("inspect_arxiv response validation enforces the complete strict result shap
       "invalid_request",
     );
   }
+
+  const leapDay = {
+    ...valid,
+    data: {
+      ...inspectData,
+      source: {
+        ...arxivSource,
+        metadata: {
+          ...arxivSource.metadata,
+          published: "2024-02-29T03:04:05Z",
+          updated: "2024-03-01T04:05:06Z",
+        },
+      },
+    },
+  };
+  assert.deepEqual(validateProtocolResponse("inspect_arxiv", leapDay), leapDay);
+
+  const timestampOffset = {
+    ...valid,
+    data: {
+      ...inspectData,
+      source: {
+        ...arxivSource,
+        metadata: {
+          ...arxivSource.metadata,
+          published: "2024-02-29T12:34:56+09:00",
+          updated: "2024-02-29T13:34:56+09:00",
+        },
+      },
+    },
+  };
+  assert.deepEqual(validateProtocolResponse("inspect_arxiv", timestampOffset), timestampOffset);
 });
 
 test("ensure_arxiv_pdf validates complete success, bounded retained failure, and indeterminate shapes", () => {

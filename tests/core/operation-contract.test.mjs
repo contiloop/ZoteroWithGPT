@@ -666,8 +666,12 @@ test("failed outcomes cannot propagate arbitrary or malformed retained data", as
   assert.equal(malformedEnsure.data, null);
 });
 
-test("ensure_arxiv_pdf succeeds only with complete ready data and confirmed storage", async () => {
-  const submit = async (operationId, data) => {
+test("ensure_arxiv_pdf succeeds only with ready data, confirmed storage, and unchecked viewer", async () => {
+  const submit = async (
+    operationId,
+    data,
+    verification = { storage: "confirmed", viewer: "not_checked" },
+  ) => {
     const coordinator = new OperationCoordinator({
       store: new MemoryOperationStore(),
       digest: new StableDigest(),
@@ -676,7 +680,7 @@ test("ensure_arxiv_pdf succeeds only with complete ready data and confirmed stor
     return coordinator.submit(ensureArxivRequest(operationId), "profile-A", async () => ({
       kind: "completed",
       data,
-      verification: { storage: "confirmed", viewer: "not_checked" },
+      verification,
     }));
   };
   const ready = {
@@ -695,6 +699,17 @@ test("ensure_arxiv_pdf succeeds only with complete ready data and confirmed stor
   assert.equal(invalid.state, "indeterminate");
   assert.equal(invalid.data, null);
   assert.equal(invalid.error.code, "unknown_outcome");
+
+  for (const viewer of ["confirmed", "failed", "not_applicable"]) {
+    const mismatchedEvidence = await submit(
+      `op.ensure-invalid-viewer-${viewer}`,
+      ready,
+      { storage: "confirmed", viewer },
+    );
+    assert.equal(mismatchedEvidence.state, "indeterminate");
+    assert.equal(mismatchedEvidence.data, null);
+    assert.equal(mismatchedEvidence.error.code, "unknown_outcome");
+  }
 });
 
 test("old protocol requests and 0.1.0-shaped historical journal responses remain readable", async () => {

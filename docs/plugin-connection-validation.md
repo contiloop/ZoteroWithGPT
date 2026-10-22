@@ -1,6 +1,6 @@
 # Personal ChatGPT plugin connection preflight
 
-Validated on 2026-10-22 against the authenticated personal ChatGPT Web account and the actual macOS Zotero 10.0.6 host. This preflight is **blocked**: the account supports private plugin creation, installation, update, dependency binding, and private per-instance configuration, and the Zotero host passed the bounded native item, attachment, abstract-page, and PDF checks, but the required fixed arXiv API metadata request failed in the Zotero process. Its detailed network cause was not established.
+Validated on 2026-10-22 against the authenticated personal ChatGPT Web account and the actual macOS Zotero 10.0.6 host. This preflight is **blocked**: the account supports private plugin creation, installation, update, dependency binding, and private per-instance configuration, and the Zotero host passed the bounded native item, attachment, abstract-page, and PDF checks, but the required fixed arXiv API metadata request returned HTTP 429 in the Zotero process. The single authorized request did not supply the required concrete source, title, authors, dates, and abstract metadata.
 
 This is account and host evidence. Local Codex installation, plugin-directory discovery, source inspection, and operating-system HTTP results were not treated as substitutes for the observed ChatGPT Web and Zotero behavior.
 
@@ -83,9 +83,38 @@ The actual private result was:
 
 The result is stored at `.local/validation/t1-native-probe/result.json`. An operating-system HTTP preflight was used only to size the diagnostic limits; it is not evidence that Zotero could reach the same endpoint.
 
+### Fixed API diagnostic repair
+
+The first API observation was insufficient to distinguish a timeout from another transport or HTTP failure. That probe imposed a 10-second request limit and replaced the original exception with `get_request_failed`. The result therefore remains valid only as evidence that the first request failed; it is not used to classify why.
+
+A second reviewed diagnostic repaired only that evidence gap. Its package SHA-256 was `83d07b49696b8a7bf18708e7ecbf40e5a1b1c3d45dc1943240a3ac91d5209635`. It contained one request call for exactly this URL and no HTML, PDF, item, attachment, alternate endpoint, loop, runtime input, or mutation path:
+
+`https://export.arxiv.org/api/query?id_list=1706.03762v7`
+
+The repaired diagnostic used a 60-second request timeout, a 65-second overall deadline measured from diagnostic start, and a 2 MiB response cap. It disabled redirect following and automatic 429/5xx retry through `followRedirects: false`, `successCodes: [200]`, `errorDelayMax: 0`, and `noRetryOnThrottle: true`. A durable `running` result written before the request prevented extension reload or Zotero restart from issuing another attempt. The parser rejected `DOCTYPE` and `ENTITY` declarations before XML parsing.
+
+Zotero 10.0.6's bundled HTTP implementation was checked before the run. It applies the supplied request timeout to the native request, raises `TimeoutException` from its timeout handler, exposes the response status on `UnexpectedStatusException`, implements no-follow redirects, and treats `errorDelayMax: 0` as disabling server-error retry. The result retained only the failure stage, a bounded native exception class name, an integer status when available, and a timeout boolean. It did not retain an exception message, headers, credentials, stack, or response body.
+
+The one authorized execution produced:
+
+| Field | Actual result |
+| --- | --- |
+| Request attempts | `1` |
+| Duration | `15,733 ms` |
+| Observed response bytes | `14` |
+| Failure stage | `http_response` |
+| Exception class | `UnexpectedStatusException` |
+| HTTP status | `429` |
+| Timed out | `false` |
+| Atom entry | Not obtained or parsed |
+
+The repaired result is stored at `.local/validation/t1-native-probe/result-api-repair.json`. HTTP 429 is a specific Zotero-host rate-limit response, so this run is no longer an unexplained timeout or transport failure. The diagnostic did not retain the response body or headers and therefore does not infer the server's more specific reason for returning 429. Per the one-attempt boundary, it was not retried and no alternate endpoint or HTML substitute was used.
+
 ## Installation cleanup
 
-The reviewed diagnostic was installed through Zotero **Tools → Plugins → Install Plugin From File**. After the result was written, Zotero's Plugins Manager showed **T1 Zotero Native Read-Only Probe 0.0.1** enabled beside the unchanged production **Zotero AI Research Companion 0.1.0**. The diagnostic was removed through its normal **More Options → Remove** flow. The UI reported `T1 Zotero Native Read-Only Probe has been removed.` A normal restart completed removal of its profile XPI. The production extension remained installed, and the temporary diagnostic no longer appeared in the profile.
+The reviewed diagnostics were installed through Zotero **Tools → Plugins → Install Plugin From File**. After the first result was written, Zotero's Plugins Manager showed **T1 Zotero Native Read-Only Probe 0.0.1** enabled beside the unchanged production **Zotero AI Research Companion 0.1.0**. The first diagnostic was removed through its normal **More Options → Remove** flow, and a normal restart completed removal of its profile XPI.
+
+The repaired diagnostic appeared as **T1 arXiv API Read-Only Probe 0.0.2**. After the single result was written, it was removed through the same normal UI flow. The confirmation surface reported `T1 arXiv API Read-Only Probe has been removed.` A normal restart completed removal of the diagnostic profile XPI. The production extension remained installed and enabled; the diagnostic XPI was absent from the profile after restart.
 
 No Zotero library mutation, PDF-byte change, user-paper import, third-party installation, public plugin publication, credential change, shared connection change, or production source change was performed.
 
@@ -99,8 +128,10 @@ All commands below ran from the repository root unless stated otherwise.
 | `node --check .local/validation/t1-native-probe/bootstrap.js` | Exit 0. |
 | `python3 -m json.tool .local/validation/t1-native-probe/manifest.json` | Exit 0. |
 | Mutation-call `rg` over the diagnostic source | Exit 1 with no matches, the expected no-match result. |
-| `zip -X -FS t1-native-probe.xpi manifest.json bootstrap.js README.md` | Exit 0; archive contained exactly those three reviewed files. |
+| `(cd .local/validation/t1-native-probe && zip -X -FS t1-arxiv-api-probe-v2.xpi manifest.json bootstrap.js README.md)` | Exit 0; archive contained exactly those three reviewed files and had SHA-256 `83d07b49696b8a7bf18708e7ecbf40e5a1b1c3d45dc1943240a3ac91d5209635`. |
+| `rg -c "Zotero\\.HTTP\\.request" .local/validation/t1-native-probe/bootstrap.js` | Exit 0; count `1`. |
 | `python3 -m json.tool .local/validation/t1-native-probe/result.json` | Exit 0; values recorded in the table above. |
+| `python3 -m json.tool .local/validation/t1-native-probe/result-api-repair.json` | Exit 0; one attempt ended with HTTP 429 after 15,733 ms and did not time out. |
 | `unzip -t .local/validation/chatgpt-plugin-download/zotero-save-flow-probe-t1-v0.1.1.zip` | Exit 0; no archive errors. |
 | Private resource sanitized inspection | Exit 0; `bridgeRoot` was the only key and matched the selected private root without printing it. |
 | Portable-skill sanitized inspection | Exit 0; selected private path absent; private resource, Mac Safe Files, fresh session/profile discovery, and no-write rules present. |
@@ -111,4 +142,4 @@ All commands below ran from the repository root unless stated otherwise.
 
 The personal ChatGPT plugin lifecycle and one-time private configuration mechanism are feasible in this account. Native Zotero item and attachment reads, the requested versioned abstract-page route, and bounded PDF retrieval are also feasible on this host. The HTML substring check did not independently prove the response metadata version.
 
-The fixed arXiv API metadata endpoint is not yet feasible evidence: its Zotero-host request failed with an unresolved cause. Production work must not treat the abstract HTML or an operating-system request as a silent replacement. Resolve the required metadata source or the host access failure before approving this preflight. Independently, T7 must still prove implicit activation and the normal save behavior in a fresh ordinary Web chat.
+The fixed arXiv API metadata endpoint did not provide the required metadata in the one authorized Zotero-host attempt. It returned HTTP 429 before a valid Atom entry could establish the concrete source, title, authors, publication and update dates, and abstract. T1 therefore remains blocked. Production work must not treat the abstract HTML or an operating-system request as a silent replacement, and this diagnostic must not be rerun without a separate decision about the endpoint or access condition. A user decision is pending on whether to keep implementation waiting for real endpoint validation or explicitly defer this gate while allowing implementation to continue without treating T1 as passed. Independently, T7 must still prove implicit activation and the normal save behavior in a fresh ordinary Web chat.

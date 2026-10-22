@@ -16,5 +16,5 @@ const archive = process.argv[2] === undefined
   : path.resolve(projectRoot, process.argv[2]);
 const result = await verifyXpi(archive, { expectedProjectRoot: projectRoot });
 process.stdout.write(
-  `Verified ${path.basename(archive)} (${result.members.length} files) and ${path.basename(result.clientDirectory)} (${result.clientMembers.length} files), Zotero ${result.zoteroCompatibility.minimum}–${result.zoteroCompatibility.maximum}\n`,
+  `Verified ${path.basename(archive)} (${result.members.length} files), ${path.basename(result.clientDirectory)} (${result.clientMembers.length} files), and ${path.basename(result.pluginPath)} (${result.pluginMembers.length} files), Zotero ${result.zoteroCompatibility.minimum}–${result.zoteroCompatibility.maximum}\n`,
 );

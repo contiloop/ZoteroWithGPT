@@ -3,17 +3,21 @@ import { createHash, webcrypto } from "node:crypto";
 import test from "node:test";
 import { JSDOM } from "jsdom";
 
-import { CoreOperationError } from "../../dist/core/index.js";
+import { CoreOperationError, OperationCoordinator } from "../../dist/core/index.js";
+import { ZoteroAnchorResolver } from "../../dist/adapters/anchors/index.js";
 import { ZoteroArxivNativeImport } from "../../dist/adapters/zotero/arxiv-native-import.js";
 import {
   ARXIV_PROVENANCE_RELATION_PREDICATE,
   MutableZoteroAccessGate,
   DomPurifyNativeNoteContentPolicy,
   OPERATION_RELATION_PREDICATE,
+  ZoteroLibraryAdapter,
   arxivAttachmentProvenance,
   arxivParentProvenance,
   createZoteroNativeApi,
 } from "../../dist/adapters/zotero/index.js";
+import { NativeOperationExecutor } from "../../dist/plugin/execute.js";
+import { validateProtocolRequest } from "../../dist/protocol/index.js";
 
 function visibleDocument(querySelector = () => null) {
   const body = {
@@ -69,8 +73,19 @@ class FakeItem {
     this.parentItemID = values.parentItemID;
     this.version = values.version ?? 1;
     this.dateModified = values.dateModified ?? "2026-10-21 10:00:00";
+    this._annotationComment = null;
     this.relations = new Map();
     Object.assign(this, values);
+  }
+
+  get annotationComment() { return this._annotationComment; }
+  set annotationComment(value) {
+    // Mirrors Zotero 10.0.6's public annotation-property setter.
+    if (typeof value === "string") {
+      value = value.trim().normalize();
+      if (value === "") value = null;
+    }
+    this._annotationComment = value;
   }
 
   async loadPrimaryData() {
@@ -189,6 +204,39 @@ class FakeItem {
   }
   async saveTx() {
     return this.host.db.executeTransaction(() => this.save());
+  }
+}
+
+class MemoryOperationStore {
+  records = new Map();
+
+  async claim(record) {
+    const existing = this.records.get(record.operationId);
+    if (existing) return { kind: "existing", record: structuredClone(existing) };
+    this.records.set(record.operationId, structuredClone(record));
+    return { kind: "created", record: structuredClone(record) };
+  }
+
+  async load(operationId) {
+    const record = this.records.get(operationId);
+    return record === undefined ? undefined : structuredClone(record);
+  }
+
+  async transition(operationId, from, next) {
+    const current = this.records.get(operationId);
+    if (current?.state !== from) throw new Error("optimistic transition failed");
+    this.records.set(operationId, structuredClone(next));
+    return structuredClone(next);
+  }
+}
+
+class InlineMutationSerializer {
+  async runExclusive(_profileId, work) { return work(); }
+}
+
+class Sha256Digest {
+  async digest(bytes) {
+    return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
   }
 }
 
@@ -473,6 +521,51 @@ const anchor = {
   matchEvidence: { method: "exact_quote", matchedText: "A", exact: true },
 };
 
+function composedAnnotationHarness() {
+  const { env, host } = fixtureEnvironment();
+  const native = createZoteroNativeApi(env);
+  const digest = new Sha256Digest();
+  const library = new ZoteroLibraryAdapter({
+    native,
+    noteContent: env.noteContent,
+    digest,
+    profileId: "profile-A",
+    pluginVersion: "fixture",
+    enabled: true,
+    transport: { kind: "custom", description: "Native fixture" },
+  });
+  const resolver = new ZoteroAnchorResolver(library);
+  const executor = new NativeOperationExecutor({
+    reads: library,
+    writes: library,
+    anchors: resolver,
+    storage: library,
+    viewer: library,
+  });
+  const coordinator = new OperationCoordinator({
+    store: new MemoryOperationStore(),
+    digest,
+    serializer: new InlineMutationSerializer(),
+  });
+  return { coordinator, executor, host, native };
+}
+
+function annotationCreateRequest(attachmentFingerprint, comment, operationId) {
+  return validateProtocolRequest({
+    protocolVersion: 1,
+    operationId,
+    operation: "create_annotation",
+    profileId: "profile-A",
+    authorization: { kind: "explicit_request", scope: "Save the exact fixture proof" },
+    payload: {
+      anchor: { ...anchor, attachmentFingerprint },
+      type: "highlight",
+      comment,
+      color: "#ffd400",
+    },
+  });
+}
+
 function showAnnotationInReader(reader, annotation) {
   reader._internalReader._state.sidebarOpen = true;
   reader._internalReader._state.sidebarView = "annotations";
@@ -536,6 +629,175 @@ test("native annotation create commits content and durable identity in one Zoter
   const recovered = await native.findByOperationMarker(marker);
   assert.equal(recovered.length, 1);
   assert.equal(recovered[0].annotationKey, "ANN00001");
+});
+
+test("native annotation create rejects bodies Zotero would normalize before saving", async () => {
+  const cases = [
+    ["leading-whitespace", " Complete proof"],
+    ["trailing-whitespace", "Complete proof\t"],
+    ["non-nfc-unicode", "Cafe\u0301 proof"],
+  ];
+  for (const [description, comment] of cases) {
+    const { env, host } = fixtureEnvironment();
+    const native = createZoteroNativeApi(env);
+    const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+
+    await assert.rejects(
+      () => native.createAnnotation({
+        anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
+        type: "highlight",
+        comment,
+        color: "#ffd400",
+        operationMarker: `urn:unrepresentable-create:${description}`,
+      }),
+      (error) => error instanceof CoreOperationError && error.code === "invalid_request",
+      description,
+    );
+    assert.equal(host.savedSnapshots.length, 0, description);
+    assert.equal(
+      [...host.items.values()].some((item) => item.isAnnotation()),
+      false,
+      description,
+    );
+  }
+});
+
+test("native annotation comments preserve meaningful interior whitespace exactly", async () => {
+  const { env, host } = fixtureEnvironment();
+  const native = createZoteroNativeApi(env);
+  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+  const comment = "First proof line\n\n  Indented derivation  \nFinal proof line";
+
+  const created = await native.createAnnotation({
+    anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
+    type: "highlight",
+    comment,
+    color: "#ffd400",
+    operationMarker: "urn:interior-whitespace:create",
+  });
+  assert.equal(created.comment, comment);
+
+  const replacement = "Replacement line\n\n  Kept indentation  \nLast line";
+  const updated = await native.updateAnnotation({
+    expected: created,
+    comment: replacement,
+    operationMarker: "urn:interior-whitespace:update",
+  });
+  assert.equal(updated.comment, replacement);
+  assert.equal(host.savedSnapshots.length, 2);
+});
+
+test("coordinator records native comment normalization as a precommit rejection", async () => {
+  const { coordinator, executor, host, native } = composedAnnotationHarness();
+  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+  const request = annotationCreateRequest(
+    attachment.fingerprint,
+    "Complete proof\n",
+    "op.native-comment-create-rejection",
+  );
+
+  const result = await coordinator.submit(
+    request,
+    "profile-A",
+    (accepted, identity) => executor.execute(accepted, identity),
+  );
+
+  assert.equal(result.state, "rejected");
+  assert.equal(result.error.code, "invalid_request");
+  assert.equal(result.error.retryable, false);
+  assert.match(result.error.message, /rejected before native mutation/u);
+  assert.match(result.error.message, /indeterminate outcome/u);
+  assert.deepEqual(result.verification, { storage: "not_checked", viewer: "not_checked" });
+  assert.equal(host.savedSnapshots.length, 0);
+});
+
+test("native annotation update rejects normalization before changing the target or marker", async () => {
+  const cases = [
+    ["leading-newline", "\nReplacement proof"],
+    ["trailing-newline", "Replacement proof\n"],
+    ["non-nfc-unicode", "Re\u0301placement proof"],
+  ];
+  for (const [description, comment] of cases) {
+    const { env, host } = fixtureEnvironment();
+    const native = createZoteroNativeApi(env);
+    const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+    const created = await native.createAnnotation({
+      anchor: { ...anchor, attachmentFingerprint: attachment.fingerprint },
+      type: "highlight",
+      comment: "Original proof",
+      color: "#ffd400",
+      operationMarker: "urn:update-preflight:original",
+    });
+    const item = [...host.items.values()].find(
+      (candidate) => candidate.key === created.annotationKey,
+    );
+
+    await assert.rejects(
+      () => native.updateAnnotation({
+        expected: created,
+        comment,
+        operationMarker: `urn:update-preflight:${description}`,
+      }),
+      (error) => error instanceof CoreOperationError && error.code === "invalid_request",
+      description,
+    );
+    assert.equal(item.annotationComment, "Original proof", description);
+    assert.deepEqual(
+      item.getRelationsByPredicate(OPERATION_RELATION_PREDICATE),
+      ["urn:update-preflight:original"],
+      description,
+    );
+    assert.equal(host.savedSnapshots.length, 1, description);
+  }
+});
+
+test("coordinator rejects an unrepresentable append without a postcommit unknown outcome", async () => {
+  const { coordinator, executor, host, native } = composedAnnotationHarness();
+  const attachment = await native.getPdfAttachment("1", "ATTACH01", "ITEM0001");
+  const createRequest = annotationCreateRequest(
+    attachment.fingerprint,
+    "Original proof",
+    "op.native-comment-append-base",
+  );
+  const created = await coordinator.submit(
+    createRequest,
+    "profile-A",
+    (accepted, identity) => executor.execute(accepted, identity),
+  );
+  assert.equal(created.state, "succeeded");
+  assert.equal(host.savedSnapshots.length, 1);
+
+  const updateRequest = validateProtocolRequest({
+    protocolVersion: 1,
+    operationId: "op.native-comment-append-rejection",
+    operation: "update_annotation",
+    profileId: "profile-A",
+    authorization: { kind: "explicit_request", scope: "Append the exact fixture proof" },
+    payload: {
+      libraryId: "1",
+      attachmentKey: "ATTACH01",
+      annotationKey: created.data.annotationKey,
+      expectedRevision: created.data.revision,
+      mode: "append",
+      comment: "Added conclusion\n",
+    },
+  });
+  const result = await coordinator.submit(
+    updateRequest,
+    "profile-A",
+    (accepted, identity) => executor.execute(accepted, identity),
+  );
+
+  assert.equal(result.state, "rejected");
+  assert.equal(result.error.code, "invalid_request");
+  assert.equal(result.error.retryable, false);
+  assert.deepEqual(result.verification, { storage: "not_checked", viewer: "not_checked" });
+  assert.equal(host.savedSnapshots.length, 1);
+  const item = [...host.items.values()].find(
+    (candidate) => candidate.key === created.data.annotationKey,
+  );
+  assert.equal(item.annotationComment, "Original proof");
+  assert.equal(item.getRelationsByPredicate(OPERATION_RELATION_PREDICATE).length, 1);
 });
 
 test("annotation metadata clones native geometry into the outer reader realm", async () => {

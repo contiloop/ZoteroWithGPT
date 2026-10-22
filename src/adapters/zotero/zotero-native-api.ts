@@ -396,6 +396,21 @@ function annotationMaterial(record: NativeAnnotationRecord): string {
   });
 }
 
+function assertNativeAnnotationCommentRepresentable(comment: string): void {
+  // Zotero's public annotationComment setter applies trim().normalize(). Check
+  // that pure transformation before invoking the setter so the approved body
+  // is either stored exactly or rejected without changing native item state.
+  if (comment.trim().normalize() !== comment) {
+    throw new CoreOperationError(
+      "invalid_request",
+      "Zotero cannot preserve this annotation comment exactly: native annotation comments " +
+        "must be NFC text without leading or trailing whitespace. This request was rejected " +
+        "before native mutation. Review and authorize an exact representable body, then use a " +
+        "new operation ID; never resubmit an operation with an indeterminate outcome.",
+    );
+  }
+}
+
 function noteMaterial(record: NativeNoteRecord): string {
   return JSON.stringify({
     libraryId: record.libraryId,
@@ -1666,6 +1681,7 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     }
     const key = this.#zotero.DataObjectUtilities.generateKey();
     this.#assertMutationEnabled();
+    assertNativeAnnotationCommentRepresentable(input.comment);
     const saved = await this.#zotero.Annotations.saveFromJSON(
       current,
       {
@@ -1717,6 +1733,7 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
       throw new CoreOperationError("permission_denied", "The annotation is not editable");
     }
     this.#assertMutationEnabled();
+    assertNativeAnnotationCommentRepresentable(input.comment);
     item.annotationComment = input.comment;
     item.addRelation(OPERATION_RELATION_PREDICATE, input.operationMarker);
     await item.saveTx({ skipSelect: true });

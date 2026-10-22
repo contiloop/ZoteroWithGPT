@@ -5,8 +5,39 @@ import {
   BoundedArxivHttpAdapter,
   MAX_ARXIV_METADATA_BYTES,
   MAX_ARXIV_PDF_BYTES,
+  PoliteArxivRequestAdmission,
 } from "../../dist/adapters/arxiv/index.js";
 import { captureError, encoder, QueueDriver, response, stream } from "./helpers.mjs";
+
+class ManualClock {
+  now = 0;
+  nextId = 1;
+  timers = new Map();
+
+  setTimer = (callback, delay) => {
+    const id = this.nextId++;
+    this.timers.set(id, { at: this.now + delay, callback });
+    return id;
+  };
+
+  clearTimer = id => { this.timers.delete(id); };
+
+  async advance(milliseconds) {
+    const target = this.now + milliseconds;
+    while (true) {
+      const due = [...this.timers.entries()]
+        .filter(([, timer]) => timer.at <= target)
+        .sort((left, right) => left[1].at - right[1].at || left[0] - right[0])[0];
+      if (due === undefined) break;
+      this.now = due[1].at;
+      this.timers.delete(due[0]);
+      due[1].callback();
+      await Promise.resolve();
+    }
+    this.now = target;
+    await new Promise(resolve => setImmediate(resolve));
+  }
+}
 
 test("typed resources construct fixed HTTPS metadata and PDF requests", async () => {
   const driver = new QueueDriver()
@@ -102,6 +133,31 @@ test("every redirect and final response URL is checked against the typed resourc
   }));
   assert.equal(finalError.code, "storage_error");
   assert.match(finalError.message, /final response URL/i);
+});
+
+test("each allowed metadata redirect is separately admitted at least three seconds apart", async () => {
+  const initial = "https://export.arxiv.org/api/query?id_list=2401.01234&max_results=1";
+  const redirected = "https://arxiv.org/api/query?id_list=2401.01234&max_results=1";
+  const clock = new ManualClock();
+  const driver = new QueueDriver()
+    .enqueue(response(initial, { status: 302, headers: { location: redirected } }))
+    .enqueue(response(redirected, { body: stream(encoder.encode("ok")) }));
+  const admission = new PoliteArxivRequestAdmission({
+    now: () => clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+  const pending = new BoundedArxivHttpAdapter(driver, { admission }).retrieve({
+    kind: "metadata",
+    reference: { arxivId: "2401.01234" },
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(driver.requests.length, 1);
+  await clock.advance(2_999);
+  assert.equal(driver.requests.length, 1);
+  await clock.advance(1);
+  await pending;
+  assert.equal(driver.requests.length, 2);
 });
 
 test("a fourth redirect is rejected without another request", async () => {
@@ -241,6 +297,52 @@ test("deadline and cancellation close an in-flight response stream", async () =>
   assert.equal(cancelledStream.wasClosed(), true);
 });
 
+test("lifecycle abort completes reader cleanup before the shared request lane is released", async () => {
+  const url = "https://arxiv.org/pdf/2401.01234v2";
+  let cleanupStarted = false;
+  let finishCleanup;
+  const cleanupFinished = new Promise(resolve => { finishCleanup = resolve; });
+  const stalledBody = {
+    [Symbol.asyncIterator]() {
+      return {
+        next: () => new Promise(() => {}),
+        async return() {
+          cleanupStarted = true;
+          await cleanupFinished;
+          return { done: true };
+        },
+      };
+    },
+  };
+  const driver = new QueueDriver()
+    .enqueue(response(url, { contentType: "application/pdf", body: stalledBody }))
+    .enqueue(response(url, {
+      contentType: "application/pdf",
+      body: stream(encoder.encode("next request")),
+    }));
+  const admission = new PoliteArxivRequestAdmission();
+  const oldOwner = new AbortController();
+  const oldRequest = captureError(() => new BoundedArxivHttpAdapter(driver, {
+    admission,
+    lifecycleSignal: oldOwner.signal,
+  }).retrieve({ kind: "pdf", source: { arxivId: "2401.01234", version: 2 } }));
+  await new Promise(resolve => setImmediate(resolve));
+  const newRequest = new BoundedArxivHttpAdapter(driver, { admission }).retrieve({
+    kind: "pdf",
+    source: { arxivId: "2401.01234", version: 2 },
+  });
+  oldOwner.abort();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(cleanupStarted, true);
+  assert.equal(driver.requests.length, 1, "the next owner must wait for reader cleanup");
+
+  finishCleanup();
+  const error = await oldRequest;
+  assert.match(error.message, /cancel/u);
+  assert.equal(new TextDecoder().decode((await newRequest).body), "next request");
+  assert.equal(driver.requests.length, 2);
+});
+
 test("HTTP 429 exposes Retry-After without an automatic retry", async () => {
   const url = "https://export.arxiv.org/api/query?id_list=2401.01234&max_results=1";
   const driver = new QueueDriver().enqueue(response(url, {
@@ -254,7 +356,40 @@ test("HTTP 429 exposes Retry-After without an automatic retry", async () => {
   assert.equal(error.code, "storage_error");
   assert.equal(error.retryable, true);
   assert.equal(error.retryAfterSeconds, 120);
+  assert.match(error.message, /120 seconds/u);
   assert.equal(error.stage, "source");
+  assert.equal(driver.requests.length, 1);
+});
+
+test("an aborted queued admission never reaches the network driver", async () => {
+  const url = "https://export.arxiv.org/api/query?id_list=2401.01234&max_results=1";
+  let releaseFirst;
+  const driver = new QueueDriver()
+    .enqueue(() => new Promise((resolve) => {
+      releaseFirst = () => resolve(response(url, { body: stream(encoder.encode("first")) }));
+    }))
+    .enqueue(response(url, { body: stream(encoder.encode("must not dispatch")) }));
+  const admission = new PoliteArxivRequestAdmission();
+  const adapter = new BoundedArxivHttpAdapter(driver, { admission });
+  const first = adapter.retrieve({
+    kind: "metadata", reference: { arxivId: "2401.01234" },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(driver.requests.length, 1);
+
+  const controller = new AbortController();
+  const queued = adapter.retrieve(
+    { kind: "metadata", reference: { arxivId: "2401.01234" } },
+    { signal: controller.signal },
+  );
+  controller.abort();
+  const error = await captureError(() => queued);
+  assert.equal(error.code, "storage_error");
+  assert.match(error.message, /cancel/u);
+
+  releaseFirst();
+  await first;
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(driver.requests.length, 1);
 });
 

@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 
 import {
+  BoundedArxivHttpAdapter,
   DigestArxivInspectionTokens,
   GeckoArxivNetworkDriver,
 } from '../../dist/adapters/arxiv/index.js';
@@ -161,6 +162,57 @@ test('Gecko network driver cancels a reader whose read rejects without masking t
     for await (const _chunk of response.body) {}
   }, error => error === failure);
   assert.equal(cancelled, 1);
+});
+
+test('composed Gecko streaming preserves nonretryable too_large for metadata and PDFs', async () => {
+  for (const fixture of [
+    {
+      resource: { kind: 'metadata', reference: { arxivId: '2401.01234', version: 2 } },
+      url: 'https://export.arxiv.org/api/query?id_list=2401.01234v2&max_results=1',
+      options: { metadataByteLimit: 8 },
+      stage: 'source',
+    },
+    {
+      resource: { kind: 'pdf', source: { arxivId: '2401.01234', version: 2 } },
+      url: 'https://arxiv.org/pdf/2401.01234v2',
+      options: { pdfByteLimit: 8 },
+      stage: 'download',
+    },
+  ]) {
+    let cancelled = 0;
+    let released = 0;
+    let read = false;
+    const driver = new GeckoArxivNetworkDriver({
+      async fetch(url) {
+        return {
+          url,
+          status: 200,
+          headers: { get: () => null },
+          body: { getReader: () => ({
+            async read() {
+              if (read) return { done: true };
+              read = true;
+              return { done: false, value: new Uint8Array(9) };
+            },
+            async cancel() { cancelled += 1; },
+            releaseLock() { released += 1; },
+          }) },
+        };
+      },
+    });
+    let error;
+    try {
+      await new BoundedArxivHttpAdapter(driver, fixture.options).retrieve(fixture.resource);
+    } catch (caught) {
+      error = caught;
+    }
+    assert.equal(error?.code, 'too_large');
+    assert.equal(error?.retryable, false);
+    assert.equal(error?.stage, fixture.stage);
+    assert.match(error?.message ?? '', /byte limit/u);
+    assert.equal(cancelled, 1);
+    assert.equal(released, 1);
+  }
 });
 
 test('PDF readability transfers an owner-realm clone and reports the worker total page count', async () => {

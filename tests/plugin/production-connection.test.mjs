@@ -19,7 +19,38 @@ import test from 'node:test';
 
 import { JSDOM } from 'jsdom';
 
+import { PoliteArxivRequestAdmission } from '../../dist/adapters/arxiv/index.js';
 import { openProductionConnection } from '../../dist/plugin/connection.js';
+
+class FakeClock {
+  now = 0;
+  nextId = 1;
+  timers = new Map();
+
+  setTimer = (callback, delay) => {
+    const id = this.nextId++;
+    this.timers.set(id, { at: this.now + delay, callback });
+    return id;
+  };
+
+  clearTimer = id => { this.timers.delete(id); };
+
+  async advance(milliseconds) {
+    const target = this.now + milliseconds;
+    while (true) {
+      const due = [...this.timers.entries()]
+        .filter(([, timer]) => timer.at <= target)
+        .sort((left, right) => left[1].at - right[1].at || left[0] - right[0])[0];
+      if (due === undefined) break;
+      this.now = due[1].at;
+      this.timers.delete(due[0]);
+      due[1].callback();
+      await Promise.resolve();
+    }
+    this.now = target;
+    await new Promise(resolve => setImmediate(resolve));
+  }
+}
 
 class NativeFile {
   path = '';
@@ -148,7 +179,11 @@ async function publish(subscription, request) {
 
 test('production connection binds and advertises working arXiv inspection through genuine host seams', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'production-connection-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  let connectionForCleanup;
+  t.after(async () => {
+    await connectionForCleanup?.close();
+    await rm(root, { recursive: true, force: true });
+  });
   const profileDirectory = path.join(root, 'profile');
   const bridgeDirectory = path.join(root, 'bridge');
   await Promise.all([mkdir(profileDirectory), mkdir(bridgeDirectory)]);
@@ -164,18 +199,29 @@ test('production connection binds and advertises working arXiv inspection throug
         <author><name>Ada Researcher</name></author>
       </entry>
     </feed>`);
+  const clock = new FakeClock();
+  const admission = new PoliteArxivRequestAdmission({
+    now: () => clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
   const fetchCalls = [];
   const noteWindow = new JSDOM('').window;
   Object.defineProperties(noteWindow, {
     AbortController: { value: AbortController },
     fetch: {
       value: async (url, init) => {
-        fetchCalls.push({ url, init });
+        fetchCalls.push({ url, init, startedAt: clock.now });
+        const status = fetchCalls.length === 3 ? 429 : 200;
         let sent = false;
         return {
           url,
-          status: 200,
-          headers: { get: name => name.toLowerCase() === 'content-type' ? 'application/atom+xml' : null },
+          status,
+          headers: { get: name => {
+            if (name.toLowerCase() === 'content-type') return 'application/atom+xml';
+            if (status === 429 && name.toLowerCase() === 'retry-after') return '120';
+            return null;
+          } },
           body: {
             getReader: () => ({
               async read() {
@@ -197,7 +243,7 @@ test('production connection binds and advertises working arXiv inspection throug
     parent: path.dirname,
     normalize: path.normalize,
   };
-  const connection = await openProductionConnection({
+  const environment = {
     Zotero: minimalZotero(profileDirectory),
     IOUtils: ioUtils(),
     PathUtils: paths,
@@ -215,10 +261,14 @@ test('production connection binds and advertises working arXiv inspection throug
     cloneInto: value => structuredClone(value),
     noteWindow,
     reportError: error => { throw error; },
-  }, '0.2.0', bridgeDirectory, {
+  };
+  const previews = {
     inspectVisiblePreview: async () => ({ visible: false, reason: 'renderer_inactive' }),
+  };
+  const connection = await openProductionConnection(environment, '0.2.0', bridgeDirectory, previews, {
+    arxivAdmission: admission,
   });
-  t.after(() => connection.close());
+  connectionForCleanup = connection;
 
   const status = await publish(connection.subscription, {
     protocolVersion: 1,
@@ -248,5 +298,68 @@ test('production connection binds and advertises working arXiv inspection throug
   assert.equal(fetchCalls[0].init.redirect, 'manual');
   assert.equal(fetchCalls[0].init.credentials, 'omit');
 
+  const secondPending = publish(connection.subscription, {
+    protocolVersion: 1,
+    operationId: 'production.inspect-arxiv-2',
+    operation: 'inspect_arxiv',
+    profileId: connection.profileId,
+    payload: { url: 'https://arxiv.org/abs/2401.01234v2' },
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(fetchCalls.length, 1);
+  await clock.advance(2_999);
+  assert.equal(fetchCalls.length, 1);
+  await clock.advance(1);
+  const secondInspection = await secondPending;
+  assert.equal(secondInspection.state, 'succeeded');
+  assert.deepEqual(fetchCalls.map(call => call.startedAt), [0, 3_000]);
+
+  const ensurePending = publish(connection.subscription, {
+    protocolVersion: 1,
+    operationId: 'production.ensure-arxiv-1',
+    operation: 'ensure_arxiv_pdf',
+    profileId: connection.profileId,
+    authorization: {
+      kind: 'explicit_request',
+      scope: 'Import the inspected exact arXiv version into the personal library.',
+    },
+    payload: {
+      source: { arxivId: '2401.01234', version: 2 },
+      inspectionToken: secondInspection.data.inspectionToken,
+      selection: { kind: 'create' },
+    },
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(fetchCalls.length, 2);
+  await clock.advance(3_000);
+  const ensure = await ensurePending;
+  assert.equal(ensure.state, 'failed');
+  assert.equal(ensure.error.code, 'storage_error');
+  assert.equal(ensure.error.retryable, true);
+  assert.deepEqual(fetchCalls.map(call => call.startedAt), [0, 3_000, 6_000]);
+
   await connection.close();
+  connectionForCleanup = undefined;
+  const reconnected = await openProductionConnection(
+    environment,
+    '0.2.0',
+    bridgeDirectory,
+    previews,
+    { arxivAdmission: admission },
+  );
+  connectionForCleanup = reconnected;
+  const cooldown = await publish(reconnected.subscription, {
+    protocolVersion: 1,
+    operationId: 'production.inspect-arxiv-after-429',
+    operation: 'inspect_arxiv',
+    profileId: reconnected.profileId,
+    payload: { url: 'https://arxiv.org/abs/2401.01234v2' },
+  });
+  assert.equal(cooldown.state, 'failed');
+  assert.equal(cooldown.error.code, 'storage_error');
+  assert.equal(cooldown.error.retryable, true);
+  assert.match(cooldown.error.message, /120 seconds/u);
+  assert.equal(fetchCalls.length, 3, 'fresh IDs and reconnect must not bypass Retry-After');
+  await reconnected.close();
+  connectionForCleanup = undefined;
 });

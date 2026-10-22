@@ -2,6 +2,8 @@ import type {
   ArxivHttpPort,
   ArxivHttpResource,
   ArxivHttpResponse,
+  ArxivRequestAdmissionLease,
+  ArxivRequestAdmissionPort,
 } from "../../ports/arxiv.js";
 import { isValidArxivId } from "../../protocol/validation.js";
 import { ProtocolValidationError } from "../../protocol/validation.js";
@@ -32,12 +34,21 @@ export interface ArxivNetworkRequest {
   redirect: "manual";
   /** Drivers must enforce this ceiling while receiving, before allocating response chunks. */
   byteLimit: number;
+  /** Drivers must stop fetch and body reads when this signal aborts. */
   signal: AbortSignal;
 }
 
 /** Host-specific HTTP facilities adapt to this manual-redirect streaming shape. */
 export interface ArxivNetworkDriver {
   request(request: ArxivNetworkRequest): Promise<ArxivNetworkResponse>;
+}
+
+/** Typed driver failure used when a streaming ceiling is crossed before allocation. */
+export class ArxivNetworkLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ArxivNetworkLimitError";
+  }
 }
 
 export interface ArxivRetrieveOptions {
@@ -51,6 +62,8 @@ export interface BoundedArxivHttpOptions {
   maxRedirects?: number;
   now?: () => number;
   createAbortController?: () => AbortController;
+  admission?: ArxivRequestAdmissionPort;
+  lifecycleSignal?: AbortSignal;
 }
 
 interface AttemptRedirect {
@@ -218,11 +231,11 @@ function requireStreamingBody(
   return body as AsyncIterable<Uint8Array>;
 }
 
-function closeStreamingBody(body: AsyncIterable<Uint8Array>): void {
+async function closeStreamingBody(body: AsyncIterable<Uint8Array>): Promise<void> {
   try {
     const iterator = body[Symbol.asyncIterator]();
     if (typeof iterator.return === "function") {
-      void Promise.resolve(iterator.return()).catch(() => undefined);
+      await iterator.return();
     }
   } catch {
     // The response error remains authoritative; cleanup is best effort.
@@ -352,11 +365,12 @@ function statusFailure(
   }
   if (status === 429 || status === 503) {
     const delay = retryAfterSeconds(headers, now);
+    const guidance = delay === undefined ? "" : `; retry after ${String(delay)} seconds`;
     throw new ArxivAcquisitionError(
       "storage_error",
-      status === 429
+      (status === 429
         ? "The arXiv service rate-limited the request"
-        : "The arXiv service is temporarily unavailable",
+        : "The arXiv service is temporarily unavailable") + guidance,
       {
         stage,
         retryable: true,
@@ -379,6 +393,8 @@ export class BoundedArxivHttpAdapter implements ArxivHttpPort {
   readonly #maxRedirects: number;
   readonly #now: () => number;
   readonly #createAbortController: () => AbortController;
+  readonly #admission: ArxivRequestAdmissionPort;
+  readonly #lifecycleSignal: AbortSignal | undefined;
 
   constructor(driver: ArxivNetworkDriver, options: BoundedArxivHttpOptions = {}) {
     this.#driver = driver;
@@ -394,6 +410,12 @@ export class BoundedArxivHttpAdapter implements ArxivHttpPort {
     this.#maxRedirects = redirectLimit(options.maxRedirects ?? MAX_ARXIV_REDIRECTS);
     this.#now = options.now ?? Date.now;
     this.#createAbortController = options.createAbortController ?? (() => new AbortController());
+    this.#admission = options.admission ?? {
+      async acquire() {
+        return { defer() {}, release() {} };
+      },
+    };
+    this.#lifecycleSignal = options.lifecycleSignal;
   }
 
   async retrieve(
@@ -437,90 +459,97 @@ export class BoundedArxivHttpAdapter implements ArxivHttpPort {
   ): Promise<AttemptResult> {
     const stage = stageFor(resource);
     const limit = resource.kind === "metadata" ? this.#metadataByteLimit : this.#pdfByteLimit;
-    if (callerSignal?.aborted === true) {
+    if (callerSignal?.aborted === true || this.#lifecycleSignal?.aborted === true) {
       throw new ArxivAcquisitionError("storage_error", "The arXiv request was cancelled", {
         stage,
       });
     }
     const controller = this.#createAbortController();
     let timedOut = false;
-    let callerCancelled = false;
-    let rejectInterruption: ((reason: Error) => void) | undefined;
-    const interruption = new Promise<never>((_resolve, reject) => {
-      rejectInterruption = reject;
-    });
-    const onCallerAbort = (): void => {
-      callerCancelled = true;
+    let externallyCancelled = false;
+    let lease: ArxivRequestAdmissionLease | undefined;
+    const onExternalAbort = (): void => {
+      externallyCancelled = true;
       controller.abort();
-      rejectInterruption?.(new Error("caller cancellation"));
     };
-    callerSignal?.addEventListener("abort", onCallerAbort, { once: true });
+    const externalSignals = [callerSignal, this.#lifecycleSignal]
+      .filter((signal): signal is AbortSignal => signal !== undefined);
+    for (const signal of new Set(externalSignals)) {
+      signal.addEventListener("abort", onExternalAbort, { once: true });
+    }
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
-      rejectInterruption?.(new Error("attempt deadline"));
     }, this.#attemptTimeoutMs);
 
-    const work = this.#driver.request({
-      method: "GET",
-      url,
-      headers: Object.freeze({
-        Accept: resource.kind === "metadata" ? "application/atom+xml, application/xml" : "application/pdf",
-      }),
-      redirect: "manual",
-      byteLimit: limit,
-      signal: controller.signal,
-    }).then(async (response): Promise<AttemptResult> => {
-      const responseBody = requireStreamingBody(response.body, stage);
-      let finalUrl: URL;
-      try {
-        finalUrl = assertResourceUrl(response.url, resource);
-      } catch (error) {
-        closeStreamingBody(responseBody);
-        if (error instanceof ArxivAcquisitionError) {
-          throw new ArxivAcquisitionError(
-            error.code,
-            "The arXiv network driver returned an unsafe final response URL",
-            { stage, retryable: error.retryable },
-          );
+    try {
+      lease = await this.#admission.acquire({
+        kind: resource.kind,
+        signal: controller.signal,
+        maximumWaitMs: this.#attemptTimeoutMs,
+      });
+      if (controller.signal.aborted) throw new Error("request interrupted before dispatch");
+      const work = this.#driver.request({
+        method: "GET",
+        url,
+        headers: Object.freeze({
+          Accept: resource.kind === "metadata" ? "application/atom+xml, application/xml" : "application/pdf",
+        }),
+        redirect: "manual",
+        byteLimit: limit,
+        signal: controller.signal,
+      }).then(async (response): Promise<AttemptResult> => {
+        const responseBody = requireStreamingBody(response.body, stage);
+        let finalUrl: URL;
+        try {
+          finalUrl = assertResourceUrl(response.url, resource);
+        } catch (error) {
+          await closeStreamingBody(responseBody);
+          if (error instanceof ArxivAcquisitionError) {
+            throw new ArxivAcquisitionError(
+              error.code,
+              "The arXiv network driver returned an unsafe final response URL",
+              { stage, retryable: error.retryable },
+            );
+          }
+          throw error;
         }
-        throw error;
-      }
-      if (finalUrl.href !== new URL(url).href) {
-        closeStreamingBody(responseBody);
-        throw new ArxivAcquisitionError(
-          "storage_error",
-          "The arXiv network driver hid a redirect in the final response URL",
-          { stage },
-        );
-      }
-      if ([301, 302, 303, 307, 308].includes(response.status)) {
-        const location = response.headers.get("location");
-        if (location === null || location.trim() === "") {
-          closeStreamingBody(responseBody);
+        if (finalUrl.href !== new URL(url).href) {
+          await closeStreamingBody(responseBody);
           throw new ArxivAcquisitionError(
             "storage_error",
-            "The arXiv redirect did not include a Location header",
+            "The arXiv network driver hid a redirect in the final response URL",
             { stage },
           );
         }
-        closeStreamingBody(responseBody);
-        return { kind: "redirect", location };
-      }
-      if (response.status !== 200) {
-        closeStreamingBody(responseBody);
-        statusFailure(response.status, response.headers, stage, this.#now);
-      }
-      const body = await readBoundedBody(response, limit, stage, controller.signal);
-      return {
-        kind: "response",
-        response: { status: response.status, contentType: mediaType(response.headers), body },
-      };
-    });
-
-    try {
-      return await Promise.race([work, interruption]);
+        if ([301, 302, 303, 307, 308].includes(response.status)) {
+          const location = response.headers.get("location");
+          if (location === null || location.trim() === "") {
+            await closeStreamingBody(responseBody);
+            throw new ArxivAcquisitionError(
+              "storage_error",
+              "The arXiv redirect did not include a Location header",
+              { stage },
+            );
+          }
+          await closeStreamingBody(responseBody);
+          return { kind: "redirect", location };
+        }
+        if (response.status !== 200) {
+          await closeStreamingBody(responseBody);
+          statusFailure(response.status, response.headers, stage, this.#now);
+        }
+        const body = await readBoundedBody(response, limit, stage, controller.signal);
+        return {
+          kind: "response",
+          response: { status: response.status, contentType: mediaType(response.headers), body },
+        };
+      });
+      return await work;
     } catch (error) {
+      if (error instanceof ArxivAcquisitionError && error.retryAfterSeconds !== undefined) {
+        lease?.defer(error.retryAfterSeconds);
+      }
       if (timedOut) {
         throw new ArxivAcquisitionError(
           "storage_error",
@@ -528,10 +557,13 @@ export class BoundedArxivHttpAdapter implements ArxivHttpPort {
           { stage, retryable: true },
         );
       }
-      if (callerCancelled) {
+      if (externallyCancelled) {
         throw new ArxivAcquisitionError("storage_error", "The arXiv request was cancelled", {
           stage,
         });
+      }
+      if (error instanceof ArxivNetworkLimitError) {
+        throw new ArxivAcquisitionError("too_large", error.message, { stage });
       }
       if (error instanceof ArxivAcquisitionError || error instanceof ProtocolValidationError) {
         throw error;
@@ -543,8 +575,11 @@ export class BoundedArxivHttpAdapter implements ArxivHttpPort {
       );
     } finally {
       clearTimeout(timer);
-      callerSignal?.removeEventListener("abort", onCallerAbort);
+      for (const signal of new Set(externalSignals)) {
+        signal.removeEventListener("abort", onExternalAbort);
+      }
       controller.abort();
+      lease?.release();
     }
   }
 }

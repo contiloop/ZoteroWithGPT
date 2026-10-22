@@ -16,6 +16,7 @@ import {
   BoundedArxivPdfAcquisition,
   DigestArxivInspectionTokens,
   GeckoArxivNetworkDriver,
+  PoliteArxivRequestAdmission,
   type GeckoArxivNetworkEnvironment,
 } from "../adapters/arxiv/index.js";
 import { ZoteroAnchorResolver } from "../adapters/anchors/index.js";
@@ -28,6 +29,9 @@ import {
   FileBridgeTransport, GeckoFileBridgeFileSystem,
   type GeckoFileBridgeGlobals, type FileBridgeSubscription,
 } from "../adapters/file-bridge/index.js";
+import type {
+  ArxivRequestAdmissionPort,
+} from "../ports/arxiv.js";
 import type {
   FormattedPreviewVerificationPort,
   VisiblePreviewFailureReason,
@@ -66,6 +70,13 @@ export interface ViewerVerificationDependencies {
   nativeViewer: ZoteroViewerVerificationPort;
   reportError(error: unknown): void;
 }
+
+export interface ProductionConnectionOptions {
+  arxivAdmission?: ArxivRequestAdmissionPort;
+}
+
+/** Retains pacing and server cooldown evidence across ordinary reconnects. */
+const productionArxivAdmission = new PoliteArxivRequestAdmission();
 
 /** Adds optional formatted-preview evidence without weakening native fallback. */
 export function createViewerVerificationPort(
@@ -118,6 +129,7 @@ export async function openProductionConnection(
   version: string,
   directory: string,
   previews: FormattedPreviewVerificationPort,
+  options: ProductionConnectionOptions = {},
 ): Promise<{ profileId: string; subscription: FileBridgeSubscription; close(): Promise<void> }> {
   if (
     typeof environment.noteWindow.fetch !== "function" ||
@@ -128,6 +140,7 @@ export async function openProductionConnection(
   ) {
     throw new Error("The live Zotero host does not expose the required arXiv acquisition APIs");
   }
+  const lifecycleController = new environment.noteWindow.AbortController();
   const gate = new MutableZoteroAccessGate(true);
   const noteContent = new DomPurifyNativeNoteContentPolicy({ window: environment.noteWindow });
   const digest = new WebCryptoPayloadDigest(environment.crypto);
@@ -178,7 +191,11 @@ export async function openProductionConnection(
     new GeckoArxivNetworkDriver({
       fetch: (url, init) => environment.noteWindow.fetch(url, init),
     }),
-    { createAbortController: () => new environment.noteWindow.AbortController() },
+    {
+      createAbortController: () => new environment.noteWindow.AbortController(),
+      admission: options.arxivAdmission ?? productionArxivAdmission,
+      lifecycleSignal: lifecycleController.signal,
+    },
   );
   const source = new ArxivSourceAcquisition(http);
   const tokens = new DigestArxivInspectionTokens(digest);
@@ -224,6 +241,7 @@ export async function openProductionConnection(
         if (close !== undefined) return close;
         // Close mutation authority before awaiting transport shutdown.
         library.setEnabled(false);
+        lifecycleController.abort();
         try {
           close = subscription.close();
         } catch (error) {
@@ -234,6 +252,7 @@ export async function openProductionConnection(
     };
   } catch (error) {
     library.setEnabled(false);
+    lifecycleController.abort();
     throw error;
   }
 }

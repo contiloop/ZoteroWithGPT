@@ -1,7 +1,8 @@
-import type {
-  ArxivNetworkDriver,
-  ArxivNetworkRequest,
-  ArxivNetworkResponse,
+import {
+  ArxivNetworkLimitError,
+  type ArxivNetworkDriver,
+  type ArxivNetworkRequest,
+  type ArxivNetworkResponse,
 } from "./http-adapter.js";
 
 interface GeckoReadableStreamReader {
@@ -108,7 +109,9 @@ function streamedBody(
           if (!Number.isSafeInteger(total) || total > byteLimit) {
             finished = true;
             await cancelReader(reader, "arXiv response byte limit exceeded");
-            throw new Error(`The privileged arXiv response exceeded its ${String(byteLimit)} byte limit`);
+            throw new ArxivNetworkLimitError(
+              `The privileged arXiv response exceeded its ${String(byteLimit)} byte limit`,
+            );
           }
           try {
             return { done: false, value: normalizeChunk(result.value) };

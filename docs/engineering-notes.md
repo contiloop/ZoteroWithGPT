@@ -27,3 +27,15 @@ Reusing an observation ID returns old data even after the target changed. Use fr
 ## Extension metadata has host-specific requirements
 
 Zotero 10.0.6 rejected an otherwise built XPI without a truthy update URL. The package uses a reserved .invalid URL to meet that host requirement without inventing an updater. Check installation and manual-update behavior in the actual Plugins Manager; archive inspection alone does not prove installability.
+
+## Planned native keys require primary data initialization
+
+Assigning a planned key to a newly constructed Zotero item marks that data object as identified. Field and relation setters can then require loaded `primaryData`, even though the item has never been saved. The supported host sequence is to construct the item, set its library, assign the planned key, await the public `loadPrimaryData()` method, populate fields and relations, and save through the native transaction. Both arXiv parent and PDF attachment creation follow this sequence. Because the load is an asynchronous boundary, recheck authority, library ownership, current file evidence, and planned-key availability after it and before any field mutation.
+
+An actual pre-fix parent creation reached its first field setter without that load and raised Zotero's unloaded-primary-data exception before save; the SQLite transaction rolled back. Its durable operation history had already entered the prepared/running boundary and remains a terminal historical unknown. Source evidence about the rollback does not authorize rewriting that result, inferring absence from a search, or retrying the mutation under another identity.
+
+## Native annotation comments have a canonical form
+
+Zotero 10.0.6's public `annotationComment` setter applies `trim().normalize()`. A comment with leading or trailing whitespace, including an incidental terminal newline, or a decomposed Unicode sequence can therefore commit successfully but differ from the approved request during exact readback. One actual run exposed this boundary: the native annotation was visible with the complete substantive study content, while the operation correctly remained indeterminate because the stored comment omitted the request's final newline.
+
+Check `comment.trim().normalize() === comment` before invoking either native annotation create or update. Reject a mismatch before changing the item or durable marker. Clients prepare the exact NFC, boundary-clean candidate before authorization and operation-ID assignment; they do not silently trim meaningful content after approval. Interior blank lines, indentation, mathematics, and references remain byte-for-byte content for readback. A historical indeterminate write remains historical even when the representability rule explains its mismatch.

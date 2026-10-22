@@ -115,6 +115,12 @@ IDs; historical IDs return historical observations.
 
 - `invalid_request` or `unsupported_version`: validate the complete JSON
   against the packaged protocol-v1 schema and use only documented fields.
+- `invalid_request` saying Zotero cannot preserve an annotation comment
+  exactly: prepare the complete final comment in Unicode NFC and remove only
+  incidental leading or trailing transport whitespace, such as a file's final
+  newline. Preserve meaningful interior formatting. If preparation changes an
+  already approved body, review and authorize the exact prepared body under a
+  fresh operation ID; do not alter or retry the rejected historical request.
 - `permission_denied`: use the current profile ID; for a mutation, record the
   user's explicit request or approved proposal in `authorization`.
 - `duplicate_id_mismatch`: the operation ID already identifies different

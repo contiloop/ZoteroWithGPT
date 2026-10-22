@@ -214,6 +214,17 @@ not guess a rectangle.
 
 ## Save the requested records
 
+Before assigning an operation ID or publishing an annotation mutation, prepare
+the complete final annotation body in Unicode NFC with no leading or trailing
+whitespace. Exclude incidental transport or file terminators, including a final
+newline added only because a source file ends with one. Preserve every
+substantive interior newline, blank line, indentation, equation, and reference.
+Do not run a blind trim over meaningful approved content. If NFC composition or
+boundary cleanup changes a body that was already approved, review and authorize
+the exact prepared body and use a fresh operation ID. Zotero's native comment
+setter otherwise changes the value, so the extension rejects the mutation
+before writing rather than accepting a non-exact readback.
+
 The default destination for each requested question, explanation, proof, or
 reference set is a native passage-linked annotation. Use
 `create_annotation` with the resolved anchor and complete requested comment.

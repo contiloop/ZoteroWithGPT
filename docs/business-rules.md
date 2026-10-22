@@ -12,6 +12,8 @@ An update identifies an existing annotation or note and the revision just read. 
 
 The saved body limit applies to the complete result, including existing text, separators, and required safety encoding. Exceeding the limit rejects the operation without truncating content or moving it elsewhere. An existing rich note that cannot be preserved safely is rejected for append rather than repaired silently.
 
+An annotation comment must be exactly representable by Zotero's native setter: Unicode NFC with no leading or trailing whitespace. Prepare and approve that exact body before publication. Incidental file-boundary whitespace may be excluded during preparation, but substantive interior whitespace remains unchanged. If canonical preparation would alter an already approved body, obtain renewed approval and use a fresh operation identity; the extension rejects the unrepresentable body before native mutation instead of silently normalizing it.
+
 Generated explanations distinguish author claims, user questions, assistant interpretations, and unverified hypotheses. A sufficient-condition proof used for intuition must not be presented as a theorem established by the paper. References require actual source evidence rather than invented titles or URLs.
 
 ## Identity and outcomes

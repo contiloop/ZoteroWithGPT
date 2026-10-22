@@ -44,6 +44,12 @@ After Enable, the important paths are:
    `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` and the packaged request schema.
    Use a fresh ID for every new observation, including reads, status checks,
    and verification. Reusing an ID returns its recorded historical result.
+   Before assigning an annotation-mutation ID, prepare its complete final
+   comment in Unicode NFC with no leading or trailing whitespace. Exclude an
+   incidental file-terminator newline while preserving substantive interior
+   newlines and indentation. If this preparation changes an already approved
+   body, review and authorize the exact prepared body and use a fresh ID; do
+   not silently trim meaningful content.
 5. Publish it with a create-only atomic write at exactly:
 
    ```text

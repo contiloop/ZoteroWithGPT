@@ -138,6 +138,20 @@ export function validateArxivImportSelection(
         "The selected arXiv parent changed after inspection",
       );
     }
+    if (
+      candidates.some((inspected) => inspected.attachments.some(
+        (attachment) =>
+          typeof attachment.fingerprint === "string" &&
+          (evidence.expectedPdfFingerprint !== undefined
+            ? attachment.fingerprint === evidence.expectedPdfFingerprint
+            : attachment.identity === "verified" && attachment.version === source.version),
+      ))
+    ) {
+      throw new CoreOperationError(
+        "conflict",
+        "The inspected library already has the requested concrete arXiv PDF; inspect again",
+      );
+    }
     return;
   }
 

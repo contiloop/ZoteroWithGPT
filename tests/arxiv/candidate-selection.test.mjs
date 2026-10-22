@@ -97,6 +97,35 @@ test("explicit choice can select an inspected parent but cannot bypass it with c
   assert.equal(conflict.code, "conflict");
 });
 
+test("explicit attachment cannot duplicate an exact version or acquired bytes on another parent", async () => {
+  const selected = parent({ itemKey: "ITEM0001", itemRevision: "rev:1" });
+  const competing = parent({
+    itemKey: "ITEM0002",
+    itemRevision: "rev:2",
+    attachments: [attachment({
+      attachmentKey: "ATTACH02",
+      fingerprint: "sha256:matching",
+      identity: "unverified",
+      version: null,
+    })],
+  });
+  const matchingBytes = await captureError(async () => validateArxivImportSelection(
+    source,
+    [selected, competing],
+    { kind: "attach", itemKey: "ITEM0001", expectedItemRevision: "rev:1" },
+    { expectedPdfFingerprint: "sha256:matching" },
+  ));
+  assert.equal(matchingBytes.code, "conflict");
+
+  competing.attachments[0] = attachment({ attachmentKey: "ATTACH02" });
+  const matchingVersion = await captureError(async () => validateArxivImportSelection(
+    source,
+    [selected, competing],
+    { kind: "attach", itemKey: "ITEM0001", expectedItemRevision: "rev:1" },
+  ));
+  assert.equal(matchingVersion.code, "conflict");
+});
+
 test("explicit reuse still requires current exact verified attachment evidence", async () => {
   const candidates = [parent({ attachments: [
     attachment(),

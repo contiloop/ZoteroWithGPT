@@ -5,9 +5,12 @@ import { JSDOM } from "jsdom";
 
 import { CoreOperationError } from "../../dist/core/index.js";
 import {
+  ARXIV_PROVENANCE_RELATION_PREDICATE,
   MutableZoteroAccessGate,
   DomPurifyNativeNoteContentPolicy,
   OPERATION_RELATION_PREDICATE,
+  arxivAttachmentProvenance,
+  arxivParentProvenance,
   createZoteroNativeApi,
 } from "../../dist/adapters/zotero/index.js";
 
@@ -77,13 +80,36 @@ class FakeItem {
   get parentID() { return this.parentItemID; }
   set parentID(value) { this.parentItemID = value; }
   isPDFAttachment() { return this.itemType === "attachment"; }
-  isRegularItem() { return this.itemType === "journalArticle"; }
+  isRegularItem() { return this.itemType === "journalArticle" || this.itemType === "preprint"; }
   isAnnotation() { return this.itemType === "annotation"; }
   isNote() { return this.itemType === "note"; }
   isEditable() { return true; }
   getField(field) { return this.fields?.[field] ?? ""; }
+  setField(field, value) {
+    this.fields ??= {};
+    this.fields[field] = value;
+  }
   getDisplayTitle() { return this.fields?.title ?? ""; }
-  getFilePathAsync() { return Promise.resolve("/fixture/paper.pdf"); }
+  getCreators() { return structuredClone(this.creators ?? []); }
+  setCreators(creators) { this.creators = structuredClone(creators); }
+  getCollections() { return [...(this.collections ?? [])]; }
+  getAttachments(includeTrashed = false) {
+    return [...this.host.items.values()]
+      .filter((item) =>
+        item.isPDFAttachment() &&
+        item.parentItemID === this.id &&
+        (includeTrashed || item.deleted !== true),
+      )
+      .map((item) => item.id);
+  }
+  getFilePathAsync() {
+    if (this.filePath === false) return Promise.resolve(false);
+    if (typeof this.filePath === "string") return Promise.resolve(this.filePath);
+    if (typeof this.attachmentPath === "string" && this.attachmentPath.startsWith("storage:")) {
+      return Promise.resolve(`/storage/${this.key}/${this.attachmentPath.slice("storage:".length)}`);
+    }
+    return Promise.resolve("/fixture/paper.pdf");
+  }
   getAnnotations() {
     return [...this.host.items.values()].filter(
       (item) => item.isAnnotation() && item.parentItemID === this.id,
@@ -133,6 +159,9 @@ function fixtureEnvironment() {
     requireClonedAnnotationMeta: false,
     annotationMetaClones: 0,
     onLoadAllData: undefined,
+    generatedKeyNumber: 1,
+    diskByPath: new Map(),
+    stagedBytes: new Map(),
   };
   const paper = new FakeItem(host, "journalArticle", {
     id: 1,
@@ -207,7 +236,19 @@ function fixtureEnvironment() {
   const Zotero = {
     version: "10.0.6-fixture",
     Profile: { name: "Native fixture" },
+    Libraries: {
+      userLibraryID: 1,
+      getAll() { return [{ libraryID: 1, async waitForDataLoad() {} }]; },
+      get() { return { libraryID: 1, async waitForDataLoad() {} }; },
+    },
     Items: {
+      async getAll(libraryID, onlyTopLevel, includeDeleted) {
+        return [...host.items.values()].filter((item) =>
+          item.libraryID === libraryID &&
+          (!onlyTopLevel || item.isRegularItem()) &&
+          (includeDeleted || item.deleted !== true),
+        );
+      },
       async getByLibraryAndKeyAsync(libraryID, key) { return byLibraryKey(libraryID, key); },
       async getAsync(ids) {
         if (Array.isArray(ids)) return ids.map((id) => host.items.get(id)).filter(Boolean);
@@ -217,10 +258,21 @@ function fixtureEnvironment() {
     },
     Reader: {
       _readers: [reader],
-      async open() { return reader; },
+      async open(itemID) {
+        if (itemID === reader.itemID) return reader;
+        return { ...reader, itemID, close() {} };
+      },
+    },
+    Attachments: {
+      LINK_MODE_IMPORTED_FILE: 0,
+      getStorageDirectory(item) { return { path: `/storage/${item.key}` }; },
     },
     API: { getLibraryPrefix() { return "library"; } },
-    DataObjectUtilities: { generateKey() { return "ANN00001"; } },
+    DataObjectUtilities: {
+      generateKey() {
+        return `ANN${String(host.generatedKeyNumber++).padStart(5, "0")}`;
+      },
+    },
     Annotations: {
       async saveFromJSON(parent, json) {
         const item = new FakeItem(host, "annotation", {
@@ -263,7 +315,14 @@ function fixtureEnvironment() {
     env: {
       Zotero,
       noteContent: new DomPurifyNativeNoteContentPolicy({ window: new JSDOM("").window }),
-      IOUtils: { async read() { return Uint8Array.from(host.diskBytes); } },
+      IOUtils: {
+        async read(path) {
+          const value = host.diskByPath.get(path);
+          if (value !== undefined) return Uint8Array.from(value);
+          if (path === "/fixture/paper.pdf") return Uint8Array.from(host.diskBytes);
+          throw new Error("fixture file missing");
+        },
+      },
       crypto: webcrypto,
       cloneInto(value, target) {
         if (target === reader._internalReader._primaryView._iframeWindow) {
@@ -859,4 +918,190 @@ test("native child-note writes reject noncanonical active content before save", 
     [...host.items.values()].filter((candidate) => candidate.isNote()).length,
     0,
   );
+});
+
+const arxivSource = {
+  arxivId: "2401.01234",
+  version: 2,
+  abstractUrl: "https://arxiv.org/abs/2401.01234v2",
+  pdfUrl: "https://arxiv.org/pdf/2401.01234v2",
+  metadata: {
+    title: "Native arXiv fixture",
+    authors: ["Ada Example", "Grace Example"],
+    published: "2024-01-03T00:00:00Z",
+    updated: "2024-01-04T00:00:00Z",
+    abstract: "Native fixture abstract",
+    doi: "10.1000/native-fixture",
+  },
+};
+
+test("native arXiv inspection finds every canonical manual parent and keeps missing PDFs conservative", async () => {
+  const { env, host } = fixtureEnvironment();
+  const manual = new FakeItem(host, "journalArticle", {
+    id: host.nextId++,
+    key: "MANUAL01",
+    fields: {
+      title: "Human-authored title",
+      extra: "arXiv:2401.01234\nversion: 2",
+      url: "",
+    },
+  });
+  const exactPdf = new FakeItem(host, "attachment", {
+    id: host.nextId++,
+    key: "MANPDF01",
+    parentItemID: manual.id,
+    attachmentContentType: "application/pdf",
+    fields: { title: "Manual PDF", url: "https://arxiv.org/pdf/2401.01234v2" },
+  });
+  const missingPdf = new FakeItem(host, "attachment", {
+    id: host.nextId++,
+    key: "MISSING1",
+    parentItemID: manual.id,
+    attachmentContentType: "application/pdf",
+    filePath: false,
+    fields: { title: "Missing PDF", url: "https://arxiv.org/pdf/2401.01234v2" },
+  });
+  const relationOnly = new FakeItem(host, "journalArticle", {
+    id: host.nextId++,
+    key: "RELATION1",
+    fields: {
+      title: "Relation-recognized import",
+      url: "https://arxiv.org/abs/9999.99999v1",
+    },
+  });
+  relationOnly.addRelation(
+    ARXIV_PROVENANCE_RELATION_PREDICATE,
+    arxivParentProvenance(arxivSource),
+  );
+  const titleOnly = new FakeItem(host, "journalArticle", {
+    id: host.nextId++,
+    key: "TITLEONLY",
+    fields: { title: arxivSource.metadata.title },
+  });
+  const attachmentOnly = new FakeItem(host, "journalArticle", {
+    id: host.nextId++,
+    key: "CHILDURL1",
+    fields: { title: "Recognized from its manual attachment URL" },
+  });
+  const attachmentOnlyPdf = new FakeItem(host, "attachment", {
+    id: host.nextId++,
+    key: "CHILDPDF",
+    parentItemID: attachmentOnly.id,
+    attachmentContentType: "application/pdf",
+    fields: { title: "Manual URL PDF", url: "https://arxiv.org/pdf/2401.01234v2" },
+  });
+  for (const item of [
+    manual,
+    exactPdf,
+    missingPdf,
+    relationOnly,
+    titleOnly,
+    attachmentOnly,
+    attachmentOnlyPdf,
+  ]) {
+    host.items.set(item.id, item);
+  }
+  const native = createZoteroNativeApi(env);
+
+  const inspection = await native.inspectArxiv(arxivSource);
+
+  assert.deepEqual(inspection.candidates.map((candidate) => candidate.itemKey), [
+    "CHILDURL1",
+    "MANUAL01",
+    "RELATION1",
+  ]);
+  const candidate = inspection.candidates.find((entry) => entry.itemKey === "MANUAL01");
+  assert.equal(candidate.title, "Human-authored title");
+  assert.equal(candidate.attachments.length, 2);
+  assert.equal(candidate.attachments.find((entry) => entry.attachmentKey === "MANPDF01").identity, "verified");
+  assert.equal(candidate.attachments.find((entry) => entry.attachmentKey === "MANPDF01").version, 2);
+  assert.equal(candidate.attachments.find((entry) => entry.attachmentKey === "MISSING1").fingerprint, null);
+  assert.equal(candidate.attachments.find((entry) => entry.attachmentKey === "MISSING1").identity, "unverified");
+  const childUrlCandidate = inspection.candidates.find((entry) => entry.itemKey === "CHILDURL1");
+  assert.equal(childUrlCandidate.attachments[0].identity, "verified");
+  assert.equal(childUrlCandidate.attachments[0].version, 2);
+  assert.equal(inspection.candidates.some((entry) => entry.itemKey === "TITLEONLY"), false);
+});
+
+test("native arXiv creation commits prospective identities, installs create-only bytes, and confirms exact readback", async () => {
+  const { env, host } = fixtureEnvironment();
+  const gate = new MutableZoteroAccessGate(true);
+  const stagedBytes = new Uint8Array([37, 80, 68, 70, 45, 10, 20, 30]);
+  const digest = await webcrypto.subtle.digest("SHA-256", stagedBytes);
+  const fingerprint = `sha256:${[...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")}`;
+  const installs = [];
+  env.accessGate = gate;
+  env.arxivStaging = {
+    async installCreateOnly(stagingId, destination, fileName, assertAuthorized) {
+      installs.push({ stagingId, destination, fileName });
+      assert.equal(typeof assertAuthorized, "function");
+      assertAuthorized();
+      const path = `${destination}/${fileName}`;
+      assert.equal(host.diskByPath.has(path), false);
+      host.diskByPath.set(path, Uint8Array.from(stagedBytes));
+      host.readerBytes = Uint8Array.from(stagedBytes);
+    },
+  };
+  const native = createZoteroNativeApi(env);
+  const fence = native.captureArxivAccessFence();
+  const before = await native.inspectArxiv(arxivSource);
+  assert.deepEqual(before.candidates, []);
+  const plan = await native.planArxivImportKeys(true);
+  assert.notEqual(plan.itemKey, plan.attachmentKey);
+  const marker = "urn:zotero-ai-research-companion:operation:native-arxiv:digest";
+
+  const parent = await native.createArxivParent({
+    source: arxivSource,
+    itemKey: plan.itemKey,
+    operationMarker: marker,
+    parentProvenance: arxivParentProvenance(arxivSource),
+    expectedCandidates: before.candidates,
+    accessFence: fence,
+  });
+  assert.equal(parent.metadataMatchesSource, true);
+  const parentItem = [...host.items.values()].find((item) => item.key === plan.itemKey);
+  assert.deepEqual(parentItem.getCollections(), []);
+  assert.equal(parentItem.getField("title"), arxivSource.metadata.title);
+  assert.deepEqual(parentItem.getCreators().map((creator) => creator.name), arxivSource.metadata.authors);
+
+  const afterParent = await native.inspectArxiv(arxivSource);
+  await native.createArxivAttachment({
+    source: arxivSource,
+    itemKey: plan.itemKey,
+    attachmentKey: plan.attachmentKey,
+    operationMarker: marker,
+    attachmentProvenance: arxivAttachmentProvenance(arxivSource, fingerprint),
+    expectedCandidates: afterParent.candidates,
+    accessFence: fence,
+  });
+  const afterAttachment = await native.inspectArxiv(arxivSource);
+  const installed = await native.installArxivPdf({
+    source: arxivSource,
+    itemKey: plan.itemKey,
+    attachmentKey: plan.attachmentKey,
+    stagedPdf: {
+      stagingId: "owned-native-stage",
+      source: { arxivId: arxivSource.arxivId, version: arxivSource.version },
+      fingerprint,
+      byteLength: stagedBytes.byteLength,
+      pageCount: 1,
+    },
+    expectedCandidates: afterAttachment.candidates,
+    accessFence: fence,
+  });
+
+  assert.equal(installed.fingerprint, fingerprint);
+  assert.equal(installed.readable, true);
+  assert.equal(installed.pageCount, 1);
+  assert.equal(installed.identity, "verified");
+  assert.equal(installed.version, 2);
+  assert.deepEqual(installed.operationMarkers, [marker]);
+  assert.deepEqual(installs, [{
+    stagingId: "owned-native-stage",
+    destination: `/storage/${plan.attachmentKey}`,
+    fileName: "arxiv-2401.01234-v2.pdf",
+  }]);
+  assert.equal(host.items.get(1).getDisplayTitle(), "Fixture paper");
 });

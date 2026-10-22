@@ -187,7 +187,14 @@ export class OperationCoordinator {
           };
     }
 
-    return (await this.#finish(running, outcome)).response;
+    // Native import stages can checkpoint additional recovery evidence while
+    // the executor is running. Reload so the terminal transition preserves
+    // that evidence instead of replacing it with the pre-execution snapshot.
+    const latest = await this.#store.load(running.operationId);
+    if (latest === undefined || latest.state !== "running") {
+      throw new Error("The running operation disappeared before its terminal transition");
+    }
+    return (await this.#finish(latest, outcome)).response;
   }
 
   /**
@@ -240,14 +247,18 @@ export class OperationCoordinator {
     recovery: OperationRecoveryPort,
   ): Promise<OperationRecord> {
     this.#assertRecordProfile(record, connectedProfileId);
-    if (!record.mutation || record.profileId === null) {
-      const outcome = await recovery.reconcile(record);
-      return this.#finish(record, outcome);
+    const outcome = !record.mutation || record.profileId === null
+      ? await recovery.reconcile(record)
+      : await this.#serializer.runExclusive(record.profileId, () =>
+          recovery.reconcile(record),
+        );
+    // Recovery may promote durable native evidence after exact readback. Use
+    // that checkpoint in the terminal transition just as live execution does.
+    const latest = await this.#store.load(record.operationId);
+    if (latest === undefined || latest.state !== "running") {
+      throw new Error("The running operation disappeared during native reconciliation");
     }
-    const outcome = await this.#serializer.runExclusive(record.profileId, () =>
-      recovery.reconcile(record),
-    );
-    return this.#finish(record, outcome);
+    return this.#finish(latest, outcome);
   }
 
   async #rejectInterruptedQueued(

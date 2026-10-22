@@ -162,6 +162,42 @@ test("Atom and arXiv fields are selected by their in-scope namespace URI", async
   assert.equal("doi" in withoutForeignDoi.metadata, false);
 });
 
+test("namespace-heavy siblings retain one shared inherited scope", () => {
+  const prefixCount = 512;
+  const childCount = 512;
+  const declarations = Array.from(
+    { length: prefixCount },
+    (_unused, index) => `xmlns:p${String(index)}="urn:test:${String(index)}"`,
+  ).join(" ");
+  const children = "<entry/>".repeat(childCount);
+  const root = parseSafeXml(
+    `<feed xmlns="http://www.w3.org/2005/Atom" ${declarations}>${children}</feed>`,
+  );
+
+  const seen = new Set();
+  const pending = [root];
+  let retainedMapEntries = 0;
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (value === null || typeof value !== "object" || seen.has(value)) continue;
+    seen.add(value);
+    if (value instanceof Map) {
+      retainedMapEntries += value.size;
+      for (const [key, entry] of value) pending.push(key, entry);
+    } else if (Array.isArray(value)) {
+      pending.push(...value);
+    } else {
+      pending.push(...Object.values(value));
+    }
+  }
+
+  assert.equal(root.contents.filter((entry) => typeof entry === "object").length, childCount);
+  assert.ok(
+    retainedMapEntries <= prefixCount * 3,
+    `namespace scopes retained ${String(retainedMapEntries)} map entries`,
+  );
+});
+
 test("XML rejects normalized tag whitespace and illegal raw characters", async () => {
   const malformedEntry = new TextDecoder().decode(atomFeed([atomEntry()]))
     .replace("<entry>", "< entry>");

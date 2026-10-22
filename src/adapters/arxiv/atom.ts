@@ -2,9 +2,14 @@ interface XmlElement {
   name: string;
   localName: string;
   namespaceUri: string | null;
-  namespaceBindings: ReadonlyMap<string, string>;
+  namespaceScope: NamespaceScope;
   attributes: ReadonlyMap<string, string>;
   contents: Array<string | XmlElement>;
+}
+
+interface NamespaceScope {
+  parent?: NamespaceScope;
+  bindings: ReadonlyMap<string, string | null>;
 }
 
 const XML_NAME = /^[A-Za-z_][A-Za-z0-9_.:-]*/u;
@@ -15,6 +20,9 @@ const ATOM_NAMESPACE = "http://www.w3.org/2005/Atom";
 const ARXIV_ATOM_NAMESPACE = "http://arxiv.org/schemas/atom";
 const XML_NAMESPACE = "http://www.w3.org/XML/1998/namespace";
 const XMLNS_NAMESPACE = "http://www.w3.org/2000/xmlns/";
+const ROOT_NAMESPACE_SCOPE: NamespaceScope = {
+  bindings: new Map([["xml", XML_NAMESPACE]]),
+};
 
 function validXmlCodePoint(codePoint: number): boolean {
   return (
@@ -66,6 +74,17 @@ function qualifiedName(value: string): QualifiedName {
     throw new Error("invalid XML qualified name");
   }
   return { prefix, localName };
+}
+
+function resolveNamespace(scope: NamespaceScope, prefix: string): string | undefined {
+  let current: NamespaceScope | undefined = scope;
+  while (current !== undefined) {
+    if (current.bindings.has(prefix)) {
+      return current.bindings.get(prefix) ?? undefined;
+    }
+    current = current.parent;
+  }
+  return undefined;
 }
 
 function decodeEntity(entity: string): string {
@@ -174,14 +193,14 @@ function parseStartTag(source: string): ParsedStartTag {
 }
 
 function elementFromTag(parsed: ParsedStartTag, parent: XmlElement | undefined): XmlElement {
-  const namespaceBindings = new Map(parent?.namespaceBindings ?? [["xml", XML_NAMESPACE]]);
+  const parentScope = parent?.namespaceScope ?? ROOT_NAMESPACE_SCOPE;
+  const localBindings = new Map<string, string | null>();
   for (const [name, value] of parsed.attributes) {
     if (name === "xmlns") {
       if (value === XMLNS_NAMESPACE || value === XML_NAMESPACE) {
         throw new Error("invalid default XML namespace declaration");
       }
-      if (value === "") namespaceBindings.delete("");
-      else namespaceBindings.set("", value);
+      localBindings.set("", value === "" ? null : value);
       continue;
     }
     const attributeName = qualifiedName(name);
@@ -195,14 +214,17 @@ function elementFromTag(parsed: ParsedStartTag, parent: XmlElement | undefined):
     ) {
       throw new Error("invalid XML namespace declaration");
     }
-    namespaceBindings.set(attributeName.localName, value);
+    localBindings.set(attributeName.localName, value);
   }
+  const namespaceScope = localBindings.size === 0
+    ? parentScope
+    : { parent: parentScope, bindings: localBindings };
 
   const name = qualifiedName(parsed.name);
   if (name.prefix === "xmlns") throw new Error("elements cannot use the xmlns prefix");
   const namespaceUri = name.prefix === undefined
-    ? namespaceBindings.get("") ?? null
-    : namespaceBindings.get(name.prefix);
+    ? resolveNamespace(namespaceScope, "") ?? null
+    : resolveNamespace(namespaceScope, name.prefix);
   if (name.prefix !== undefined && namespaceUri === undefined) {
     throw new Error("XML element uses an unbound namespace prefix");
   }
@@ -214,7 +236,7 @@ function elementFromTag(parsed: ParsedStartTag, parent: XmlElement | undefined):
     if (attributeName.prefix === "xmlns") continue;
     const attributeNamespace = attributeName.prefix === undefined
       ? ""
-      : namespaceBindings.get(attributeName.prefix);
+      : resolveNamespace(namespaceScope, attributeName.prefix);
     if (attributeName.prefix !== undefined && attributeNamespace === undefined) {
       throw new Error("XML attribute uses an unbound namespace prefix");
     }
@@ -227,7 +249,7 @@ function elementFromTag(parsed: ParsedStartTag, parent: XmlElement | undefined):
     name: parsed.name,
     localName: name.localName,
     namespaceUri: namespaceUri ?? null,
-    namespaceBindings,
+    namespaceScope,
     attributes: parsed.attributes,
     contents: [],
   };

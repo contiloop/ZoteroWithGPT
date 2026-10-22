@@ -21,7 +21,8 @@ export interface ArxivNetworkResponse {
   url: string;
   status: number;
   headers: ArxivNetworkHeaders;
-  body: Uint8Array | AsyncIterable<Uint8Array>;
+  /** Streaming only: a driver must never allocate the complete response before returning. */
+  body: AsyncIterable<Uint8Array>;
 }
 
 export interface ArxivNetworkRequest {
@@ -29,6 +30,8 @@ export interface ArxivNetworkRequest {
   url: string;
   headers: Readonly<Record<string, string>>;
   redirect: "manual";
+  /** Drivers must enforce this ceiling while receiving, before allocating response chunks. */
+  byteLimit: number;
   signal: AbortSignal;
 }
 
@@ -196,20 +199,43 @@ function contentLength(headers: ArxivNetworkHeaders, stage: ArxivAcquisitionStag
   return value;
 }
 
+function requireStreamingBody(
+  body: unknown,
+  stage: ArxivAcquisitionStage,
+): AsyncIterable<Uint8Array> {
+  if (
+    body instanceof Uint8Array ||
+    body === null ||
+    typeof body !== "object" ||
+    typeof (body as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] !== "function"
+  ) {
+    throw new ArxivAcquisitionError(
+      "storage_error",
+      "The arXiv network driver must return a streamed binary response body",
+      { stage },
+    );
+  }
+  return body as AsyncIterable<Uint8Array>;
+}
+
+function closeStreamingBody(body: AsyncIterable<Uint8Array>): void {
+  try {
+    const iterator = body[Symbol.asyncIterator]();
+    if (typeof iterator.return === "function") {
+      void Promise.resolve(iterator.return()).catch(() => undefined);
+    }
+  } catch {
+    // The response error remains authoritative; cleanup is best effort.
+  }
+}
+
 async function readBoundedBody(
   response: ArxivNetworkResponse,
   limit: number,
   stage: ArxivAcquisitionStage,
+  signal: AbortSignal,
 ): Promise<Uint8Array> {
-  const declared = contentLength(response.headers, stage);
-  if (declared !== undefined && declared > limit) {
-    throw new ArxivAcquisitionError(
-      "too_large",
-      `The arXiv response exceeds the ${String(limit)} byte limit`,
-      { stage },
-    );
-  }
-
+  const body = requireStreamingBody(response.body, stage);
   const chunks: Uint8Array[] = [];
   let total = 0;
   const append = (chunk: Uint8Array): void => {
@@ -231,16 +257,55 @@ async function readBoundedBody(
     if (chunk.byteLength > 0) chunks.push(Uint8Array.from(chunk));
   };
 
-  if (response.body instanceof Uint8Array) {
-    append(response.body);
-  } else if (response.body !== null && Symbol.asyncIterator in Object(response.body)) {
-    for await (const chunk of response.body) append(chunk);
-  } else {
-    throw new ArxivAcquisitionError(
-      "storage_error",
-      "The arXiv network driver did not return a binary response body",
-      { stage },
-    );
+  let iterator: AsyncIterator<Uint8Array> | undefined;
+  let streamFinished = false;
+  let declared: number | undefined;
+  try {
+    declared = contentLength(response.headers, stage);
+    if (declared !== undefined && declared > limit) {
+      throw new ArxivAcquisitionError(
+        "too_large",
+        `The arXiv response exceeds the ${String(limit)} byte limit`,
+        { stage },
+      );
+    }
+    iterator = body[Symbol.asyncIterator]();
+    if (typeof iterator.next !== "function") {
+      throw new ArxivAcquisitionError(
+        "storage_error",
+        "The arXiv network driver returned an invalid response stream",
+        { stage },
+      );
+    }
+    while (true) {
+      if (signal.aborted) throw new Error("response stream interrupted");
+      let onAbort: (() => void) | undefined;
+      const interrupted = new Promise<never>((_resolve, reject) => {
+        onAbort = () => reject(new Error("response stream interrupted"));
+        signal.addEventListener("abort", onAbort, { once: true });
+      });
+      let result: IteratorResult<Uint8Array>;
+      try {
+        result = await Promise.race([iterator.next(), interrupted]);
+      } finally {
+        if (onAbort !== undefined) signal.removeEventListener("abort", onAbort);
+      }
+      if (result.done === true) {
+        streamFinished = true;
+        break;
+      }
+      append(result.value);
+    }
+  } finally {
+    if (!streamFinished && iterator !== undefined && typeof iterator.return === "function") {
+      try {
+        await iterator.return();
+      } catch {
+        // The acquisition error remains authoritative; cleanup is best effort.
+      }
+    } else if (!streamFinished && iterator === undefined) {
+      closeStreamingBody(body);
+    }
   }
 
   if (declared !== undefined && declared !== total) {
@@ -371,6 +436,7 @@ export class BoundedArxivHttpAdapter implements ArxivHttpPort {
     callerSignal: AbortSignal | undefined,
   ): Promise<AttemptResult> {
     const stage = stageFor(resource);
+    const limit = resource.kind === "metadata" ? this.#metadataByteLimit : this.#pdfByteLimit;
     if (callerSignal?.aborted === true) {
       throw new ArxivAcquisitionError("storage_error", "The arXiv request was cancelled", {
         stage,
@@ -402,12 +468,15 @@ export class BoundedArxivHttpAdapter implements ArxivHttpPort {
         Accept: resource.kind === "metadata" ? "application/atom+xml, application/xml" : "application/pdf",
       }),
       redirect: "manual",
+      byteLimit: limit,
       signal: controller.signal,
     }).then(async (response): Promise<AttemptResult> => {
+      const responseBody = requireStreamingBody(response.body, stage);
       let finalUrl: URL;
       try {
         finalUrl = assertResourceUrl(response.url, resource);
       } catch (error) {
+        closeStreamingBody(responseBody);
         if (error instanceof ArxivAcquisitionError) {
           throw new ArxivAcquisitionError(
             error.code,
@@ -418,6 +487,7 @@ export class BoundedArxivHttpAdapter implements ArxivHttpPort {
         throw error;
       }
       if (finalUrl.href !== new URL(url).href) {
+        closeStreamingBody(responseBody);
         throw new ArxivAcquisitionError(
           "storage_error",
           "The arXiv network driver hid a redirect in the final response URL",
@@ -427,19 +497,21 @@ export class BoundedArxivHttpAdapter implements ArxivHttpPort {
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         const location = response.headers.get("location");
         if (location === null || location.trim() === "") {
+          closeStreamingBody(responseBody);
           throw new ArxivAcquisitionError(
             "storage_error",
             "The arXiv redirect did not include a Location header",
             { stage },
           );
         }
+        closeStreamingBody(responseBody);
         return { kind: "redirect", location };
       }
       if (response.status !== 200) {
+        closeStreamingBody(responseBody);
         statusFailure(response.status, response.headers, stage, this.#now);
       }
-      const limit = resource.kind === "metadata" ? this.#metadataByteLimit : this.#pdfByteLimit;
-      const body = await readBoundedBody(response, limit, stage);
+      const body = await readBoundedBody(response, limit, stage, controller.signal);
       return {
         kind: "response",
         response: { status: response.status, contentType: mediaType(response.headers), body },

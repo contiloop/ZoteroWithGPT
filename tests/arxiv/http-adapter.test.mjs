@@ -4,18 +4,19 @@ import test from "node:test";
 import {
   BoundedArxivHttpAdapter,
   MAX_ARXIV_METADATA_BYTES,
+  MAX_ARXIV_PDF_BYTES,
 } from "../../dist/adapters/arxiv/index.js";
-import { captureError, encoder, QueueDriver, response } from "./helpers.mjs";
+import { captureError, encoder, QueueDriver, response, stream } from "./helpers.mjs";
 
 test("typed resources construct fixed HTTPS metadata and PDF requests", async () => {
   const driver = new QueueDriver()
     .enqueue(response(
       "https://export.arxiv.org/api/query?id_list=hep-th%2F9901001v3&max_results=1",
-      { body: encoder.encode("metadata") },
+      { body: stream(encoder.encode("metadata")) },
     ))
     .enqueue(response("https://arxiv.org/pdf/2401.01234v2", {
       contentType: "application/pdf",
-      body: encoder.encode("pdf"),
+      body: stream(encoder.encode("pdf")),
     }));
   const adapter = new BoundedArxivHttpAdapter(driver);
 
@@ -30,6 +31,32 @@ test("typed resources construct fixed HTTPS metadata and PDF requests", async ()
     "https://arxiv.org/pdf/2401.01234v2",
   ]);
   assert.ok(driver.requests.every(({ redirect }) => redirect === "manual"));
+  assert.deepEqual(driver.requests.map(({ byteLimit }) => byteLimit), [
+    MAX_ARXIV_METADATA_BYTES,
+    MAX_ARXIV_PDF_BYTES,
+  ]);
+});
+
+test("the network boundary accepts only streamed bodies and reassembles bounded chunks", async () => {
+  const url = "https://export.arxiv.org/api/query?id_list=2401.01234&max_results=1";
+  const streamed = new QueueDriver().enqueue(response(url, {
+    body: stream(encoder.encode("bounded "), encoder.encode("metadata")),
+  }));
+  const result = await new BoundedArxivHttpAdapter(streamed).retrieve({
+    kind: "metadata",
+    reference: { arxivId: "2401.01234" },
+  });
+  assert.equal(new TextDecoder().decode(result.body), "bounded metadata");
+
+  const buffered = new QueueDriver().enqueue(response(url, {
+    body: encoder.encode("already allocated"),
+  }));
+  const error = await captureError(() => new BoundedArxivHttpAdapter(buffered).retrieve({
+    kind: "metadata",
+    reference: { arxivId: "2401.01234" },
+  }));
+  assert.equal(error.code, "storage_error");
+  assert.match(error.message, /stream/i);
 });
 
 test("every redirect and final response URL is checked against the typed resource", async () => {
@@ -37,7 +64,7 @@ test("every redirect and final response URL is checked against the typed resourc
   const redirected = "https://arxiv.org/api/query?id_list=2401.01234&max_results=1";
   const allowed = new QueueDriver()
     .enqueue(response(initial, { status: 302, headers: { location: redirected } }))
-    .enqueue(response(redirected, { body: encoder.encode("ok") }));
+    .enqueue(response(redirected, { body: stream(encoder.encode("ok")) }));
   await new BoundedArxivHttpAdapter(allowed).retrieve({
     kind: "metadata",
     reference: { arxivId: "2401.01234" },
@@ -67,7 +94,7 @@ test("every redirect and final response URL is checked against the typed resourc
 
   const hiddenRedirect = new QueueDriver().enqueue(response(
     "https://evil.example/api/query?id_list=2401.01234&max_results=1",
-    { body: encoder.encode("unexpected") },
+    { body: stream(encoder.encode("unexpected")) },
   ));
   const finalError = await captureError(() => new BoundedArxivHttpAdapter(hiddenRedirect).retrieve({
     kind: "metadata",
@@ -126,7 +153,7 @@ test("declared, streamed, and truncated bodies fail within bounded allocation", 
 
   const truncated = new QueueDriver().enqueue(response(url, {
     headers: { "content-length": 10 },
-    body: encoder.encode("short"),
+    body: stream(encoder.encode("short")),
   }));
   error = await captureError(() => new BoundedArxivHttpAdapter(truncated).retrieve({
     kind: "metadata",
@@ -138,7 +165,7 @@ test("declared, streamed, and truncated bodies fail within bounded allocation", 
   const pdfUrl = "https://arxiv.org/pdf/2401.01234v2";
   const pdf = new QueueDriver().enqueue(response(pdfUrl, {
     contentType: "application/pdf",
-    body: encoder.encode("12345678"),
+    body: stream(encoder.encode("12345678")),
   }));
   error = await captureError(() => new BoundedArxivHttpAdapter(pdf, {
     pdfByteLimit: 7,
@@ -169,6 +196,51 @@ test("deadline and caller cancellation stop an in-flight network attempt", async
   assert.match(error.message, /cancel/i);
 });
 
+test("deadline and cancellation close an in-flight response stream", async () => {
+  const url = "https://export.arxiv.org/api/query?id_list=2401.01234&max_results=1";
+  const stalled = () => {
+    let closed = false;
+    const body = {
+      [Symbol.asyncIterator]() {
+        return {
+          next() {
+            return new Promise(() => {});
+          },
+          async return() {
+            closed = true;
+            return { done: true };
+          },
+        };
+      },
+    };
+    return { body, wasClosed: () => closed };
+  };
+
+  const deadlineStream = stalled();
+  let error = await captureError(() => new BoundedArxivHttpAdapter(
+    new QueueDriver().enqueue(response(url, { body: deadlineStream.body })),
+    { attemptTimeoutMs: 5 },
+  ).retrieve({ kind: "metadata", reference: { arxivId: "2401.01234" } }));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(error.message, /deadline/i);
+  assert.equal(deadlineStream.wasClosed(), true);
+
+  const cancelledStream = stalled();
+  const controller = new AbortController();
+  const pending = new BoundedArxivHttpAdapter(
+    new QueueDriver().enqueue(response(url, { body: cancelledStream.body })),
+  ).retrieve(
+    { kind: "metadata", reference: { arxivId: "2401.01234" } },
+    { signal: controller.signal },
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  controller.abort();
+  error = await captureError(() => pending);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(error.message, /cancel/i);
+  assert.equal(cancelledStream.wasClosed(), true);
+});
+
 test("HTTP 429 exposes Retry-After without an automatic retry", async () => {
   const url = "https://export.arxiv.org/api/query?id_list=2401.01234&max_results=1";
   const driver = new QueueDriver().enqueue(response(url, {
@@ -192,7 +264,7 @@ test("access denial and challenge statuses are reported without retry or fallbac
     const driver = new QueueDriver().enqueue(response(url, {
       status,
       contentType: "text/html",
-      body: encoder.encode("challenge"),
+      body: stream(encoder.encode("challenge")),
     }));
     const error = await captureError(() => new BoundedArxivHttpAdapter(driver).retrieve({
       kind: "pdf",

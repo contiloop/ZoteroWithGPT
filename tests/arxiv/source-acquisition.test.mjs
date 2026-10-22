@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ArxivSourceAcquisition } from "../../dist/adapters/arxiv/index.js";
+import { parseSafeXml } from "../../dist/adapters/arxiv/atom.js";
 import { atomEntry, atomFeed, captureError, encoder } from "./helpers.mjs";
 
 class HttpPort {
@@ -115,4 +116,92 @@ test("non-Atom content and invalid required metadata are not accepted", async ()
     new HttpPort(metadataResponse(encoder.encode(wrongNamespaceText))),
   ).inspect({ arxivId: "2401.01234" }));
   assert.equal(namespaceError.code, "storage_error");
+});
+
+test("Atom and arXiv fields are selected by their in-scope namespace URI", async () => {
+  const prefixed = encoder.encode(`<?xml version="1.0"?>
+    <a:feed xmlns:a="http://www.w3.org/2005/Atom">
+      <a:entry>
+        <a:id>https://arxiv.org/abs/2401.01234v3</a:id>
+        <a:updated>2024-01-05T12:30:00Z</a:updated>
+        <a:published>2024-01-03T00:00:00Z</a:published>
+        <a:title>Namespaced result</a:title>
+        <a:summary>Namespaced evidence.</a:summary>
+        <a:author><a:name>Ada Lovelace</a:name></a:author>
+        <ext:doi xmlns:ext="http://arxiv.org/schemas/atom">10.1000/local</ext:doi>
+      </a:entry>
+    </a:feed>`);
+  const source = await new ArxivSourceAcquisition(
+    new HttpPort(metadataResponse(prefixed)),
+  ).inspect({ arxivId: "2401.01234" });
+  assert.equal(source.metadata.title, "Namespaced result");
+  assert.equal(source.metadata.doi, "10.1000/local");
+
+  const foreignEntry = encoder.encode(`
+    <feed xmlns="http://www.w3.org/2005/Atom">
+      <entry xmlns="urn:not-atom">
+        <id>https://arxiv.org/abs/2401.01234v3</id>
+        <updated>2024-01-05T12:30:00Z</updated>
+        <published>2024-01-03T00:00:00Z</published>
+        <title>Foreign entry</title><summary>Foreign.</summary>
+        <author><name>Unknown</name></author>
+      </entry>
+    </feed>`);
+  const missing = await captureError(() => new ArxivSourceAcquisition(
+    new HttpPort(metadataResponse(foreignEntry)),
+  ).inspect({ arxivId: "2401.01234" }));
+  assert.equal(missing.code, "not_found");
+
+  const rebound = new TextDecoder().decode(atomFeed([atomEntry()])).replace(
+    "<arxiv:doi>10.1000/example</arxiv:doi>",
+    '<arxiv:doi xmlns:arxiv="urn:foreign">10.1000/foreign</arxiv:doi>',
+  );
+  const withoutForeignDoi = await new ArxivSourceAcquisition(
+    new HttpPort(metadataResponse(encoder.encode(rebound))),
+  ).inspect({ arxivId: "2401.01234" });
+  assert.equal("doi" in withoutForeignDoi.metadata, false);
+});
+
+test("XML rejects normalized tag whitespace and illegal raw characters", async () => {
+  const malformedEntry = new TextDecoder().decode(atomFeed([atomEntry()]))
+    .replace("<entry>", "< entry>");
+  for (const body of [
+    encoder.encode(malformedEntry),
+    atomFeed([atomEntry({ title: "bad\u0000title" })]),
+    encoder.encode(new TextDecoder().decode(atomFeed([atomEntry()])).replace(
+      "A bounded   result",
+      "A bounded &#x0; result",
+    )),
+  ]) {
+    const error = await captureError(() => new ArxivSourceAcquisition(
+      new HttpPort(metadataResponse(body)),
+    ).inspect({ arxivId: "2401.01234" }));
+    assert.equal(error.code, "storage_error");
+  }
+  assert.throws(
+    () => parseSafeXml('<feed xmlns="http://www.w3.org/2005/Atom">\uD800</feed>'),
+    /character|XML/i,
+  );
+});
+
+test("source timestamps use strict calendar dates and chronological instants", async () => {
+  for (const entry of [
+    atomEntry({ published: "2024-02-30T00:00:00Z", updated: "2024-03-01T00:00:00Z" }),
+    atomEntry({ published: "2024-02-29T12:00:00+09:00", updated: "2024-02-29T02:59:59Z" }),
+  ]) {
+    const error = await captureError(() => new ArxivSourceAcquisition(
+      new HttpPort(metadataResponse(atomFeed([entry]))),
+    ).inspect({ arxivId: "2401.01234" }));
+    assert.equal(error.code, "storage_error");
+  }
+
+  for (const entry of [
+    atomEntry({ published: "2024-02-29T00:00:00Z", updated: "2024-02-29T00:00:01Z" }),
+    atomEntry({ published: "2024-02-29T12:00:00+09:00", updated: "2024-02-29T04:00:00Z" }),
+  ]) {
+    const source = await new ArxivSourceAcquisition(
+      new HttpPort(metadataResponse(atomFeed([entry]))),
+    ).inspect({ arxivId: "2401.01234" });
+    assert.equal(source.version, 3);
+  }
 });

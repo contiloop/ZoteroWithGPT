@@ -5,13 +5,13 @@ import {
   arxivPdfUrl,
   parseArxivUrl,
   ProtocolValidationError,
+  validateArxivSource,
 } from "../../protocol/validation.js";
 import { ArxivAcquisitionError } from "./errors.js";
 import { atomEntries, parseSafeXml, type AtomEntryFields } from "./atom.js";
 
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const ATOM_CONTENT_TYPES = new Set(["application/atom+xml", "application/xml", "text/xml"]);
-const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u;
 
 function normalizeSpace(value: string): string {
   return value.replace(/\s+/gu, " ").trim();
@@ -23,18 +23,6 @@ function requiredText(value: string, field: string): string {
     throw new ArxivAcquisitionError(
       "storage_error",
       `The arXiv metadata entry has an empty ${field}`,
-      { stage: "source" },
-    );
-  }
-  return normalized;
-}
-
-function timestamp(value: string, field: string): string {
-  const normalized = requiredText(value, field);
-  if (!ISO_TIMESTAMP.test(normalized) || !Number.isFinite(Date.parse(normalized))) {
-    throw new ArxivAcquisitionError(
-      "storage_error",
-      `The arXiv metadata entry has an invalid ${field} timestamp`,
       { stage: "source" },
     );
   }
@@ -184,18 +172,30 @@ export class ArxivSourceAcquisition implements ArxivSourceAcquisitionPort {
     }
     const authors = entry.authors.map((author) => requiredText(author, "author name"));
     const doi = normalizeSpace(entry.doi ?? "");
-    return {
+    const source = {
       ...identity,
       abstractUrl: arxivAbstractUrl(identity),
       pdfUrl: arxivPdfUrl(identity),
       metadata: {
         title: requiredText(entry.title, "title"),
         authors,
-        published: timestamp(entry.published, "published"),
-        updated: timestamp(entry.updated, "updated"),
+        published: requiredText(entry.published, "published"),
+        updated: requiredText(entry.updated, "updated"),
         abstract: normalizeSpace(entry.summary),
         ...(doi === "" ? {} : { doi }),
       },
     };
+    try {
+      return validateArxivSource(source);
+    } catch (error) {
+      if (error instanceof ProtocolValidationError) {
+        throw new ArxivAcquisitionError(
+          "storage_error",
+          "The arXiv metadata entry failed strict source validation",
+          { stage: "source" },
+        );
+      }
+      throw error;
+    }
   }
 }

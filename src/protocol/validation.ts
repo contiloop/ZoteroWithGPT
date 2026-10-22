@@ -15,6 +15,7 @@ import {
 } from "./constants.js";
 import {
   PROTOCOL_VERSION,
+  type ArxivSource,
   type ArxivUrlReference,
   type EnsureArxivPdfResult,
   type OperationName,
@@ -152,6 +153,9 @@ function validateArticleIdentity(value: unknown, path: string): Record<string, u
 export function parseArxivUrl(value: string): ArxivUrlReference {
   if (utf8Length(value) > MAX_URL_BYTES) {
     fail("too_large", `arXiv URL exceeds ${MAX_URL_BYTES} UTF-8 bytes`);
+  }
+  if (/[\u0000-\u001f\u007f]/u.test(value)) {
+    fail("invalid_request", "arXiv URL contains unsupported control characters");
   }
   const undecorated = value.split(/[?#]/u, 1)[0] ?? "";
   if (
@@ -661,7 +665,7 @@ function expectIsoTimestamp(value: unknown, path: string): string {
   return timestamp;
 }
 
-function validateArxivSource(value: unknown, path: string): Record<string, unknown> {
+export function validateArxivSource(value: unknown, path = "$source"): ArxivSource {
   const source = expectRecord(value, path);
   expectOnlyKeys(
     source,
@@ -716,7 +720,7 @@ function validateArxivSource(value: unknown, path: string): Record<string, unkno
       maxBytes: MAX_URL_BYTES,
     });
   }
-  return source;
+  return source as unknown as ArxivSource;
 }
 
 interface ValidatedCandidateAttachment {
@@ -813,7 +817,9 @@ function validateInspectArxivResult(value: unknown, path: string): void {
       ? "reuse" as const
       : "needs_choice" as const;
   })();
-  if (result.decision !== expectedDecision) {
+  const conservativeFingerprintChoice =
+    result.decision === "needs_choice" && expectedDecision === "reuse";
+  if (result.decision !== expectedDecision && !conservativeFingerprintChoice) {
     fail(
       "invalid_request",
       `${path}.decision must be ${expectedDecision} for the complete candidate snapshot`,

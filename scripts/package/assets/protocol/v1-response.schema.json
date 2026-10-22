@@ -696,7 +696,7 @@
           }
         }
       ],
-      "description": "Runtime validation also binds selection fields to the complete candidate snapshot and requires needs_choice for competing versions or unverified PDFs."
+      "description": "Runtime validation also binds selection fields to the complete candidate snapshot and permits conservative needs_choice when acquired bytes conflict with an otherwise reusable attachment."
     },
     "ensureArxivReadyResult": {
       "type": "object",

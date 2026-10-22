@@ -2,10 +2,18 @@ import assert from "node:assert/strict";
 
 export const encoder = new TextEncoder();
 
+export function stream(...chunks) {
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (const chunk of chunks) yield chunk;
+    },
+  };
+}
+
 export function response(url, {
   status = 200,
   contentType = "application/atom+xml",
-  body = new Uint8Array(),
+  body = stream(),
   headers = {},
 } = {}) {
   const normalized = new Map(

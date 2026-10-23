@@ -122,6 +122,25 @@ descriptor, status, descriptor, and native target evidence before a write.
 Reading and study require no mutation approval; only the current user's explicit
 save request or acceptance of an exact proposal authorizes a native write.
 
+When that explicit save asks to retain existing accessible conversation blocks
+without summary or omission, copy their canonical Markdown or TeX source rather
+than regenerate shorter prose. Before assigning the mutation operation ID,
+compare every requested block with the prepared body and require all wording,
+facts, conditions, comparison directions, numerical results, proof steps,
+substantive whitespace, mathematical meaning, and links to remain. Labels or
+source associations may surround the complete blocks when requested, but they
+must not replace or rewrite content inside them.
+
+Unicode NFC, incidental boundary-whitespace cleanup, and native-compatible math
+delimiter or escape preparation remain allowed. Those presentation steps must
+not reword prose, weaken a qualifier, or omit a result such as which numeric
+setting performed better. If the source is unavailable or the full content
+cannot be represented within the limits, stop before mutation instead of
+inventing, summarizing, splitting, or using overflow storage. This internal
+comparison adds no confirmation when the user's current save intent, content,
+target, and passage are already clear; existing approval rules still apply when
+preparation changes an already approved body.
+
 ## Starter prompt
 
 The configured personal ChatGPT plugin reads this kit internally and stores the

@@ -122,6 +122,25 @@ Use a fresh operation ID for every new observation, including reads, status chec
 
 Build one complete protocol-v1 JSON object using `docs/protocol/v1.md`. The JSON `operationId` must equal the filename operation ID. Reads omit `authorization`; mutations include exactly one current authorization record with `kind: "explicit_request"` or `kind: "approved_proposal"` and a nonempty scope naming the approved content and target. Keep full annotation comments as annotation comments and stay within the published request limit; do not truncate content or turn a long comment into a note.
 
+When an explicit save asks to retain existing accessible conversation blocks
+without summary or omission, copy their canonical Markdown or TeX source rather
+than regenerate shorter prose. Before assigning the mutation operation ID,
+compare every requested block with the prepared body and require all wording,
+facts, conditions, comparison directions, numerical results, proof steps,
+substantive whitespace, mathematical meaning, and links to remain. A user may
+request labels or organization around the complete blocks; that does not permit
+content inside them to be rewritten or dropped.
+
+Unicode NFC, incidental boundary-whitespace cleanup, and native-compatible math
+delimiter or escape preparation remain allowed. Those presentation steps must
+not reword prose, weaken a qualifier, or omit a result such as which numeric
+setting performed better. If the source is unavailable or the full content
+cannot be represented within the limits, stop before mutation instead of
+inventing, summarizing, splitting, or using overflow storage. This internal
+comparison adds no confirmation when the user's current save intent, content,
+target, and passage are already clear; existing approval rules still apply when
+preparation changes an already approved body.
+
 `fs_write_text` performs an atomic UTF-8 write and enforces the server's write bound. Publish the complete request in one call:
 
 ```text

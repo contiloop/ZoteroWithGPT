@@ -40,6 +40,17 @@ assistant's explanation, and any unchecked interpretation. Ask a focused
 question rather than inventing a paper version, passage, target, reference, or
 geometry.
 
+When that save instruction identifies existing accessible questions, proofs,
+explanations, equations, or reference blocks and asks for no summary or
+omission, reuse the canonical conversation blocks instead of rewriting them.
+Preserve their prose verbatim and retain every fact, condition, comparison
+direction, number, proof step, substantive whitespace, mathematical meaning,
+and link. Native-compatible Markdown or TeX delimiter and escape preparation
+may change presentation syntax only; it never permits prose rewording or a
+weaker account of the source. Follow the workflow's complete-source comparison
+before assigning a mutation identity, and reject the write if the requested
+source is unavailable or cannot be represented in full.
+
 Report the paper and local PDF evidence used. After a write, report every native
 record and deep link, conflicts or unresolved records, and storage confirmation
 separately from actual viewer visibility. Never replace an unknown mutation

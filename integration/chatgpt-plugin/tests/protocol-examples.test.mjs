@@ -97,6 +97,33 @@ test("workflow binds the target to discovery plus a fresh local PDF read", async
   assert.match(workflow, /An unversioned URL is not a request for the latest version/u);
   assert.match(workflow, /failed switch suspends the prior implicit destination/u);
   assert.match(workflow, /no current fingerprint[\s\S]*Do not\s+call `read_pdf`/u);
+  assert.match(workflow, /Reuse their prose verbatim[\s\S]*comparison direction[\s\S]*numerical result/u);
+  assert.match(workflow, /full-content comparison, not a keyword or topic check/u);
+  assert.match(workflow, /presentation exception never[\s\S]*rewording prose[\s\S]*omitting a comparison outcome/u);
+  assert.match(workflow, /Before assigning the mutation operation ID[\s\S]*compare it with the prepared body/u);
+});
+
+test("no-summary save scenario rejects an abbreviated block with lost outcomes", async () => {
+  const scenarios = JSON.parse(
+    await readFile(new URL("./scenarios.json", import.meta.url), "utf8"),
+  );
+  const scenario = scenarios.scenarios.find(
+    (candidate) => candidate.id === "explicit-no-summary-reuses-complete-source-block",
+  );
+  const source = scenario.input.accessibleSourceBlock;
+  const abbreviated = scenario.input.genericAbbreviatedCandidate;
+
+  assert.match(source, /시간 단계마다 독립적인 정규화 통계량을 유지하는 것이 성능상 유리/u);
+  assert.match(source, /gain 초기값 0\.1이 성능에 중요한 영향을/u);
+  assert.match(source, /1\.0 초기값이 더 좋은 결과/u);
+  assert.match(source, /구조와 데이터셋, 초기화 등에 영향을 받는다/u);
+  assert.doesNotMatch(abbreviated, /성능상 유리|1\.0 초기값이 더 좋은 결과|구조와 데이터셋, 초기화/u);
+  assert.equal(scenario.expected.preparedBodySource, "input.accessibleSourceBlock");
+  assert.equal(scenario.expected.reuseCompleteSourceBlock, true);
+  assert.equal(scenario.expected.proseReauthoring, false);
+  assert.equal(scenario.expected.compareCompleteSourceBeforeOperationId, true);
+  assert.equal(scenario.expected.genericAbbreviatedCandidateAcceptable, false);
+  assert.equal(scenario.expected.unavailableOrUnrepresentable, "reject_before_mutation");
 });
 
 test("active Mac client guides keep legacy acquisition outside local study", async () => {
@@ -112,5 +139,8 @@ test("active Mac client guides keep legacy acquisition outside local study", asy
     assert.match(guide, /Never invoke them[\s\S]*acquisition/u);
     assert.match(guide, /fresh `find_local_arxiv`[\s\S]*fresh `read_pdf`/u);
     assert.match(guide, /no current fingerprint[\s\S]*do not (?:invoke|call) `read_pdf`/iu);
+    assert.match(guide, /copy their canonical Markdown or TeX source[\s\S]*rather\s+than regenerate shorter prose/u);
+    assert.match(guide, /Before assigning the mutation operation ID[\s\S]*compare every requested block with the prepared body/u);
+    assert.match(guide, /must\s+not reword prose[\s\S]*omit a result such as which numeric\s+setting performed better/u);
   }
 });

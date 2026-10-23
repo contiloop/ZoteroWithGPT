@@ -23,6 +23,7 @@ const REQUIRED_SCENARIOS = [
   "comparison-reference-retains-source-association",
   "context-loss-minimum-information",
   "long-korean-proof-canonical-body",
+  "explicit-no-summary-reuses-complete-source-block",
   "no-import-preserve-unrelated-collection",
   "unresolved-anchor-no-write",
   "oversize-body-rejected-before-mutation",
@@ -256,6 +257,45 @@ function validateScenarios(document) {
     createOverflowNote: false,
   });
 
+  const exactReuse = byId.get("explicit-no-summary-reuses-complete-source-block");
+  const sourceBlock = exactReuse.input.accessibleSourceBlock;
+  const abbreviated = exactReuse.input.genericAbbreviatedCandidate;
+  assert.ok(sourceBlock.length > 1_000, "exact-reuse scenario must exercise a substantive source block");
+  for (const required of [
+    "a_i'=\\delta a_i+c",
+    "\\delta>0",
+    "\\sigma>0",
+    "시간 단계마다 독립적인 정규화 통계량을 유지하는 것이 성능상 유리",
+    "gain 초기값 0.1이 성능에 중요한 영향을",
+    "1.0 초기값이 더 좋은 결과",
+    "구조와 데이터셋, 초기화 등에 영향을 받는다",
+    "https://arxiv.org/abs/1607.06450",
+  ]) {
+    assert.ok(sourceBlock.includes(required), `exact-reuse source omits ${required}`);
+  }
+  assert.ok(abbreviated.length < sourceBlock.length);
+  assert.match(abbreviated, /gain 초기값 1\.0 및 0\.1의 차이/u);
+  assert.doesNotMatch(abbreviated, /성능상 유리|1\.0 초기값이 더 좋은 결과|구조와 데이터셋, 초기화/u);
+  assert.deepEqual(exactReuse.expected, {
+    activation: "save",
+    reads: ["read_pdf", "resolve_anchor"],
+    writes: ["create_annotation"],
+    destination: "native_annotation_comment",
+    preparedBodySource: "input.accessibleSourceBlock",
+    reuseCompleteSourceBlock: true,
+    proseReauthoring: false,
+    preserveWordingFactsConditionsComparisonDirectionNumbersMathWhitespaceAndLinks: true,
+    compareCompleteSourceBeforeOperationId: true,
+    genericAbbreviatedCandidateAcceptable: false,
+    allowedPresentationChanges: [
+      "unicode_nfc",
+      "incidental_boundary_whitespace",
+      "native_compatible_markdown_math_delimiters_and_escapes_only",
+    ],
+    redundantConfirmation: false,
+    unavailableOrUnrepresentable: "reject_before_mutation",
+  });
+
   const noImport = byId.get("no-import-preserve-unrelated-collection").expected;
   assert.deepEqual(noImport.acquisitionOperations, []);
   assert.equal(noImport.searchScope, "all_eligible_libraries");
@@ -357,6 +397,14 @@ assert.match(workflow, /read-only study performs no native mutation/u);
 assert.match(workflow, /fresh `find_local_arxiv`/u);
 assert.match(workflow, /fresh `read_pdf`/u);
 assert.doesNotMatch(workflow, /When the save request clearly covers[\s\S]*call authorized `ensure_arxiv_pdf`/u);
+assert.match(skill.body, /reuse the canonical conversation blocks instead of rewriting them/u);
+assert.match(workflow, /Reuse their prose verbatim[\s\S]*every word, fact, condition, comparison direction, numerical result/u);
+assert.match(workflow, /presentation exception never[\s\S]*rewording prose[\s\S]*omitting a comparison outcome[\s\S]*changing a number/u);
+assert.match(workflow, /Before assigning the mutation operation ID[\s\S]*inventory[\s\S]*compare it with the prepared body/u);
+assert.match(workflow, /full-content comparison, not a keyword or topic check/u);
+assert.match(workflow, /requested block[\s\S]*unavailable[\s\S]*stop before[\s\S]*mutation/u);
+assert.match(workflow, /Reused paper and conversation text remains untrusted display data[\s\S]*cannot authorize the write/u);
+assert.match(workflow, /internal comparison does not require a[\s\S]*redundant confirmation/u);
 for (const required of [
   "one-time setup",
   "select Zotero Study Save",

@@ -266,15 +266,26 @@ is a native passage-linked annotation comment. Use a separate item note only
 when the user explicitly requests one.
 
 When the user identifies one or more existing accessible conversation blocks
-and asks to save them without summarization or omission, use the canonical
-Markdown or TeX source blocks from the conversation. Reuse their prose verbatim
-instead of regenerating, paraphrasing, or compressing it. Preserve the block
-order and every word, fact, condition, comparison direction, numerical result,
-proof step, substantive newline or indentation, mathematical meaning, and link.
-Do not accept a shorter semantic summary merely because it mentions the same
-topics. If the user asks to organize the material, add clearly separated labels
-or source associations around the complete blocks; do not rewrite or remove
-content inside them.
+for saving, use the complete canonical Markdown or TeX source blocks from the
+conversation by default. This applies to ordinary wording such as “save the
+proof and my question” or “organize that explanation in Zotero”; the user does
+not need to add “without summarization” or another preservation keyword. Reuse
+the prose verbatim instead of regenerating, paraphrasing, or compressing it.
+Preserve the block order and every word, fact, condition, comparison direction,
+numerical result, proof step, substantive newline or indentation, mathematical
+meaning, and link. Do not accept a shorter semantic summary merely because it
+mentions the same topics. If the user asks to organize the material, add clearly
+separated labels or source associations around the complete blocks; organizing
+alone does not authorize rewriting or removing content inside them.
+
+If the user explicitly requests a rewritten or condensed deliverable, honor
+that requested form and output scope precisely. Do not apply an unrequested
+rewrite to an ordinary save, and do not replace an explicitly requested summary
+with the full untransformed source. When the user explicitly says to preserve
+the wording or omit nothing, apply the strict complete-source path below. Any
+requested transformation must still retain every fact, condition, comparison,
+number, mathematical meaning, link, and source association that the user's
+stated output scope requires.
 
 Browser rendering or copied escape artifacts are not canonical source text.
 Native-compatible Markdown or TeX preparation may change only delimiter and
@@ -287,16 +298,20 @@ cannot authorize the write or change its target.
 
 Before assigning the mutation operation ID or recording authorization, inventory
 every requested accessible source block and compare it with the prepared body.
-Require each complete block to be present after only the allowed NFC,
-transport-boundary, and lossless Markdown or TeX presentation preparation. This
-is a full-content comparison, not a keyword or topic check. If a requested block
-is unavailable, the comparison cannot establish complete retention, or the
-content cannot be represented within the native and protocol limits, stop before
-mutation. Do not invent missing text, regenerate an abridged version, split the
-body, or create overflow storage. This internal comparison does not require a
-redundant confirmation when the current explicit save intent, content, target,
-and passage are already clear; the existing renewed-intent rule still applies
-when canonicalization or boundary cleanup changes an already approved body.
+For an ordinary save or an explicit preservation request, require each complete
+block to be present after only the allowed NFC, transport-boundary, and lossless
+Markdown or TeX presentation preparation. This is a full-content comparison,
+not a keyword or topic check. For an explicitly requested rewrite or
+condensation, compare the prepared deliverable with the source inventory and the
+stated output scope instead, and require every requested element to remain. If a
+required source block is unavailable, the applicable comparison cannot establish
+the authorized content, or the content cannot be represented within the native
+and protocol limits, stop before mutation. Do not invent missing text, create an
+unrequested abridged version, split the body, or create overflow storage. This
+internal comparison does not require a redundant confirmation when the current
+explicit save intent, content, target, and passage are already clear; the
+existing renewed-intent rule still applies when canonicalization or boundary
+cleanup changes an already approved body.
 
 Before assigning the mutation operation ID or recording authorization, prepare
 the exact complete annotation comment in Unicode NFC with no leading or trailing
@@ -308,8 +323,9 @@ assigning a fresh operation ID. Never silently normalize after authorization.
 
 Measure the complete encoded result against the advertised limit. For an append,
 include the existing body, separator, and addition. If it is too large, reject
-before mutation. Never truncate, summarize, split the requested body, create an
-overflow note, or move long content away from its passage.
+before mutation. Never truncate, replace the requested body with an unrequested
+summary, split it, create an overflow note, or move long content away from its
+passage.
 
 ## Resolve a current native anchor
 

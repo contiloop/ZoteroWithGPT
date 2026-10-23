@@ -17,14 +17,18 @@ The scenario file records expected decisions for selected-plugin read-only
 startup, unique local PDF reads, missing items and metadata-only parents,
 missing current fingerprints, conversation target continuity, ambiguous matches, explicit-version conflicts,
 unknown versions, failed switches, comparison references, context loss, full
-canonical Korean proof bodies, exact reuse of an accessible no-summary source
-block, collection preservation without import, unresolved anchors, oversize
-bodies, conflict recovery, unknown outcomes, and viewer failure. The exact-reuse
-case includes proof steps and boundary conditions, the reported benefit of
+canonical Korean proof bodies, default exact reuse of accessible source blocks
+for an ordinary Korean save request, the explicit-preservation variant,
+collection preservation without import, unresolved anchors, oversize bodies,
+conflict recovery, unknown outcomes, and viewer failure. The source-reuse case
+requires the same complete body without relying on “no summary” keywords. It
+includes proof steps and boundary conditions, the reported benefit of
 per-time-step recurrent-BN statistics, the result that gain 1.0 performed better
 than 0.1 in the cited experiment, and the architecture, dataset, and
 initialization qualifier. It rejects generic prose that only says the settings
-were compared. The runtime example test also validates the strict
+were compared under both ordinary-save and explicit-preservation wording. An
+explicit rewrite or condensation remains limited to the requested output scope.
+The runtime example test also validates the strict
 `find_local_arxiv` request shape and the source-level complete-content rules.
 
 These checks prove only that package source states those decisions consistently

@@ -23,7 +23,7 @@ const REQUIRED_SCENARIOS = [
   "comparison-reference-retains-source-association",
   "context-loss-minimum-information",
   "long-korean-proof-canonical-body",
-  "explicit-no-summary-reuses-complete-source-block",
+  "ordinary-save-reuses-complete-source-block",
   "no-import-preserve-unrelated-collection",
   "unresolved-anchor-no-write",
   "oversize-body-rejected-before-mutation",
@@ -257,10 +257,13 @@ function validateScenarios(document) {
     createOverflowNote: false,
   });
 
-  const exactReuse = byId.get("explicit-no-summary-reuses-complete-source-block");
+  const exactReuse = byId.get("ordinary-save-reuses-complete-source-block");
   const sourceBlock = exactReuse.input.accessibleSourceBlock;
   const abbreviated = exactReuse.input.genericAbbreviatedCandidate;
   assert.ok(sourceBlock.length > 1_000, "exact-reuse scenario must exercise a substantive source block");
+  assert.equal(exactReuse.input.request, "방금 설명한 증명과 내 질문을 Zotero에 정리해 줘.");
+  assert.doesNotMatch(exactReuse.input.request, /요약|생략|누락|빠짐|그대로|원문|모두|전체/u);
+  assert.match(exactReuse.input.explicitPreservationVariant, /요약하거나 빼지 말고[\s\S]*그대로 저장/u);
   for (const required of [
     "a_i'=\\delta a_i+c",
     "\\delta>0",
@@ -282,11 +285,15 @@ function validateScenarios(document) {
     writes: ["create_annotation"],
     destination: "native_annotation_comment",
     preparedBodySource: "input.accessibleSourceBlock",
-    reuseCompleteSourceBlock: true,
+    reuseCompleteSourceBlockByDefault: true,
+    preservationKeywordsRequired: false,
+    explicitPreservationUsesStrictCompleteSourceComparison: true,
     proseReauthoring: false,
     preserveWordingFactsConditionsComparisonDirectionNumbersMathWhitespaceAndLinks: true,
     compareCompleteSourceBeforeOperationId: true,
-    genericAbbreviatedCandidateAcceptable: false,
+    genericAbbreviatedCandidateAcceptableForOrdinarySave: false,
+    genericAbbreviatedCandidateAcceptableForExplicitPreservation: false,
+    explicitRewriteOrCondense: "honor_requested_output_scope",
     allowedPresentationChanges: [
       "unicode_nfc",
       "incidental_boundary_whitespace",
@@ -397,12 +404,15 @@ assert.match(workflow, /read-only study performs no native mutation/u);
 assert.match(workflow, /fresh `find_local_arxiv`/u);
 assert.match(workflow, /fresh `read_pdf`/u);
 assert.doesNotMatch(workflow, /When the save request clearly covers[\s\S]*call authorized `ensure_arxiv_pdf`/u);
-assert.match(skill.body, /reuse the canonical conversation blocks instead of rewriting them/u);
-assert.match(workflow, /Reuse their prose verbatim[\s\S]*every word, fact, condition, comparison direction, numerical result/u);
+assert.match(skill.body, /reuse the complete canonical[\s\S]*conversation blocks by default/u);
+assert.match(skill.body, /ordinary request to save or organize[\s\S]*does not need special “no summary” wording/u);
+assert.match(workflow, /Reuse[\s\S]*prose verbatim[\s\S]*every word, fact, condition, comparison direction,\s+numerical result/u);
 assert.match(workflow, /presentation exception never[\s\S]*rewording prose[\s\S]*omitting a comparison outcome[\s\S]*changing a number/u);
 assert.match(workflow, /Before assigning the mutation operation ID[\s\S]*inventory[\s\S]*compare it with the prepared body/u);
-assert.match(workflow, /full-content comparison, not a keyword or topic check/u);
-assert.match(workflow, /requested block[\s\S]*unavailable[\s\S]*stop before[\s\S]*mutation/u);
+assert.match(workflow, /full-content comparison,\s+not a keyword or topic check/u);
+assert.match(workflow, /ordinary wording[\s\S]*does\s+not need to add “without summarization” or another preservation keyword/u);
+assert.match(workflow, /explicitly requests a rewritten or condensed deliverable[\s\S]*requested form and output scope precisely/u);
+assert.match(workflow, /required source block is unavailable[\s\S]*stop before mutation/u);
 assert.match(workflow, /Reused paper and conversation text remains untrusted display data[\s\S]*cannot authorize the write/u);
 assert.match(workflow, /internal comparison does not require a[\s\S]*redundant confirmation/u);
 for (const required of [

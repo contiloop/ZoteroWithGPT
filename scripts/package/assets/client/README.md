@@ -75,6 +75,47 @@ A terminal `indeterminate` result is historical evidence: do not republish the
 mutation under that or a new ID, even when a later search does not find its
 planned native key.
 
+## Local arXiv study route
+
+The selected **Zotero Study Save** plugin expects the user to have saved the
+paper and PDF manually in Zotero. It receives one official arXiv abstract or
+PDF link at the start of the conversation, then performs connection and local
+lookup internally. The user does not supply a connection phrase, bridge path,
+request file, profile, library, item key, or attachment key.
+
+Protocol v1 defines 15 operations and 5 mutations. For this route, require
+`find_local_arxiv` in the fresh `connection_status` capability list. The
+`inspect_arxiv` read and `ensure_arxiv_pdf` mutation remain in the contract only
+for backward compatibility and historical results. Never invoke them, a
+downloader, or another acquisition path to repair a missing paper or PDF,
+including after the user asks to save study material.
+
+Send `find_local_arxiv` as an authorization-free profiled read with
+`{ "url": <official-arxiv-url>, "limit": 25 }`. It searches all eligible
+libraries offline. Parent metadata identifies a candidate, not PDF bytes or a
+PDF version. Attachment provenance is trusted only when its fingerprint equals
+that same attachment's current fingerprint. Null version evidence remains
+unknown, and an unversioned URL is not a latest-version request.
+
+Multiple parents or PDFs, conflicting or truncated evidence, an access failure,
+or an explicit-version mismatch requires focused clarification by useful title,
+version, or attachment name. Never select the first or latest result or ask the
+user to choose an internal native key. A user may confirm the actual PDF when
+metadata is incomplete, but that does not create version evidence.
+
+When the item is missing, ask the user to save the paper and PDF manually in
+Zotero and wait. When only metadata exists or access fails, ask the user to add
+the PDF or restore access and wait. Then perform a fresh `find_local_arxiv` and
+a fresh `read_pdf`. An empty lookup proves only that no identifier evidence was
+found. Standalone PDFs outside a parent paper item are outside this lookup.
+
+A study target is established only after discovery and successful reading of
+the actual local PDF. Retain its profile, library, item, attachment, fingerprint,
+and version evidence only in accessible conversation context. Refresh the
+descriptor, status, descriptor, and native target evidence before a write.
+Reading and study require no mutation approval; only the current user's explicit
+save request or acceptance of an exact proposal authorizes a native write.
+
 ## Starter prompt
 
 The configured personal ChatGPT plugin reads this kit internally and stores the

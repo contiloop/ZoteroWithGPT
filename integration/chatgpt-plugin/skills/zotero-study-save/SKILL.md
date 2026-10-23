@@ -1,6 +1,6 @@
 ---
 name: zotero-study-save
-description: Use when the user asks to save, add, attach, record, or update a paper discussion, question, proof, explanation, or reference in Zotero, including importing the specifically studied arXiv paper when necessary. Ordinary save wording is sufficient; an explicit plugin mention is optional. Do not treat reading, discussing, or questioning a paper without save intent as authorization to write.
+description: Use when the user selects Zotero Study Save to study an official arXiv paper already saved with its PDF in Zotero, or later asks to save, record, append, or update that paper discussion. The initial study request may be read-only. Keep the established local target across the accessible conversation, and require explicit save intent only for native writes.
 ---
 
 # Zotero study save
@@ -9,29 +9,35 @@ Read `resources/personal-config.json`, then read
 `resources/workflow.md` and follow it for every operation. Use the bundled
 `resources/client-v1/` material as the authoritative file-protocol reference.
 
-Activate on an explicit save request or the user's acceptance of a concrete
-save proposal. The same request authorizes the necessary import of the clearly
-identified studied arXiv PDF and the specified study records; do not insert a
-separate connection or import confirmation when the target and content are
-already clear. Reading a link, discussing a paper, asking a question, or an
-unaccepted assistant suggestion never authorizes a mutation.
+The normal start is an explicitly selected **Zotero Study Save** plugin, one
+official arXiv abstract or PDF link, and a request to study that paper. Connect,
+find the already local Zotero paper, and read its actual PDF without requesting
+save approval. A later turn in the same accessible conversation does not need a
+new selection chip or repeated URL. The implicit-invocation policy remains
+available for an ordinary later save request when the established context is
+clear.
 
-If `bridgeRoot` is null, the personal resource is missing, Mac Safe Files tools
-are unavailable, or access is denied, stop writes and give one short actionable
-setup prompt. Do not reproduce the full installation guide unless the user asks
-for it, and do not ask the user to paste a path into each conversation. Never
-bypass a platform or macOS access decision.
+Require the running companion to advertise `find_local_arxiv`. This workflow is
+local-only: never call `inspect_arxiv`, `ensure_arxiv_pdf`, a downloader, or an
+acquisition route. If the item or PDF is absent or inaccessible, ask the user to
+save or restore it manually in Zotero, wait, and perform fresh discovery before
+continuing.
 
-Use only conversation material currently available in full. Preserve the
-user's language and distinguish the user's question, the paper's claims, the
-assistant's explanation, and any unchecked hypothesis. Ask for missing content
-or uncertain paper, version, passage, or target evidence instead of inventing
-it or silently choosing one.
+If `bridgeRoot` is null, Mac Safe Files is unavailable, access is denied, or the
+required capability is absent, stop with one concise setup or compatibility
+message. Do not ask for a connection phrase, bridge path, request file, profile,
+session, library ID, item key, or attachment key as part of ordinary study.
 
-Report the concrete paper version, whether the item and PDF were reused or
-added, every stored native record and deep link, conflicts or unresolved
-records, and storage and viewer evidence separately. A retained parent item is
-not a completed PDF import or completed study save. A failed, item-only, or
-terminal indeterminate import stops subsequent annotation writes for that
-attempt; never issue a replacement mutation merely because the planned native
-keys cannot be found.
+A read-only study performs no native mutation. Only the current user's explicit
+save instruction or acceptance of an exact proposal authorizes the specified
+write. Use complete material available in the conversation, preserve the user's
+language, and distinguish the user's question, the paper's claim, the
+assistant's explanation, and any unchecked interpretation. Ask a focused
+question rather than inventing a paper version, passage, target, reference, or
+geometry.
+
+Report the paper and local PDF evidence used. After a write, report every native
+record and deep link, conflicts or unresolved records, and storage confirmation
+separately from actual viewer visibility. Never replace an unknown mutation
+with a new identity or repeat a storage-confirmed write because viewer evidence
+failed.

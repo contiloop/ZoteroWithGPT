@@ -18,9 +18,13 @@ Generated explanations distinguish author claims, user questions, assistant inte
 
 ## Identity and outcomes
 
-For a clearly identified studied arXiv paper, the explicit study-save request also authorizes obtaining its missing bibliographic item and PDF. New items belong at the personal My Library root. Reused items retain metadata, attachments, collection placement, and manual study records. Referenced papers are links unless separately requested for import. The exact studied version is preserved; a title, URL, or page number alone does not establish matching PDF identity.
+The selected local-study workflow starts only after the researcher manually saves the paper and PDF in Zotero. One official arXiv URL authorizes offline discovery and local PDF reading, not a download, import, repair, or native write. Parent metadata can identify a candidate but cannot prove PDF bytes or a PDF version. An unknown version stays unknown, and an unversioned URL is not a request for the latest version.
 
-Inspection is read-only. Import consumes its current inspection token and selected create, attach, or verified-reuse decision. Competing parents, conflicting versions, and unverified attachments require a choice rather than a first-match decision. Revalidation at native commit boundaries prevents a stale inspection from authorizing a different library state.
+Discovery searches all eligible libraries. Multiple parents or PDFs, conflicting evidence, a truncated result, an unreadable attachment, or an explicit-version mismatch requires a focused choice or manual Zotero action rather than a first/latest match. A selected attachment without a current fingerprint has inaccessible or unverified bytes; do not call `read_pdf` or another read to repair it. After the researcher restores its file or path in Zotero, use fresh discovery and continue only when it returns a current fingerprint. Preserve the selected item's library and collection placement and leave unrelated records unchanged.
+
+The target is established only by current discovery evidence plus an actual `read_pdf` result. Keep that target in accessible conversation context so a later save need not repeat the URL, page, passage, or native keys when they remain inferable. A failed explicit paper switch suspends the prior implicit destination. Comparing or citing another paper does not switch the destination, and referenced works remain links unless the researcher separately requests their own supported action.
+
+The retained `inspect_arxiv` and `ensure_arxiv_pdf` operations remain valid for legacy clients and immutable historical results. They are outside the selected local-study workflow. Their inspection tokens, exact-version selection, partial import outcomes, and commit-time revalidation rules continue to apply when an older client invokes them.
 
 One operation identifies one immutable request. The same identity and content returns its historical outcome; changing content under that identity is a conflict. A fresh observation requires a fresh operation ID.
 

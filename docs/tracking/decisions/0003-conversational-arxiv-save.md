@@ -1,5 +1,7 @@
 # Conversational save with exact-version arXiv import
 
+Status: superseded for the active study workflow by [0004-selected-local-arxiv-study.md](0004-selected-local-arxiv-study.md). This record remains authoritative for the retained legacy import operations and their historical outcomes.
+
 ## Context
 
 The researcher starts from an arXiv URL in ChatGPT Web and later asks to save the proof, question, and references. Requiring a repeated bridge path or a manual connection prompt does not meet that experience. The approved first distribution reuses an existing authenticated Mac Safe Files connection; a general Mac installer and other source publishers remain outside this extension.

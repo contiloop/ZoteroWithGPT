@@ -66,6 +66,9 @@ test("selected-plugin scenarios require local discovery and prohibit acquisition
   const metadataOnly = scenarios.scenarios.find(
     (candidate) => candidate.id === "metadata-only-wait-and-refresh",
   );
+  const missingFingerprint = scenarios.scenarios.find(
+    (candidate) => candidate.id === "missing-fingerprint-wait-and-refresh",
+  );
 
   assert.deepEqual(startup.expected.reads, [
     "connection_status",
@@ -77,6 +80,9 @@ test("selected-plugin scenarios require local discovery and prohibit acquisition
   assert.deepEqual(metadataOnly.expected.acquisitionOperations, []);
   assert.equal(missing.expected.resumeWithFreshLookup, true);
   assert.equal(metadataOnly.expected.resumeWithFreshLookup, true);
+  assert.deepEqual(missingFingerprint.expected.reads, ["find_local_arxiv"]);
+  assert.deepEqual(missingFingerprint.expected.repairOperations, []);
+  assert.equal(missingFingerprint.expected.readPdfBeforeFreshFingerprint, false);
 });
 
 test("workflow binds the target to discovery plus a fresh local PDF read", async () => {
@@ -90,6 +96,7 @@ test("workflow binds the target to discovery plus a fresh local PDF read", async
   assert.match(workflow, /never invoke `inspect_arxiv` or `ensure_arxiv_pdf`/u);
   assert.match(workflow, /An unversioned URL is not a request for the latest version/u);
   assert.match(workflow, /failed switch suspends the prior implicit destination/u);
+  assert.match(workflow, /no current fingerprint[\s\S]*Do not\s+call `read_pdf`/u);
 });
 
 test("active Mac client guides keep legacy acquisition outside local study", async () => {
@@ -104,5 +111,6 @@ test("active Mac client guides keep legacy acquisition outside local study", asy
     assert.match(guide, /`inspect_arxiv`[\s\S]*`ensure_arxiv_pdf`[\s\S]*(?:outside|backward compatibility)/u);
     assert.match(guide, /Never invoke them[\s\S]*acquisition/u);
     assert.match(guide, /fresh `find_local_arxiv`[\s\S]*fresh `read_pdf`/u);
+    assert.match(guide, /no current fingerprint[\s\S]*do not (?:invoke|call) `read_pdf`/iu);
   }
 });

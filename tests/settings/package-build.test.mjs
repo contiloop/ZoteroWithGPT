@@ -129,6 +129,9 @@ test("build produces a deterministic versioned XPI with a validated release surf
     (await directorySha256(second.clientDirectory)).digest("hex"),
   );
   assert.equal(report.version, "1.2.3");
+  assert.equal(report.members.length, 26);
+  assert.equal(report.clientMembers.length, 20);
+  assert.equal(report.pluginMembers.length, 27);
   assert.deepEqual(report.zoteroCompatibility, { minimum: "10.0.6", maximum: "10.0.*" });
   assert.equal(report.updateURL, MANUAL_UPDATE_SENTINEL);
   assert.equal(path.basename(report.pluginPath), "zotero-study-save-1.2.3.zip");
@@ -143,16 +146,39 @@ test("build produces a deterministic versioned XPI with a validated release surf
   assert.ok(report.clientMembers.includes("README.md"));
   assert.ok(report.clientMembers.includes("protocol/v1-request.schema.json"));
   assert.ok(report.clientMembers.includes("protocol/examples/create-annotation.request.json"));
+  assert.ok(report.clientMembers.includes("protocol/examples/find-local-arxiv.request.json"));
+  assert.ok(report.clientMembers.includes("protocol/examples/find-local-arxiv.response.json"));
   assert.ok(report.clientMembers.includes("protocol/examples/inspect-arxiv.request.json"));
   assert.ok(report.clientMembers.includes("protocol/examples/ensure-arxiv-pdf.item-only.response.json"));
   assert.ok(report.pluginMembers.includes("plugin.json"));
   assert.ok(report.pluginMembers.includes(
     "skills/zotero-study-save/resources/client-v1/protocol/examples/ensure-arxiv-pdf.response.json",
   ));
+  assert.ok(report.pluginMembers.includes(
+    "skills/zotero-study-save/resources/client-v1/protocol/examples/find-local-arxiv.response.json",
+  ));
   assert.match(
     await readFile(path.join(first.clientDirectory, "README.md"), "utf8"),
     /<BRIDGE_ROOT>\/client-v1\/README\.md/u,
   );
+});
+
+test("current release builds the exact 0.3.0 archive inventories", async (t) => {
+  const output = await mkdtemp(path.join(os.tmpdir(), "research-companion-release-package-"));
+  t.after(() => rm(output, { recursive: true, force: true }));
+
+  const result = await buildXpi({ projectRoot: PROJECT_ROOT, outputDirectory: output });
+  const report = await verifyXpi(result.outputPath, { expectedProjectRoot: PROJECT_ROOT });
+
+  assert.equal(report.version, "0.3.0");
+  assert.equal(report.members.length, 35);
+  assert.equal(report.clientMembers.length, 20);
+  assert.equal(report.pluginMembers.length, 27);
+  assert.ok(report.members.includes("protocol/examples/find-local-arxiv.request.json"));
+  assert.ok(report.members.includes("protocol/examples/find-local-arxiv.response.json"));
+  assert.ok(report.pluginMembers.includes(
+    "skills/zotero-study-save/resources/client-v1/protocol/examples/find-local-arxiv.request.json",
+  ));
 });
 
 test("packaging rejects release documents containing a private source path", async (t) => {
@@ -278,6 +304,7 @@ test("every packaged request example passes the runtime protocol-v1 parser", asy
     "read-pdf.request.json",
     "create-annotation.request.json",
     "create-note.request.json",
+    "find-local-arxiv.request.json",
     "inspect-arxiv.request.json",
     "ensure-arxiv-pdf.request.json",
   ];

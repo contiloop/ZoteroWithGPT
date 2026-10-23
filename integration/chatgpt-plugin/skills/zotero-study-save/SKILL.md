@@ -27,6 +27,10 @@ If `bridgeRoot` is null, Mac Safe Files is unavailable, access is denied, or the
 required capability is absent, stop with one concise setup or compatibility
 message. Do not ask for a connection phrase, bridge path, request file, profile,
 session, library ID, item key, or attachment key as part of ordinary study.
+If discovery returns a PDF attachment with no current fingerprint, treat its
+bytes as inaccessible or unverified. Ask the user to restore the file or
+attachment path manually in Zotero and wait for a fresh lookup; do not use
+`read_pdf` or another read as an automatic repair route.
 
 A read-only study performs no native mutation. Only the current user's explicit
 save instruction or acceptance of an exact proposal authorizes the specified

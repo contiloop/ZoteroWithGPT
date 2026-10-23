@@ -1,5 +1,11 @@
 # Installation and recovery validation
 
+## 0.3.0 installation state — pending
+
+The 0.3.0 XPI has not yet been installed in Zotero in this release cycle. Its profile copy, 15-operation status, native read/write behavior, reader visibility, removal/reinstall retention, and journal replay therefore remain pending. The procedure in `operations.md` is the active acceptance checklist. The results below are historical evidence for earlier packages and do not establish the current artifact.
+
+## Historical installation evidence
+
 Validated on 2026-10-21 in Zotero 10.0.6 on macOS arm64. These observations concern the production package, separately from the earlier development probe.
 
 ## Package and clean rebuild

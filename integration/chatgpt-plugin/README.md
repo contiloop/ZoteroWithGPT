@@ -56,6 +56,11 @@ attach, or restore the PDF manually. It waits and performs a fresh lookup after
 the user finishes. It does not move an item, change its collection placement,
 or choose the first candidate.
 
+A PDF attachment with no current fingerprint has inaccessible or unverified
+local bytes. The plugin stops before `read_pdf`, asks the user to restore the
+file or attachment path manually in Zotero, and waits. It performs a fresh
+lookup after restoration and does not use another read as an automatic repair.
+
 The established target remains in the accessible conversation. A later request
 such as “방금 질문과 설명을 해당 구절 옆에 저장해 줘” does not require the URL,
 page, quote, or native key again when they are inferable. Comparing another

@@ -1,8 +1,9 @@
 {
   "name": "zotero-ai-research-companion",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
+  "packageManager": "npm@11.4.2",
   "engines": {
     "node": ">=24 <27"
   },

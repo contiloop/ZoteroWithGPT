@@ -80,9 +80,11 @@ changes to a shared MCP server, organization connection, or tunnel.
 ## Remove the private ChatGPT plugin
 
 In ChatGPT plugin management, find the owned private **Zotero Study Save**
-plugin and use its normal uninstall or delete action. Verify its exact owned
-identity before removal. Leave unrelated plugins and the independently
-connected Mac Safe Files app in place.
+plugin and use **Uninstall** for ordinary removal from active use. Verify its
+exact owned identity first. **Delete plugin** removes the owned plugin/backend
+itself and is a separate destructive account action; it is not part of an
+ordinary uninstall, update, or reinstall. Leave unrelated plugins and the
+independently connected Mac Safe Files app in place.
 
 Removing the ChatGPT plugin stops its workflow from appearing in new chats. It
 does not remove the Zotero XPI, dedicated bridge directory, operation identity
@@ -104,8 +106,8 @@ archive using a strictly greater semantic version. Preserve its owned identity
 and Mac Safe Files dependency. Restore only the private `bridgeRoot` if the
 account update flow does not retain it. Do not copy a profile ID, session,
 descriptor, pending request, result, credential, or study content into the
-plugin. Start a fresh ordinary chat after the update; the workflow will
-rediscover the current Zotero session internally.
+plugin. Start a fresh chat and explicitly select Zotero Study Save after the
+update; the workflow will rediscover the current Zotero session internally.
 
 The retained journal preserves the Zotero profile identity and prior operation
 results. A client recovering an earlier authorized operation uses the same ID

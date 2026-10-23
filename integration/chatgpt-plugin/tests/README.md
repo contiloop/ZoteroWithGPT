@@ -15,7 +15,7 @@ credential forms.
 
 The scenario file records expected decisions for selected-plugin read-only
 startup, unique local PDF reads, missing items and metadata-only parents,
-conversation target continuity, ambiguous matches, explicit-version conflicts,
+missing current fingerprints, conversation target continuity, ambiguous matches, explicit-version conflicts,
 unknown versions, failed switches, comparison references, context loss, full
 canonical Korean proof bodies, collection preservation without import,
 unresolved anchors, oversize bodies, conflict recovery, unknown outcomes, and

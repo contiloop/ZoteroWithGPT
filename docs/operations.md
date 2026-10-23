@@ -2,14 +2,14 @@
 
 ## Recreate the build
 
-Use macOS for native validation and Node.js 24, 25, or 26 with npm for building. From a clean checkout, run these in order:
+Use macOS for native validation, Node.js 24, 25, or 26, and the declared npm 11.4.2 package manager for building. From a clean checkout, run these in order:
 
 ```sh
 npm ci
 npm run verify
 ```
 
-The installable results are `artifacts/zotero-ai-research-companion-0.2.2.xpi`, its matching `-client` directory of plain-text instructions/schemas/examples, and `artifacts/zotero-study-save-0.2.2.zip`. `npm run package` regenerates all three after source or bundled-document changes. Compare SHA-256 values before calling a clean build identical to the installed package.
+The installable results are `artifacts/zotero-ai-research-companion-0.3.0.xpi`, its matching `-client` directory of plain-text instructions/schemas/examples, and `artifacts/zotero-study-save-0.3.0.zip`. `npm run package` regenerates all three after source or bundled-document changes. Compare SHA-256 values before calling a clean build identical to the installed package.
 
 ## Install and connect
 
@@ -20,7 +20,7 @@ The installable results are `artifacts/zotero-ai-research-companion-0.2.2.xpi`, 
 5. Give an already authorized file client that exact root. Have it follow the supplied client README, check descriptor/status/descriptor, and submit a fresh connection-status request.
 6. Require matching protocol/profile and enabled status. Test a deliberately owned PDF before using real study records. Inspect storage and the actual paper reader separately.
 
-For ordinary ChatGPT Web use, create the private personal **Zotero Study Save** plugin through the account's supported plugin flow using the matching ZIP. Retain its Mac Safe Files dependency. Set only `skills/zotero-study-save/resources/personal-config.json` → `bridgeRoot` in the private instance to the dedicated root. The portable ZIP keeps that value null. Confirm the personal plugin is enabled and Mac Safe Files is connected, then validate a natural save request in a fresh ordinary chat. The root/path protocol belongs inside that installed workflow, rather than a repeated user connection prompt. Installation and connection status alone do not establish successful automatic activation; consult the current acceptance record.
+For ChatGPT Web use, create or update the private personal **Zotero Study Save** plugin through the account's supported plugin flow using the matching ZIP. Retain its Mac Safe Files dependency. Set only `skills/zotero-study-save/resources/personal-config.json` → `bridgeRoot` in the private instance to the dedicated root. The portable ZIP keeps that value null. Manually save the paper and PDF in Zotero, begin a fresh chat, explicitly select Zotero Study Save, provide one official arXiv URL, and request read-only study. The root/path protocol belongs inside that installed workflow rather than a repeated user connection prompt. Installation and status alone do not establish local PDF reading or native save behavior.
 
 Mac Safe Files is an existing independent connection; this repository has no public installer for it. Use its owner's setup procedure rather than copying another user's secrets. Direct Codex local files are validated as an alternative. Work requires its own actual local-access check; no automatic transfer or usage price is promised.
 
@@ -30,7 +30,7 @@ Configuration consists of the selected directory and `extensions.zotero-ai-resea
 
 Obtain matching XPI and client kit versions, update through Plugins Manager, replace the copied client kit, and start from the new descriptor. If reader checks encounter a dead-window error after update, normally quit/reopen Zotero and run a fresh read-only verification; do not repeat a successful save.
 
-Update the existing owned personal ChatGPT plugin using the matching portable source at a strictly greater semantic version. Preserve its identity and Mac Safe Files dependency; restore only the private bridge-root setting if needed. Read back the installed version/resources and begin a fresh chat. Account-generated compatibility manifests and author metadata can differ from the portable source; inspect that difference without distributing account identity or private configuration.
+Update the existing owned personal ChatGPT plugin using the matching portable source at a strictly greater semantic version. Preserve its identity, account defaults, and Mac Safe Files dependency; restore only the private bridge-root setting if needed. Read back the installed version/resources and begin a fresh explicitly selected chat. Account-generated compatibility manifests and author metadata can differ from the portable source; inspect that difference without distributing account identity or private configuration.
 
 Disable in Research Companion Settings before changing directories or removing the extension. Confirm disabled status, then remove only Research Companion in Plugins Manager. Native comments and notes remain ordinary Zotero data.
 
@@ -42,7 +42,20 @@ Distribution is manual. The manifest's reserved .invalid update URL supplies no 
 
 Remove the owned personal **Zotero Study Save** plugin through ChatGPT management separately from the XPI. Leave Mac Safe Files and unrelated plugins connected. Reinstall using the portable source and restore the one private root setting; never embed an old descriptor, pending operation, or result. Both ordinary component removal procedures retain native study data and the Zotero operation journal. Actual lifecycle acceptance remains surface/version specific.
 
-The observed personal-plugin lifecycle used the detail page's **Uninstall** action, not **Delete plugin**. The owned backend and release history remained available, and the same page exposed **Install plugin**. After installation, verify all of the following before use: the expected version, **Use Zotero Study Save** checked, Mac Safe Files connected, unchanged owned backend/current release, the expected account file inventory, and exactly the private `bridgeRoot` customization. The accepted 0.2.2 run restored all of those values without creating a release or deleting the owned backend.
+The observed personal-plugin lifecycle used the detail page's **Uninstall** action, not **Delete plugin**. The owned backend and release history remained available, and the same page exposed **Install plugin**. After installation, verify all of the following before use: the expected version, **Use Zotero Study Save** checked, Mac Safe Files connected, unchanged owned backend/current release, the expected account file inventory, and exactly the private `bridgeRoot` customization. The accepted 0.2.2 run restored all of those values without creating a release or deleting the owned backend; the 0.3.0 account update and lifecycle checks remain pending.
+
+## 0.3.0 selected-workflow acceptance
+
+Use a deliberately owned PDF and preserve existing native records and operation history. Acceptance for 0.3.0 requires all of these observations on the actual current installation:
+
+1. The installed profile XPI hash matches the reviewed 0.3.0 artifact. A fresh `connection_status` reports plugin 0.3.0, the intended profile, enabled state, and all 15 operations including `find_local_arxiv`.
+2. The matching private plugin is updated in place, keeps its existing identity/account defaults and Mac Safe Files binding, contains only the one private `bridgeRoot` customization, and is explicitly selected in a fresh Web conversation.
+3. The first study turn supplies one official arXiv URL and produces only read operations: `connection_status`, fresh `find_local_arxiv`, and fresh `read_pdf`. Confirm the actual local attachment and fingerprint. No `inspect_arxiv`, `ensure_arxiv_pdf`, downloader, import, annotation, or note request may appear.
+4. A later explicit save in the same accessible conversation uses the established target without requiring the URL, page, quote, or native keys again. It refreshes target evidence, resolves a current passage, saves the complete approved body in one passage-linked native comment, and reports storage and actual reader visibility separately.
+5. Fresh native reads prove the exact complete comment, current anchor fingerprint, one intended record, no overflow note, and no duplicate operation. A deliberate manual-edit conflict preserves the current body. Missing/metadata-only and failed-switch cases produce no mutation and resume only after fresh local lookup and PDF reading. A lookup result without a current fingerprint produces no `read_pdf` or repair request and resumes only after manual restoration plus fresh discovery returns a fingerprint.
+6. Normal Zotero removal/reinstall retains native records and the journal. ChatGPT **Uninstall** and **Delete plugin** remain distinct; do not delete the owned backend during the lifecycle check.
+
+Automatic plugin invocation is not a 0.3.0 completion gate. It may remain eligible for a later save when context is clear, but acceptance starts with visible explicit selection. Direct Codex local-file verification remains a separate proven route and cannot establish the Web observation. The current 0.3.0 Web, installed-XPI, native mutation, and reader checks are pending; package verification alone must not be reported as those results.
 
 ## Observed Zotero reinstall ordering
 

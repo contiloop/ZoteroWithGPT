@@ -43,6 +43,8 @@ const ASSET_FILES = Object.freeze([
   ["protocol/v1-response.schema.json", "protocol/v1-response.schema.json"],
   ["protocol/examples/connection-status.request.json", "protocol/examples/connection-status.request.json"],
   ["protocol/examples/connection-status.response.json", "protocol/examples/connection-status.response.json"],
+  ["protocol/examples/find-local-arxiv.request.json", "protocol/examples/find-local-arxiv.request.json"],
+  ["protocol/examples/find-local-arxiv.response.json", "protocol/examples/find-local-arxiv.response.json"],
   ["protocol/examples/read-pdf.request.json", "protocol/examples/read-pdf.request.json"],
   ["protocol/examples/create-annotation.request.json", "protocol/examples/create-annotation.request.json"],
   ["protocol/examples/create-annotation.response.json", "protocol/examples/create-annotation.response.json"],
@@ -127,6 +129,18 @@ function validateReleaseText(content, label) {
 
 async function copyText(source, destination, label) {
   const content = await readFile(source, "utf8");
+  validateReleaseText(content, label);
+  await mkdir(path.dirname(destination), { recursive: true });
+  await writeFile(destination, content, "utf8");
+}
+
+async function copyAsset(source, destination, label, version) {
+  let content = await readFile(path.join(ASSET_DIRECTORY, ...source.split("/")), "utf8");
+  if (source === "protocol/examples/connection-status.response.json") {
+    const example = JSON.parse(content);
+    example.data.pluginVersion = version;
+    content = `${JSON.stringify(example, null, 2)}\n`;
+  }
   validateReleaseText(content, label);
   await mkdir(path.dirname(destination), { recursive: true });
   await writeFile(destination, content, "utf8");
@@ -237,10 +251,11 @@ async function stageClientKit(projectRoot, directory, version) {
     );
   }
   for (const [source, destination] of ASSET_FILES) {
-    await copyText(
-      path.join(ASSET_DIRECTORY, ...source.split("/")),
+    await copyAsset(
+      source,
       path.join(directory, ...destination.split("/")),
       `client kit ${source}`,
+      version,
     );
   }
   const members = (await allFiles(directory)).sort();
@@ -356,10 +371,11 @@ export async function buildXpi({
       );
     }
     for (const [source, destination] of ASSET_FILES) {
-      await copyText(
-        path.join(ASSET_DIRECTORY, ...source.split("/")),
+      await copyAsset(
+        source,
         path.join(stagingDirectory, ...destination.split("/")),
         `packaging asset ${source}`,
+        version,
       );
     }
     await writeFile(path.join(stagingDirectory, "prefs.js"), DEFAULT_PREFERENCES, "utf8");
@@ -390,6 +406,7 @@ export async function buildXpi({
       metafile: true,
       minify: false,
       platform: "browser",
+      preserveSymlinks: true,
       sourcemap: false,
       target: "firefox140",
       treeShaking: true,
@@ -426,6 +443,7 @@ export async function buildXpi({
         format: "iife",
         globalName: "ResearchCompanion",
         platform: "browser",
+        preserveSymlinks: true,
         target: "firefox140",
         archive: "/usr/bin/zip -X with sorted members and fixed UTC timestamps",
         clientKit: "plain UTF-8 files with the same fixed timestamps",

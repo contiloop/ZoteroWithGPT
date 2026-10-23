@@ -15,6 +15,87 @@ const execute = promisify(execFile);
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(sourceDirectory, "../../..");
 
+function loadBundledHost(bundle) {
+  const ioCalls = [];
+  const alerts = [];
+  const logErrors = [];
+  const menuItems = [];
+  let confirmCalls = 0;
+  let confirm = () => false;
+  const toolsMenu = { appendChild(item) { menuItems.push(item); } };
+  const window = {
+    closed: false,
+    document: {
+      getElementById(id) {
+        if (id === "menu_ToolsPopup") return toolsMenu;
+        return menuItems.find((item) => item.id === id) ?? null;
+      },
+      createXULElement() {
+        const item = {
+          id: "",
+          command: undefined,
+          setAttribute(name, value) { if (name === "id") this.id = value; },
+          addEventListener(type, listener) { if (type === "command") this.command = listener; },
+          removeEventListener(type, listener) {
+            if (type === "command" && this.command === listener) this.command = undefined;
+          },
+          remove() {
+            const index = menuItems.indexOf(item);
+            if (index >= 0) menuItems.splice(index, 1);
+          },
+        };
+        return item;
+      },
+    },
+  };
+  const sandbox = {
+    Zotero: {
+      Profile: { dir: "/controlled-profile" },
+      getMainWindows: () => [window],
+      logError(error) { logErrors.push(error); },
+      debug() {},
+    },
+    IOUtils: new Proxy({}, { get(_target, property) {
+      ioCalls.push(`IOUtils.${String(property)}`);
+      return async () => { throw new Error("bundled lifecycle test forbids IOUtils"); };
+    } }),
+    PathUtils: new Proxy({}, { get(_target, property) {
+      ioCalls.push(`PathUtils.${String(property)}`);
+      return () => { throw new Error("bundled lifecycle test stops before path access"); };
+    } }),
+    Services: { prompt: {
+      confirm(...args) {
+        confirmCalls += 1;
+        return confirm(...args);
+      },
+      alert(_window, title, message) { alerts.push({ title, message }); },
+    } },
+    crypto: globalThis.crypto,
+    TextEncoder,
+    TextDecoder,
+    URL,
+    structuredClone,
+    setTimeout,
+    clearTimeout,
+  };
+  vm.runInNewContext(bundle, sandbox, { filename: "diagnostic.js" });
+  return {
+    api: sandbox.R12NativeFaultAcceptance,
+    alerts,
+    ioCalls,
+    logErrors,
+    menuItems,
+    setConfirm(handler) { confirm = handler; },
+    get confirmCalls() { return confirmCalls; },
+  };
+}
+
+async function settleTasks() {
+  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+  await Promise.resolve();
+}
+
 test("controlled native fault XPI is typed, deterministic, and narrowly packaged", async (context) => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "r12-native-fault-test-"));
   context.after(() => rm(temporary, { recursive: true, force: true }));
@@ -74,52 +155,46 @@ test("controlled native fault XPI is typed, deterministic, and narrowly packaged
   assert.equal((source.match(/operationId:\s*"r12-native-fault-/gu) ?? []).length, 2);
   assert.doesNotMatch(source, /readline|process\.stdin|prompt\s*\(/u);
 
-  const ioCalls = [];
-  const menuItems = [];
-  const toolsMenu = { appendChild(item) { menuItems.push(item); } };
-  const window = {
-    closed: false,
-    document: {
-      getElementById(id) {
-        if (id === "menu_ToolsPopup") return toolsMenu;
-        return menuItems.find((item) => item.id === id) ?? null;
-      },
-      createXULElement() {
-        return {
-          id: "",
-          setAttribute(name, value) { if (name === "id") this.id = value; },
-          addEventListener() {},
-          removeEventListener() {},
-          remove() {},
-        };
-      },
-    },
-  };
-  const sandbox = {
-    Zotero: { getMainWindows: () => [window], logError(error) { throw error; } },
-    IOUtils: new Proxy({}, { get(_target, property) {
-      ioCalls.push(String(property));
-      return async () => { throw new Error("startup must not access IOUtils"); };
-    } }),
-    PathUtils: new Proxy({}, { get(_target, property) {
-      ioCalls.push(`PathUtils.${String(property)}`);
-      return () => { throw new Error("startup must not access PathUtils"); };
-    } }),
-    Services: { prompt: {} },
-    crypto: globalThis.crypto,
-    TextEncoder,
-    TextDecoder,
-    URL,
-    structuredClone,
-    setTimeout,
-    clearTimeout,
-  };
-  vm.runInNewContext(bundle, sandbox, { filename: "diagnostic.js" });
-  await sandbox.R12NativeFaultAcceptance.start({ id: "test", version: "1.0.0", rootURI: "" });
-  assert.deepEqual(menuItems.map((item) => item.id), [
+  const startup = loadBundledHost(bundle);
+  await startup.api.start({ id: "test", version: "1.0.0", rootURI: "" });
+  assert.deepEqual(startup.menuItems.map((item) => item.id), [
     "r12-native-fault-acceptance-parent-item-only",
     "r12-native-fault-acceptance-disable-await",
   ]);
-  assert.deepEqual(ioCalls, []);
-  await sandbox.R12NativeFaultAcceptance.stop();
+  assert.deepEqual(startup.ioCalls, []);
+  await startup.api.stop();
+
+  const stoppedInConfirmation = loadBundledHost(bundle);
+  await stoppedInConfirmation.api.start({ id: "test", version: "1.0.0", rootURI: "" });
+  const stoppedCommand = stoppedInConfirmation.menuItems[0].command;
+  let stopPromise;
+  stoppedInConfirmation.setConfirm(() => {
+    stopPromise = stoppedInConfirmation.api.stop();
+    return true;
+  });
+  stoppedCommand();
+  await stopPromise;
+  await settleTasks();
+  assert.equal(stoppedInConfirmation.confirmCalls, 1);
+  assert.deepEqual(stoppedInConfirmation.ioCalls, []);
+  assert.deepEqual(stoppedInConfirmation.logErrors, []);
+
+  const reenteredConfirmation = loadBundledHost(bundle);
+  await reenteredConfirmation.api.start({ id: "test", version: "1.0.0", rootURI: "" });
+  const firstCommand = reenteredConfirmation.menuItems[0].command;
+  const nestedCommand = reenteredConfirmation.menuItems[1].command;
+  reenteredConfirmation.setConfirm(() => {
+    nestedCommand();
+    return true;
+  });
+  firstCommand();
+  await settleTasks();
+  assert.equal(reenteredConfirmation.confirmCalls, 1);
+  assert.deepEqual(reenteredConfirmation.ioCalls, ["PathUtils.join"]);
+  assert.equal(
+    reenteredConfirmation.alerts.filter(({ message }) =>
+      message === "A controlled diagnostic case is already reserved or running.").length,
+    1,
+  );
+  await reenteredConfirmation.api.stop();
 });

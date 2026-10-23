@@ -566,7 +566,13 @@ async function diagnosticReport(input: {
 
 const windowCleanups = new Map<DiagnosticWindow, () => void>();
 const activeGates = new Set<MutableZoteroAccessGate>();
-let activeRun: Promise<void> | undefined;
+interface ExecutionReservation {
+  lifecycleRevision: number;
+  task?: Promise<void>;
+}
+
+let executionReservation: ExecutionReservation | undefined;
+let lifecycleRevision = 0;
 let running = false;
 
 function boundedError(error: unknown): string {
@@ -597,19 +603,35 @@ function begin(window: DiagnosticWindow, diagnosticCase: DiagnosticCase): void {
     Services.prompt.alert(window, "R12 Controlled Native Fault Acceptance", "The diagnostic is stopped.");
     return;
   }
-  if (activeRun !== undefined) {
+  if (executionReservation !== undefined) {
     Services.prompt.alert(
       window,
       "R12 Controlled Native Fault Acceptance",
-      "A controlled diagnostic case is already running.",
+      "A controlled diagnostic case is already reserved or running.",
     );
     return;
   }
-  if (!Services.prompt.confirm(
-    window,
-    "R12 Controlled Native Fault Acceptance",
-    confirmationText(diagnosticCase),
-  )) return;
+  const reservation: ExecutionReservation = { lifecycleRevision };
+  executionReservation = reservation;
+  let approved = false;
+  try {
+    approved = Services.prompt.confirm(
+      window,
+      "R12 Controlled Native Fault Acceptance",
+      confirmationText(diagnosticCase),
+    );
+  } finally {
+    if (!approved && executionReservation === reservation) executionReservation = undefined;
+  }
+  if (!approved) return;
+  if (
+    !running ||
+    lifecycleRevision !== reservation.lifecycleRevision ||
+    executionReservation !== reservation
+  ) {
+    if (executionReservation === reservation) executionReservation = undefined;
+    return;
+  }
 
   const task = runDiagnostic(diagnosticCase)
     .then((report) => {
@@ -627,9 +649,9 @@ function begin(window: DiagnosticWindow, diagnosticCase: DiagnosticCase): void {
       Services.prompt.alert(window, "R12 controlled diagnostic stopped", message);
     })
     .finally(() => {
-      if (activeRun === task) activeRun = undefined;
+      if (executionReservation === reservation) executionReservation = undefined;
     });
-  activeRun = task;
+  reservation.task = task;
 }
 
 function attachWindow(window: DiagnosticWindow): void {
@@ -664,6 +686,7 @@ function attachWindow(window: DiagnosticWindow): void {
 
 export async function start(_context: { id: string; version: string; rootURI: string }): Promise<void> {
   if (running) return;
+  lifecycleRevision += 1;
   running = true;
   for (const window of Zotero.getMainWindows()) attachWindow(window);
 }
@@ -679,11 +702,14 @@ export function onMainWindowUnload(window: DiagnosticWindow): void {
 
 export async function stop(): Promise<void> {
   running = false;
+  lifecycleRevision += 1;
+  const stoppingReservation = executionReservation;
+  if (stoppingReservation?.task === undefined) executionReservation = undefined;
   for (const gate of activeGates) gate.setEnabled(false);
   for (const cleanup of windowCleanups.values()) cleanup();
   windowCleanups.clear();
   try {
-    await activeRun;
+    await stoppingReservation?.task;
   } catch {
     // The command handler already reports a bounded error.
   }

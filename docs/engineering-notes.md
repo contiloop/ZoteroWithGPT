@@ -34,6 +34,18 @@ Assigning a planned key to a newly constructed Zotero item marks that data objec
 
 An actual pre-fix parent creation reached its first field setter without that load and raised Zotero's unloaded-primary-data exception before save; the SQLite transaction rolled back. Its durable operation history had already entered the prepared/running boundary and remains a terminal historical unknown. Source evidence about the rollback does not authorize rewriting that result, inferring absence from a search, or retrying the mutation under another identity.
 
+## Partial import failure keeps the confirmed parent
+
+The import order acquires and stages the PDF before committing the parent, then creates and installs the attachment. A reviewed fixed-command host probe injected a fault at the attachment-create boundary after the parent commit. The actual response was terminal `failed` / `storage_error`, nonretryable, with `completion: item_only` and confirmed storage. Native UI readback found the one synthetic parent with zero attachments; the planned attachment had no native record or installed file, and the in-memory staging was discarded.
+
+This is evidence for the post-parent attachment boundary, not for a real network download failure. Recovery may retain a confirmed parent, but it must not infer a missing attachment from the response alone, invent a new operation identity, or overwrite an existing parent. Reconcile the planned keys and durable stage before any later authorized work.
+
+## Authority must survive awaited acquisition
+
+Authority checks before an asynchronous source read are insufficient because access can be disabled while that read is pending. A second fixed-command host probe used a real timer await in its isolated in-memory acquisition and closed only its diagnostic gate before continuation. The actual result was terminal `rejected` / `permission_denied`, nonretryable, with no native checkpoint, marker, candidate, or plan/create/install call. Fresh native search found no synthetic item.
+
+The controlled result validates the post-await gate in the native workflow. It does not claim that production settings were toggled. Each awaited boundary must recheck the same authority, library, file, and operation evidence that governed the initial call, and a shutdown or lifecycle transition must prevent a confirmed dialog from starting a later diagnostic run.
+
 ## Native annotation comments have a canonical form
 
 Zotero 10.0.6's public `annotationComment` setter applies `trim().normalize()`. A comment with leading or trailing whitespace, including an incidental terminal newline, or a decomposed Unicode sequence can therefore commit successfully but differ from the approved request during exact readback. One actual run exposed this boundary: the native annotation was visible with the complete substantive study content, while the operation correctly remained indeterminate because the stored comment omitted the request's final newline.
@@ -51,3 +63,5 @@ The subsequent stale `update_annotation` request returned `conflict`, and a fres
 Normal removal and installation are separate host lifecycle transitions. An observed reinstall attempted before the removal-completing restart appeared enabled in the current Plugins Manager but was absent after restart. A request published to that unsatisfied session remained unprocessed. The reliable acceptance sequence was remove, restart, install, restart, then verify the profile package and establish a fresh descriptor/status/descriptor connection.
 
 Do not copy an unprocessed request into the new session or assign it another operation ID. Preserve its original identity and outcome uncertainty. Journal-backed replay after the complete reinstall should return the historical result; fresh native reads, rather than replay alone, establish the current parent, attachment, and annotation state.
+
+ChatGPT account lifecycle has a separate distinction: **Uninstall** removes the plugin from active use while preserving the owned backend, whereas **Delete plugin** removes the owned plugin itself. The accepted private-plugin lifecycle used only Uninstall followed by Install on the same backend. Reinstallation restored the checked skill, connected app dependency, current release, and private root configuration without creating another release. Treat an update, a checked skill toggle, and a true Uninstall/Install cycle as different observations.

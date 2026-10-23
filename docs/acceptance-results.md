@@ -125,13 +125,23 @@ An owned metadata-only preprint parent `3T97YX6C` represented `1512.03385v1`. Ac
 
 A second owned parent, `VY467DKX`, represented `1512.03385v2`. Inspecting v1 with both parents present returned `needs_choice` and the reason `Multiple canonical arXiv parents require an explicit target choice.` No ensure request followed. One bounded inspection of a valid but absent future concrete version, `2612.99999v1`, returned terminal nonretryable `not_found` with null data. It caused no native write and was not retried or replaced by another route.
 
-The retained-parent `item_only` import failure and disable-during-await authority fence still require the separately reviewed controlled host probe described in the remaining-coverage table below. Production has no generic fault command, and no unreviewed diagnostic was loaded to manufacture either result.
+### Controlled host fault boundaries
+
+A separately reviewed temporary Zotero host probe exercised the two fault boundaries that cannot be produced safely through the production menu. The exact diagnostic XPI had SHA-256 `235c28dd04934f00aa9fd308f7bafe1ee1ff767643a3ae89c4b3961b8b5570fa`. It exposed two fixed commands, used embedded owned PDF bytes, kept a separate diagnostic journal, and added no generic input or evaluation surface.
+
+Case A, operation `r12-native-fault-parent-item-only-v1`, staged the embedded bytes in memory, created synthetic parent `LEABZFUA`, and injected the reviewed fault at the attachment-create boundary. Its fresh PASS report returned terminal `failed`, `storage_error`, nonretryable, `completion: item_only`, `storage: confirmed`, and `viewer: not_checked`. Durable evidence stopped at `parent_committed`; planned attachment key `K29LL3GR` had no native attachment record or installed PDF, the in-memory staging was discarded, and fresh Zotero UI readback showed the exact controlled parent with **0 Attachments**.
+
+Case B, operation `r12-native-fault-disable-during-await-v1`, closed only the diagnostic gate across its actual timer-backed in-memory acquisition await. Its fresh PASS report returned terminal `rejected`, `permission_denied`, nonretryable, with no native checkpoint or planned item/attachment key. A fresh Zotero search for its synthetic identifier found no item.
+
+These results are controlled host-boundary evidence. Case A is not a real network download failure, and Case B is not a production-settings toggle. Neither synthetic identity establishes arXiv source identity. After capture, the diagnostic add-on was normally removed, both Tools commands disappeared, and the Case A parent was moved to Zotero Trash rather than erased. The separate diagnostic journal and both operation IDs were retained. The production 0.2.2 profile XPI still matched its reviewed hash, and a fresh post-cleanup `connection_status` again reported enabled Zotero 10.0.6, plugin 0.2.2, and all 14 operations.
 
 ### Restart, reinstall, replay, and original-paper control
 
 The observed reliable local lifecycle was remove, normal Zotero restart to complete removal, install the exact XPI, then another normal restart before final readback. Installing again in the same Zotero run before the removal-completing restart appeared enabled temporarily but did not persist after restart; a request addressed to that unsatisfied session remained unprocessed and was not reidentified. After the complete sequence, the installed XPI hash, plugin status, operation journal, parent, PDF, and sole manually edited annotation all matched their prior values.
 
 Replaying the byte-identical historical successful reuse request returned its recorded result. Fresh searches/listings still found one Layer Normalization parent, one PDF, and one annotation with the same complete manual body and revision. The journal therefore survived normal removal/reinstall and prevented duplicate execution.
+
+The owned private ChatGPT plugin also completed its distinct account lifecycle. The plugin detail menu exposed **Uninstall** separately from **Delete plugin**. Normal uninstall produced an uninstalled confirmation while preserving the owned backend and its 0.2.2 release history; the same detail page then exposed **Install plugin**. Normal reinstall completed without creating a release or deleting the backend. Post-install management showed **Use Zotero Study Save** checked, version 0.2.2, and Mac Safe Files connected. Creator readback retained the same personal/private backend, current release, 26-file account copy, app dependency, and the one private `bridgeRoot` setting.
 
 The original Huginn paper remained a read-only control. A fresh 0.2.2 native read returned its unchanged PDF SHA-256 `96f4543683a06a470ccb0b6b0db27a98f283fde9467d175e838f03a629a76c7b`, and a fresh annotation listing for attachment `9B6NE4M4` remained empty. No 0.2.x write request targeted that item.
 
@@ -150,10 +160,10 @@ A separate diagnostic used the owned plugin's **Try in chat** action, which visi
 | Exact full annotation and actual reader | Passed on 0.2.2 for the 7,388-character body, selected passage, formatted mathematics, questions, assumptions, and clicked safe reference. |
 | Conflict protection and reuse | Passed; a stale update preserved the manual edit, and fresh ensure reused one parent/PDF without duplicate records. |
 | Metadata-only, version, ambiguity, and source-not-found fixtures | Passed with the two owned ResNet parents and one nonretryable absent-source result. |
-| Restart, remove/reinstall, and historical replay | Passed when removal and installation were separated by their required normal restarts. |
+| Restart, remove/reinstall, and historical replay | Passed for the Zotero XPI when removal and installation were separated by their required normal restarts; passed for normal private-plugin Uninstall/Install without using Delete plugin or changing its backend/release/configuration. |
 | Original user paper | Passed read-only fingerprint and zero-annotation controls. |
 | Explicit plugin selection and status-only binding | Passed as a diagnostic with exactly one read request. |
-| Retained-parent partial failure and disable-after-await fence | Pending reviewed controlled-host execution; not represented by unit tests or an unreviewed runtime hook. |
+| Retained-parent partial failure and disable-after-await fence | Passed through the reviewed fixed-command host probe: one confirmed `item_only` parent with no attachment/PDF, and one definite pre-mutation permission rejection after an awaited diagnostic gate transition. These are controlled synthetic boundaries, not a real network failure or production-settings toggle. |
 | Two ordinary Web study/save conversations | **Failed to establish.** The final natural request dispatched no plugin tool or bridge request; direct-client and explicit-selection results do not replace this requirement. |
 
-Public publication, a ChatGPT Work route, and a public Mac Safe Files installer remain outside this acceptance record. The owned T7 fixtures and historical operation evidence remain in Zotero; they were not silently removed.
+Public publication, a ChatGPT Work route, and a public Mac Safe Files installer remain outside this acceptance record. The owned T7 fixtures and historical operation evidence remain in Zotero. The temporary controlled Case A parent was moved to Trash explicitly after readback; its diagnostic history was preserved.

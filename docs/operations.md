@@ -42,6 +42,8 @@ Distribution is manual. The manifest's reserved .invalid update URL supplies no 
 
 Remove the owned personal **Zotero Study Save** plugin through ChatGPT management separately from the XPI. Leave Mac Safe Files and unrelated plugins connected. Reinstall using the portable source and restore the one private root setting; never embed an old descriptor, pending operation, or result. Both ordinary component removal procedures retain native study data and the Zotero operation journal. Actual lifecycle acceptance remains surface/version specific.
 
+The observed personal-plugin lifecycle used the detail page's **Uninstall** action, not **Delete plugin**. The owned backend and release history remained available, and the same page exposed **Install plugin**. After installation, verify all of the following before use: the expected version, **Use Zotero Study Save** checked, Mac Safe Files connected, unchanged owned backend/current release, the expected account file inventory, and exactly the private `bridgeRoot` customization. The accepted 0.2.2 run restored all of those values without creating a release or deleting the owned backend.
+
 ## Observed Zotero reinstall ordering
 
 Actual 0.2.2 acceptance established this reliable sequence:
@@ -53,3 +55,9 @@ Actual 0.2.2 acceptance established this reliable sequence:
 5. Verify the installed profile XPI hash, copy the matching client kit, enable the bridge, and use a fresh descriptor/status/descriptor sequence.
 
 Installing again in the same Zotero run before the removal-completing restart can appear enabled temporarily but fail to persist after restart. In the observed run, a request addressed to that unsatisfied session remained unprocessed. It was not moved, replayed under a new ID, or treated as proof of nonexecution. After the complete sequence, fresh status and native reads passed, the operation journal remained available, and byte-identical replay of a historical successful request returned history without duplicating the parent, PDF, or annotation.
+
+## Temporary controlled-host diagnostics
+
+Production packages must not add generic fault commands or evaluation surfaces. When a reviewed acceptance-only XPI is required, pin its source commit and archive hash, use fixed synthetic identities and a separate journal, run each fixed case once after confirming those identities are absent, and label exactly which boundary it controls. Preserve its terminal journal records; do not reidentify a failed or rejected case.
+
+After evidence capture, remove the temporary add-on normally and confirm its Tools commands are gone. Move only its clearly labeled owned fixture to Zotero Trash when the runbook calls for cleanup; do not erase its diagnostic journal or touch user papers. Recheck the production XPI hash and run a fresh descriptor/status/descriptor operation. A synthetic embedded-byte attachment fault is not evidence of a network failure, and an isolated diagnostic gate is not evidence of a production-settings toggle.

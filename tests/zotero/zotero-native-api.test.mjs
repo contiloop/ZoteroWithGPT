@@ -262,6 +262,10 @@ function fixtureEnvironment() {
     onItemsGetAll: undefined,
     onItemSave: undefined,
     afterTransactionCommit: undefined,
+    transactionStarts: 0,
+    freshReads: [],
+    ioReadPaths: [],
+    libraries: [],
   };
   let transactionTail = Promise.resolve();
   let transactionCount = 0;
@@ -269,6 +273,7 @@ function fixtureEnvironment() {
   host.db = {
     active: false,
     async executeTransaction(work) {
+      host.transactionStarts += 1;
       const prior = transactionTail;
       let release;
       transactionTail = new Promise((resolve) => { release = resolve; });
@@ -316,6 +321,7 @@ function fixtureEnvironment() {
     get clientVersion() { return host.clientVersion; },
     async waitForDataLoad() {},
   };
+  host.libraries.push(personalLibrary);
   const paper = new FakeItem(host, "journalArticle", {
     id: 1,
     key: "ITEM0001",
@@ -392,8 +398,10 @@ function fixtureEnvironment() {
     DB: host.db,
     Libraries: {
       userLibraryID: 1,
-      getAll() { return [personalLibrary]; },
-      get() { return personalLibrary; },
+      getAll() { return [...host.libraries]; },
+      get(libraryID) {
+        return host.libraries.find((library) => library.libraryID === libraryID);
+      },
     },
     Items: {
       async getAll(libraryID, onlyTopLevel, includeDeleted) {
@@ -405,8 +413,12 @@ function fixtureEnvironment() {
         await host.onItemsGetAll?.(values);
         return values;
       },
-      async getByLibraryAndKeyAsync(libraryID, key) { return byLibraryKey(libraryID, key); },
-      async getAsync(ids) {
+      async getByLibraryAndKeyAsync(libraryID, key, options) {
+        host.freshReads.push({ kind: "key", libraryID, key, options });
+        return byLibraryKey(libraryID, key);
+      },
+      async getAsync(ids, options) {
+        host.freshReads.push({ kind: "id", ids: structuredClone(ids), options });
         if (Array.isArray(ids)) return ids.map((id) => host.items.get(id)).filter(Boolean);
         return host.items.get(ids) ?? false;
       },
@@ -473,6 +485,7 @@ function fixtureEnvironment() {
       noteContent: new DomPurifyNativeNoteContentPolicy({ window: new JSDOM("").window }),
       IOUtils: {
         async read(path) {
+          host.ioReadPaths.push(path);
           const value = host.diskByPath.get(path);
           if (value !== undefined) return Uint8Array.from(value);
           if (path === "/fixture/paper.pdf") return Uint8Array.from(host.diskBytes);
@@ -1319,6 +1332,370 @@ const arxivSource = {
     doi: "10.1000/native-fixture",
   },
 };
+
+function addFixtureItem(host, itemType, values) {
+  const item = new FakeItem(host, itemType, {
+    id: host.nextId++,
+    ...values,
+  });
+  host.items.set(item.id, item);
+  return item;
+}
+
+function addFixtureLibrary(host, libraryID) {
+  const library = {
+    libraryID,
+    clientVersion: 1,
+    loadCount: 0,
+    async waitForDataLoad(type) {
+      assert.equal(type, "item");
+      this.loadCount += 1;
+    },
+  };
+  host.libraries.push(library);
+  return library;
+}
+
+function fixtureFingerprint(bytes) {
+  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+test("offline arXiv discovery returns complete ordered native evidence without external or write paths", async () => {
+  const { env, host } = fixtureEnvironment();
+  const requested = { arxivId: "2401.01234", version: 2 };
+  const currentBytes = new Uint8Array([37, 80, 68, 70, 45, 70, 73, 78, 68]);
+  const currentFingerprint = fixtureFingerprint(currentBytes);
+  host.diskByPath.set("/local/current.pdf", currentBytes);
+
+  const parent = addFixtureItem(host, "journalArticle", {
+    key: "LOCALP01",
+    fields: {
+      title: "Local identity evidence",
+      date: "2024-02-03",
+      url: "https://arxiv.org/abs/2401.01234",
+      archiveID: "arXiv:2401.01234v4",
+      extra: "arXiv: 2401.01234v3\narXiv: 2401.01234v3",
+    },
+    creators: [
+      { firstName: "Ada", lastName: "Example" },
+      { name: "Grace Example" },
+    ],
+  });
+  const parentProvenance = arxivParentProvenance({
+    arxivId: requested.arxivId,
+    version: 5,
+  });
+  parent.relations.set(ARXIV_PROVENANCE_RELATION_PREDICATE, [
+    parentProvenance,
+    parentProvenance,
+  ]);
+
+  const currentPdf = addFixtureItem(host, "attachment", {
+    key: "AKEYPDF",
+    parentItemID: parent.id,
+    attachmentContentType: "application/pdf",
+    filePath: "/local/current.pdf",
+    fields: {
+      title: "Current local PDF",
+      url: "https://arxiv.org/pdf/2401.05678v1",
+    },
+  });
+  const currentProvenance = arxivAttachmentProvenance(requested, currentFingerprint);
+  const staleProvenance = arxivAttachmentProvenance(
+    { arxivId: requested.arxivId, version: 9 },
+    "sha256:stale-local-pdf",
+  );
+  currentPdf.relations.set(ARXIV_PROVENANCE_RELATION_PREDICATE, [
+    currentProvenance,
+    currentProvenance,
+    staleProvenance,
+  ]);
+
+  addFixtureItem(host, "attachment", {
+    key: "FAILPDF",
+    parentItemID: parent.id,
+    attachmentContentType: "application/pdf",
+    filePath: "/missing-local.pdf",
+    fields: {
+      title: "Missing local PDF",
+      url: "https://arxiv.org/pdf/2401.01234v8",
+    },
+  });
+  addFixtureItem(host, "attachment", {
+    key: "NOTPDF",
+    parentItemID: parent.id,
+    attachmentContentType: "text/html",
+    fields: {
+      title: "Snapshot",
+      url: "https://arxiv.org/abs/2401.01234v20",
+    },
+  });
+  addFixtureItem(host, "attachment", {
+    key: "DELETEDPDF",
+    parentItemID: parent.id,
+    attachmentContentType: "application/pdf",
+    deleted: true,
+    fields: {
+      title: "Deleted PDF",
+      url: "https://arxiv.org/pdf/2401.01234v21",
+    },
+  });
+  addFixtureItem(host, "journalArticle", {
+    key: "TITLEONLY",
+    fields: { title: "2401.01234 is only text in this title" },
+  });
+
+  let stagingCalls = 0;
+  let importFingerprintCalls = 0;
+  env.arxivStaging = {
+    async installCreateOnly() { stagingCalls += 1; },
+  };
+  env.arxivFileFingerprint = {
+    fingerprintNow() {
+      importFingerprintCalls += 1;
+      return null;
+    },
+  };
+  const itemCountBefore = host.items.size;
+  host.freshReads.length = 0;
+  const native = createZoteroNativeApi(env);
+
+  const result = await native.findLocalArxiv(requested, 25);
+
+  assert.equal(result.truncated, false);
+  assert.equal(result.matches.length, 1);
+  assert.deepEqual(result.matches[0].paper, {
+    libraryId: "1",
+    itemKey: "LOCALP01",
+    title: "Local identity evidence",
+    creators: ["Ada Example", "Grace Example"],
+    year: 2024,
+    attachments: [
+      {
+        attachmentKey: "AKEYPDF",
+        title: "Current local PDF",
+        contentType: "application/pdf",
+        fingerprint: currentFingerprint,
+      },
+      {
+        attachmentKey: "FAILPDF",
+        title: "Missing local PDF",
+        contentType: "application/pdf",
+      },
+    ],
+  });
+  assert.deepEqual(result.matches[0].evidence, [
+    {
+      attachmentKey: null,
+      origin: "url",
+      arxivId: "2401.01234",
+      version: null,
+    },
+    {
+      attachmentKey: null,
+      origin: "archive_id",
+      arxivId: "2401.01234",
+      version: 4,
+    },
+    {
+      attachmentKey: null,
+      origin: "extra",
+      arxivId: "2401.01234",
+      version: 3,
+    },
+    {
+      attachmentKey: null,
+      origin: "provenance",
+      arxivId: "2401.01234",
+      version: 5,
+    },
+    {
+      attachmentKey: "FAILPDF",
+      origin: "url",
+      arxivId: "2401.01234",
+      version: 8,
+    },
+    {
+      attachmentKey: "AKEYPDF",
+      origin: "url",
+      arxivId: "2401.05678",
+      version: 1,
+    },
+    {
+      attachmentKey: "AKEYPDF",
+      origin: "provenance",
+      arxivId: "2401.01234",
+      version: 2,
+      fingerprint: currentFingerprint,
+    },
+  ]);
+  assert.equal(
+    result.matches[0].evidence.some((entry) => entry.version === 9),
+    false,
+    "stale provenance must not survive current fingerprint validation",
+  );
+  assert.equal(result.matches.some((entry) => entry.paper.itemKey === "TITLEONLY"), false);
+  assert.equal(host.items.size, itemCountBefore);
+  assert.equal(host.transactionStarts, 0);
+  assert.equal(host.savedSnapshots.length, 0);
+  assert.equal(stagingCalls, 0);
+  assert.equal(importFingerprintCalls, 0);
+  assert.equal(host.ioReadPaths.some((path) => /^https?:/u.test(path)), false);
+  assert.ok(host.freshReads.length > 0);
+  assert.equal(
+    host.freshReads.every((read) => read.options?.noCache === true),
+    true,
+    "local discovery must reload parent and child native records without cache",
+  );
+});
+
+test("offline arXiv discovery searches every eligible library and deduplicates native parents", async () => {
+  const { env, host } = fixtureEnvironment();
+  const requested = { arxivId: "2401.01234" };
+  const library10 = addFixtureLibrary(host, 10);
+  const library2 = addFixtureLibrary(host, 2);
+  host.libraries.push(library2);
+
+  const attachmentOnly = addFixtureItem(host, "journalArticle", {
+    libraryID: 1,
+    key: "ATTACHONLY",
+    fields: { title: "Attachment-only identity" },
+  });
+  addFixtureItem(host, "attachment", {
+    libraryID: 1,
+    key: "ONLYPDF",
+    parentItemID: attachmentOnly.id,
+    attachmentContentType: "application/pdf",
+    fields: {
+      title: "Identity-bearing PDF",
+      url: "https://arxiv.org/pdf/2401.01234v2",
+    },
+  });
+  addFixtureItem(host, "journalArticle", {
+    libraryID: 10,
+    key: "METADATA10",
+    fields: {
+      title: "Metadata-only library ten",
+      archiveID: "arXiv:2401.01234v3",
+    },
+  });
+  addFixtureItem(host, "journalArticle", {
+    libraryID: 2,
+    key: "METADATA02",
+    fields: {
+      title: "Metadata-only library two",
+      extra: "arXiv:2401.01234v4",
+    },
+  });
+  addFixtureItem(host, "journalArticle", {
+    libraryID: 1,
+    key: "DELETEDPARENT",
+    deleted: true,
+    fields: {
+      title: "Deleted matching parent",
+      archiveID: "arXiv:2401.01234v5",
+    },
+  });
+  const deletedChildParent = addFixtureItem(host, "journalArticle", {
+    libraryID: 1,
+    key: "DELETEDCHILD",
+    fields: { title: "Only a deleted child matches" },
+  });
+  addFixtureItem(host, "attachment", {
+    libraryID: 1,
+    key: "TRASHEDPDF",
+    parentItemID: deletedChildParent.id,
+    attachmentContentType: "application/pdf",
+    deleted: true,
+    fields: { url: "https://arxiv.org/pdf/2401.01234v6" },
+  });
+  addFixtureItem(host, "attachment", {
+    libraryID: 1,
+    key: "STANDALONE",
+    attachmentContentType: "application/pdf",
+    fields: { url: "https://arxiv.org/pdf/2401.01234v7" },
+  });
+
+  const originalGetAll = env.Zotero.Items.getAll.bind(env.Zotero.Items);
+  env.Zotero.Items.getAll = async (...args) => {
+    const items = await originalGetAll(...args);
+    return [...items, ...items];
+  };
+  const native = createZoteroNativeApi(env);
+
+  const result = await native.findLocalArxiv(requested, 25);
+
+  assert.deepEqual(
+    result.matches.map((entry) => `${entry.paper.libraryId}/${entry.paper.itemKey}`),
+    ["1/ATTACHONLY", "10/METADATA10", "2/METADATA02"],
+  );
+  assert.deepEqual(result.matches[0].evidence, [
+    {
+      attachmentKey: "ONLYPDF",
+      origin: "url",
+      arxivId: "2401.01234",
+      version: 2,
+    },
+  ]);
+  assert.deepEqual(result.matches[1].paper.attachments, []);
+  assert.deepEqual(result.matches[2].paper.attachments, []);
+  assert.equal(result.truncated, false);
+  assert.equal(library10.loadCount, 1);
+  assert.equal(library2.loadCount, 1);
+});
+
+test("offline arXiv discovery uses limit plus one truncation in stable native-key order", async () => {
+  const { env, host } = fixtureEnvironment();
+  for (const key of ["LOCALC", "LOCALA", "LOCALB"]) {
+    addFixtureItem(host, "journalArticle", {
+      key,
+      fields: {
+        title: key,
+        archiveID: "arXiv:2401.01234v1",
+      },
+    });
+  }
+  const native = createZoteroNativeApi(env);
+
+  const limited = await native.findLocalArxiv({ arxivId: "2401.01234" }, 2);
+  assert.deepEqual(
+    limited.matches.map((entry) => entry.paper.itemKey),
+    ["LOCALA", "LOCALB"],
+  );
+  assert.equal(limited.truncated, true);
+
+  const complete = await native.findLocalArxiv({ arxivId: "2401.01234" }, 3);
+  assert.deepEqual(
+    complete.matches.map((entry) => entry.paper.itemKey),
+    ["LOCALA", "LOCALB", "LOCALC"],
+  );
+  assert.equal(complete.truncated, false);
+});
+
+test("offline arXiv discovery rejects a qualifying candidate with more than 100 evidence records", async () => {
+  const { env, host } = fixtureEnvironment();
+  addFixtureItem(host, "journalArticle", {
+    key: "TOOMANY1",
+    fields: {
+      title: "Too much local identity evidence",
+      extra: Array.from(
+        { length: 101 },
+        (_, index) => `arXiv:2401.01234v${String(index + 1)}`,
+      ).join("\n"),
+    },
+  });
+  const native = createZoteroNativeApi(env);
+
+  await assert.rejects(
+    native.findLocalArxiv({ arxivId: "2401.01234" }, 25),
+    (error) =>
+      error instanceof CoreOperationError &&
+      error.code === "too_large" &&
+      /more than 100 local arXiv evidence records/iu.test(error.message),
+  );
+  assert.equal(host.transactionStarts, 0);
+  assert.equal(host.savedSnapshots.length, 0);
+});
 
 function arxivImporter(native, inspection, bytes) {
   const fingerprint = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;

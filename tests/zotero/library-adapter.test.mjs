@@ -72,12 +72,18 @@ class NativeApiDouble {
   notesUpdated = 0;
   annotations = new Map();
   notes = new Map();
+  localArxivDiscovery = undefined;
+  localArxivCalls = [];
 
   async runtimeStatus() {
     return { zoteroVersion: "10.0.6-runtime", profileName: "Test Profile" };
   }
 
-  async findLocalArxiv() {
+  async findLocalArxiv(reference, limit) {
+    this.localArxivCalls.push({ reference: structuredClone(reference), limit });
+    if (this.localArxivDiscovery !== undefined) {
+      return structuredClone(this.localArxivDiscovery);
+    }
     throw new CoreOperationError(
       "unsupported_capability",
       "Offline local arXiv discovery is not active in this native test double",
@@ -323,6 +329,56 @@ test("offline arXiv discovery fails clearly while the native port is inert", asy
     }),
     (error) => error instanceof CoreOperationError && error.code === "unsupported_capability",
   );
+});
+
+test("offline arXiv discovery passes canonical identity and the default limit to native discovery", async () => {
+  const native = new NativeApiDouble();
+  native.localArxivDiscovery = {
+    matches: [
+      {
+        paper: {
+          libraryId: "2",
+          itemKey: "LOCAL001",
+          title: "Existing local paper",
+          creators: ["Ada Example"],
+          attachments: [
+            {
+              attachmentKey: "LOCALPDF",
+              title: "Existing PDF",
+              contentType: "application/pdf",
+              fingerprint: "sha256:local-pdf",
+            },
+          ],
+        },
+        evidence: [
+          {
+            attachmentKey: "LOCALPDF",
+            origin: "provenance",
+            arxivId: "2401.01234",
+            version: 2,
+            fingerprint: "sha256:local-pdf",
+          },
+        ],
+      },
+    ],
+    truncated: false,
+  };
+
+  const result = await adapter(native).findLocalArxiv({
+    protocolVersion: 1,
+    operationId: "op-find-local-active",
+    operation: "find_local_arxiv",
+    profileId: "profile-A",
+    payload: { url: "https://arxiv.org/pdf/2401.01234v2?download=1#page=3" },
+  });
+
+  assert.deepEqual(native.localArxivCalls, [
+    { reference: { arxivId: "2401.01234", version: 2 }, limit: 25 },
+  ]);
+  assert.deepEqual(result, {
+    source: { arxivId: "2401.01234", version: 2 },
+    ...native.localArxivDiscovery,
+  });
 });
 
 test("paper discovery returns ambiguous titles and every PDF candidate", async () => {

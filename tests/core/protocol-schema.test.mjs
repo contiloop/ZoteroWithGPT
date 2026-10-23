@@ -15,6 +15,7 @@ const ASSET_ROOT = path.resolve(
   '../../scripts/package/assets/protocol',
 );
 const EXAMPLE_ROOT = path.join(ASSET_ROOT, 'examples');
+const LEGACY_ROOT = fileURLToPath(new URL('./fixtures/legacy-import/', import.meta.url));
 const PROJECT_ROOT = path.resolve(ASSET_ROOT, '../../../..');
 
 async function json(filename) {
@@ -81,13 +82,13 @@ test('every shipped example passes the Draft 2020-12 schema and matching runtime
 });
 
 test('request schema and runtime both reject closed-shape and projected-source violations', async () => {
-  const inspect = await json(path.join(EXAMPLE_ROOT, 'inspect-arxiv.request.json'));
+  const inspect = await json(path.join(LEGACY_ROOT, 'inspect-arxiv.request.json'));
   rejectedByBoth(validators.request, validateProtocolRequest, {
     ...inspect,
     payload: { ...inspect.payload, downloadUrl: 'https://arxiv.org/pdf/2401.01234v2' },
   });
 
-  const ensure = await json(path.join(EXAMPLE_ROOT, 'ensure-arxiv-pdf.request.json'));
+  const ensure = await json(path.join(LEGACY_ROOT, 'ensure-arxiv-pdf.request.json'));
   rejectedByBoth(validators.request, validateProtocolRequest, {
     ...ensure,
     payload: {
@@ -101,14 +102,14 @@ test('request schema and runtime both reject closed-shape and projected-source v
 });
 
 test('response schema and runtime both reject lifecycle and evidence contradictions', async () => {
-  const ready = await json(path.join(EXAMPLE_ROOT, 'ensure-arxiv-pdf.response.json'));
+  const ready = await json(path.join(LEGACY_ROOT, 'ensure-arxiv-pdf.response.json'));
   rejectedByBoth(
     validators.response,
     value => validateProtocolResponse('ensure_arxiv_pdf', value),
     { ...ready, verification: { storage: 'not_checked', viewer: 'not_checked' } },
   );
 
-  const itemOnly = await json(path.join(EXAMPLE_ROOT, 'ensure-arxiv-pdf.item-only.response.json'));
+  const itemOnly = await json(path.join(LEGACY_ROOT, 'ensure-arxiv-pdf.item-only.response.json'));
   rejectedByBoth(
     validators.response,
     value => validateProtocolResponse('ensure_arxiv_pdf', value),
@@ -117,7 +118,7 @@ test('response schema and runtime both reject lifecycle and evidence contradicti
 });
 
 test('response schema and runtime both reject invalid calendar and verified-reuse evidence', async () => {
-  const inspect = await json(path.join(EXAMPLE_ROOT, 'inspect-arxiv.response.json'));
+  const inspect = await json(path.join(LEGACY_ROOT, 'inspect-arxiv.response.json'));
   rejectedByBoth(
     validators.response,
     value => validateProtocolResponse('inspect_arxiv', value),

@@ -32,8 +32,8 @@ The portable ChatGPT plugin declares the existing Mac Safe Files dependency and 
 
 The selected local-study route parses the supplied official arXiv URL locally and uses `find_local_arxiv` only against the current Zotero profile. It performs no HTTP request and does not download, import, repair, or mutate native data. It avoids legacy macOS attachment-path getters that can repair old descriptors as a hidden side effect. Missing or unreadable PDFs return to the researcher for manual Zotero action.
 
-The two retained remote arXiv operations do not expose arbitrary HTTP access. The host constructs fixed HTTPS metadata/PDF routes from validated article identities and validates every redirect and final URL against the expected resource. It omits credentials, follows redirects manually, and bounds time, bytes, XML work, and redirect count. Service rate limits produce bounded failure/cooldown guidance rather than automatic retries or alternate-endpoint bypasses. Retrieved XML, PDF text, references, and conversation content remain untrusted data and cannot supply executable instructions or save authority. These operations remain for legacy clients and historical results and are not invoked by the selected local-study workflow.
-
-PDF staging and imported-file installation are local host operations behind typed ports. They do not add a shell tool, network listener, generic evaluator, or public Zotero API. Imported bytes must match locally parsed/fingerprinted evidence before annotation geometry is accepted. An uncertain native commit remains unknown; missing active search results do not authorize recreating its planned keys.
+Remote acquisition is removed. Historical import schemas and read-only native
+reconciliation survive solely to interpret retained journals, never to resume a
+download or create a paper. Paper and conversation text remains untrusted data.
 
 Gecko path checks reject observed escapes and symlinks before and after reads, but do not provide an OS-level no-follow open. A hostile same-user process can race the check and open. Keep the directory private and dedicated; this release does not provide isolation against malicious processes running as the same user.

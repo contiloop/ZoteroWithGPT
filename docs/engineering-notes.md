@@ -1,85 +1,66 @@
-# Native integration knowledge
+# Zotero host knowledge
 
-## Reader objects can outlive their windows
+## Dead readers
 
-After an extension update, a formatted comment remained visibly correct while verification reported an inspection error. Zotero's error console showed “can't access dead object”; a normal quit/reopen restored strict verification on the same package and comment. An independent probe reproduced the failure by removing an unrelated reader and making its old iframe getter throw. The old synchronization order read that getter before checking membership. Synchronization now checks removed-reader membership first and isolates inaccessible entries, with best-effort cleanup. A retained inaccessible reader is retried and may report again on later scans so a revived reader can reattach; repeated diagnostic messages alone are not a new write failure. Verify a healthy target alongside an unrelated destroyed reader, not only a single-reader fixture.
+Reader wrappers can survive destroyed windows and throw “can't access dead
+object” when an iframe getter is read. Check membership before touching it and
+isolate inaccessible entries; otherwise one unrelated dead reader aborts all
+healthy synchronization. A normal restart once restored viewer checks without
+changing the saved content.
 
-## Native source and preview are different surfaces
+## Source, preview, and active owner
 
-Formatted mode hides Zotero's source editor. A source-editor check can therefore fail while the rendered comment is visible. Conversely, an open background tab is insufficient viewer evidence. Inspect exact current markup and owner visibility; then switch between native edit and formatted preview and verify again. A failed viewer response is not grounds to repeat the saved write.
+Formatted mode hides Zotero's source editor, so editor visibility is not preview
+visibility. A background tab is also insufficient. Inspect fresh current markup
+and the active owning reader; a failed display check never repeats a save.
 
-## Plugin globals are not browser globals
+## Sandbox and owner realms
 
-The Zotero plugin sandbox lacks some Window APIs. PDF worker calls also reject caller-realm objects with DataCloneError. Supply the validated JSON snapshot primitive at bootstrap and clone worker arguments into the owning realm. Verify in Zotero after changes; Node-only test globals conceal these failures.
+Zotero's plugin sandbox lacks some Window globals. PDF worker arguments need
+cloning into the owning realm or throw DataCloneError. Main chrome documents
+may be XUL: note sanitization uses a live main window and detached inert HTML
+document, not an assumed HTML main document.
 
-## Main documents may be XUL
+## Native comment normalization
 
-Creating HTML parsing containers against the main chrome document can produce the wrong namespace or MIME assumptions. Child-note safety processing uses a trusted live main window and a detached inert HTML document. New unsafe source remains readable as escaped text. Existing native note HTML is checked without rewriting it; otherwise a harmless append can destroy a user's table or reference.
+Zotero 10.0.6's `annotationComment` setter applies `trim().normalize()`. Prepare
+NFC text without boundary whitespace before approval/identity assignment; reject
+an already approved unrepresentable body before setters. A historical trailing
+newline mismatch remains an unknown outcome, not permission to retry.
 
-## Sanitizers and math need separate semantic checks
+Zotero's native editor can also change interior whitespace. Its newly saved
+body/revision is authoritative; do not restore an earlier extension snapshot.
 
-A broad MathML tag allowlist can still erase cancellation or alignment if semantic attributes are removed. Restrict attributes by element and namespace while preserving the meaning of validated math. Inspect actual cancellation/aligned output, numbered steps, paragraph spacing, and a clicked safe reference. Preserve raw native notation for removal or renderer failure.
+## Legacy attachment paths
 
-## Request results are historical
+Zotero 10.0.6 file-path getters can repair raw macOS `AAAA...` attachment paths
+with a database update. Offline discovery checks the raw descriptor first to
+avoid this hidden mutation. A candidate without current byte evidence stays
+unverified and requires manual restoration plus fresh discovery before reading.
+Parent or sibling provenance cannot prove that attachment's PDF version.
 
-Reusing an observation ID returns old data even after the target changed. Use fresh IDs for new reads and verification. A missing result is not evidence of nonexecution: inspect the active session and recover a potentially running mutation using its original identity. Only an explicit queued-interruption non-write allows a newly approved mutation under a fresh identity.
+## Installation boundaries
 
-## Extension metadata has host-specific requirements
+Zotero requires a truthy update URL even for manual distribution. The reserved
+`.invalid` URL meets that requirement without providing an updater.
 
-Zotero 10.0.6 rejected an otherwise built XPI without a truthy update URL. The package uses a reserved .invalid URL to meet that host requirement without inventing an updater. Check installation and manual-update behavior in the actual Plugins Manager; archive inspection alone does not prove installability.
+Removal needs a restart before reinstall, followed by another restart. Installing
+before removal completed once appeared enabled but vanished after restart.
+ChatGPT **Uninstall** preserves the owned backend; **Delete plugin** destroys it.
+Neither a plugin update nor a skill toggle proves an uninstall/reinstall cycle.
 
-## Planned native keys require primary data initialization
+## Stalled reader acquisition
 
-Assigning a planned key to a newly constructed Zotero item marks that data object as identified. Field and relation setters can then require loaded `primaryData`, even though the item has never been saved. The supported host sequence is to construct the item, set its library, assign the planned key, await the public `loadPrimaryData()` method, populate fields and relations, and save through the native transaction. Both arXiv parent and PDF attachment creation follow this sequence. Because the load is an asynchronous boundary, recheck authority, library ownership, current file evidence, and planned-key availability after it and before any field mutation.
+A read-only `list_annotations` once held the scanner while acquiring a reader.
+A later cold-reader probe completed, leaving the cause unresolved. Reconnect
+persisted disabled state before waiting for the stuck handler, explaining that
+state after restart. Preserve operation identity, re-enable explicitly, and
+check a fresh session. Recovery's historical-write warning was misleading for
+this read; do not claim forced-quit recovery from ordinary reinstall evidence.
 
-An actual pre-fix parent creation reached its first field setter without that load and raised Zotero's unloaded-primary-data exception before save; the SQLite transaction rolled back. Its durable operation history had already entered the prepared/running boundary and remains a terminal historical unknown. Source evidence about the rollback does not authorize rewriting that result, inferring absence from a search, or retrying the mutation under another identity.
+## Preparation versus persistence
 
-## Partial import failure keeps the confirmed parent
-
-The import order acquires and stages the PDF before committing the parent, then creates and installs the attachment. A reviewed fixed-command host probe injected a fault at the attachment-create boundary after the parent commit. The actual response was terminal `failed` / `storage_error`, nonretryable, with `completion: item_only` and confirmed storage. Native UI readback found the one synthetic parent with zero attachments; the planned attachment had no native record or installed file, and the in-memory staging was discarded.
-
-This is evidence for the post-parent attachment boundary, not for a real network download failure. Recovery may retain a confirmed parent, but it must not infer a missing attachment from the response alone, invent a new operation identity, or overwrite an existing parent. Reconcile the planned keys and durable stage before any later authorized work.
-
-## Authority must survive awaited acquisition
-
-Authority checks before an asynchronous source read are insufficient because access can be disabled while that read is pending. A second fixed-command host probe used a real timer await in its isolated in-memory acquisition and closed only its diagnostic gate before continuation. The actual result was terminal `rejected` / `permission_denied`, nonretryable, with no native checkpoint, marker, candidate, or plan/create/install call. Fresh native search found no synthetic item.
-
-The controlled result validates the post-await gate in the native workflow. It does not claim that production settings were toggled. Each awaited boundary must recheck the same authority, library, file, and operation evidence that governed the initial call, and a shutdown or lifecycle transition must prevent a confirmed dialog from starting a later diagnostic run.
-
-## Native annotation comments have a canonical form
-
-Zotero 10.0.6's public `annotationComment` setter applies `trim().normalize()`. A comment with leading or trailing whitespace, including an incidental terminal newline, or a decomposed Unicode sequence can therefore commit successfully but differ from the approved request during exact readback. One actual run exposed this boundary: the native annotation was visible with the complete substantive study content, while the operation correctly remained indeterminate because the stored comment omitted the request's final newline.
-
-Check `comment.trim().normalize() === comment` before invoking either native annotation create or update. Reject a mismatch before changing the item or durable marker. Clients prepare the exact NFC, boundary-clean candidate before authorization and operation-ID assignment; they do not silently trim meaningful content after approval. Interior blank lines, indentation, mathematics, and references remain byte-for-byte content for readback. A historical indeterminate write remains historical even when the representability rule explains its mismatch.
-
-## Native editor saves can normalize study text
-
-During the owned 0.2.2 manual-conflict check, Zotero's native comment editor preserved all non-whitespace characters and the new marker but changed interior whitespace in the existing long study body. This was a direct native UI save after the extension's exact 7,388-character append had already passed readback. Treat the resulting native body and revision as current user data. Do not restore an older extension snapshot or attribute the editor's transformation to a later protocol write.
-
-The subsequent stale `update_annotation` request returned `conflict`, and a fresh listing proved the complete editor-produced body and revision unchanged. This validates revision fencing while also showing that byte-exact extension persistence does not imply byte-exact edits through Zotero's own editor.
-
-## File-path getters can repair legacy attachment descriptors
-
-In installed Zotero 10.0.6, `item.js` lines 3084–3099 in `getFilePathAsync()` and lines 2965–2987 in the synchronous file-path getter can repair an old macOS raw `attachmentPath` descriptor beginning with `AAAA...` by issuing an `UPDATE itemAttachments` query. A read-only discovery operation must not trigger that hidden mutation merely to decide whether an attachment is a PDF candidate.
-
-`find_local_arxiv` therefore checks the raw attachment-path field for that legacy descriptor before invoking either getter. It retains an otherwise matching PDF attachment when a current fingerprint cannot be obtained and omits fingerprint-bound provenance evidence; it does not borrow another attachment's fingerprint or turn parent metadata into PDF-version proof. Active local-study clients treat that missing fingerprint as inaccessible or unverified bytes, stop before `read_pdf`, and wait for manual path or access restoration plus fresh discovery. The existing shared import and `read_pdf` paths keep their established file access behavior.
-
-An independent controlled probe against the installed getter path observed zero legacy getter calls and zero repair queries during local discovery, while ordinary stored-file hashing still worked. That probe establishes the read-only guard at this boundary. The 0.3.0 read/save workflow was separately exercised in two selected Web conversations with actual local PDF reads, native annotations, and reader display; those observations do not replace the controlled getter-path evidence.
-
-## Plugin removal and installation have restart boundaries
-
-Normal removal and installation are separate host lifecycle transitions. An observed reinstall attempted before the removal-completing restart appeared enabled in the current Plugins Manager but was absent after restart. A request published to that unsatisfied session remained unprocessed. The reliable acceptance sequence was remove, restart, install, restart, then verify the profile package and establish a fresh descriptor/status/descriptor connection.
-
-Do not copy an unprocessed request into the new session or assign it another operation ID. Preserve its original identity and outcome uncertainty. Journal-backed replay after the complete reinstall should return the historical result; fresh native reads, rather than replay alone, establish the current parent, attachment, and annotation state.
-
-ChatGPT account lifecycle has a separate distinction: **Uninstall** removes the plugin from active use while preserving the owned backend, whereas **Delete plugin** removes the owned plugin itself. The accepted private-plugin lifecycle used only Uninstall followed by Install on the same backend. Reinstallation restored the checked skill, connected app dependency, current release, and private root configuration without creating another release. Treat an update, a checked skill toggle, and a true Uninstall/Install cycle as different observations.
-
-## A stalled reader acquisition can block later file requests
-
-An initial direct read-only `list_annotations` remained running and held the serialized request scanner, so a later Web connection-status request could not advance. The cause was not established: after recovery, a fresh evaluated cold-reader probe completed opening and both initialization stages in 683 ms. A quick native item query therefore does not prove reader acquisition will finish. Preserve the original operation and diagnose reader initialization separately rather than resubmitting the request under another identity.
-
-During the initial recovery, Reconnect persisted disabled state before awaiting the stuck handler; that explains the disabled setting after normal restart. Re-enable explicitly and obtain a fresh session rather than treating this as lost configuration. Startup conservatively terminalized the interrupted read as `indeterminate/unknown_outcome`, but its historical-write warning was misleading for this read-only request. Finite reader acquisition and read-specific recovery wording remain unresolved improvements. One later diagnostic Quit required Activity Monitor Force Quit; ordinary remove/restart/install/restart acceptance completed separately and does not establish crash recovery.
-
-## Exact persistence does not establish complete source capture
-
-The 0.3.0 no-summary save preserved its canonical request exactly in native data, yet the assistant had shortened the source discussion before preparing that request. A broad section checklist missed three empirical details: a reported performance benefit, the direction of a gain-initialization comparison, and concrete experimental dependencies. Compare the accessible requested source blocks against the prepared body before assigning an operation identity. For an ordinary request to save identified existing discussion blocks, reuse the full canonical source rather than regenerating shorter prose; a user-explicit rewrite or condensation defines a different requested deliverable. Separately verify source-to-request and request-to-native equality.
+Exact native readback proves the submitted body was stored, not that the model
+included the requested details. A historical run omitted empirical comparison
+outcomes before submission. Check requested scope and math meaning; compare
+verbatim wording only when copying was requested.

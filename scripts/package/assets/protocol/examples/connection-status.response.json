@@ -4,7 +4,7 @@
   "state": "succeeded",
   "data": {
     "protocolVersion": 1,
-    "pluginVersion": "0.3.1",
+    "pluginVersion": "0.4.0",
     "zoteroVersion": "10.0.6",
     "profile": {
       "id": "replace-with-published-profile-id",
@@ -25,12 +25,16 @@
         "create_note",
         "update_note",
         "verify_annotation",
-        "inspect_arxiv",
-        "ensure_arxiv_pdf",
         "find_local_arxiv"
       ],
-      "annotationTypes": ["highlight", "note"],
-      "annotationColors": ["#ffd400", "#2ea8e5"],
+      "annotationTypes": [
+        "highlight",
+        "note"
+      ],
+      "annotationColors": [
+        "#ffd400",
+        "#2ea8e5"
+      ],
       "maxRequestBytes": 1048576,
       "maxTextBytes": 524288
     },

@@ -37,12 +37,12 @@ export const BASE_OPERATION_NAMES = [
   "verify_annotation",
 ] as const satisfies readonly OperationName[];
 
+/** Retained for old journal parsing, not executable acquisition capabilities. */
 export const ARXIV_OPERATION_NAMES = [
   "inspect_arxiv",
   "ensure_arxiv_pdf",
 ] as const satisfies readonly OperationName[];
 
-/** Native local-study reads that do not depend on remote acquisition adapters. */
 export const LOCAL_STUDY_OPERATION_NAMES = [
   "find_local_arxiv",
 ] as const satisfies readonly OperationName[];

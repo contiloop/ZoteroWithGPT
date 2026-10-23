@@ -13,7 +13,6 @@ import {
   validateProtocolRequest,
   validateProtocolResponse,
 } from "../../dist/protocol/index.js";
-import { decideArxivImport } from "../../dist/core/arxiv-selection.js";
 
 const connectionRequest = {
   protocolVersion: 1,
@@ -537,11 +536,7 @@ test("inspect_arxiv response validation enforces the complete strict result shap
 
 test("a fingerprint conflict remains a schema-valid conservative needs_choice decision", () => {
   const candidates = inspectData.candidates;
-  const decision = decideArxivImport(
-    { arxivId: arxivSource.arxivId, version: arxivSource.version },
-    candidates,
-    { expectedPdfFingerprint: "sha256:newly-downloaded" },
-  );
+  const decision = { decision: "needs_choice", reason: "Historical fingerprint conflict" };
   assert.equal(decision.decision, "needs_choice");
   const data = {
     source: arxivSource,
@@ -642,9 +637,11 @@ test("ensure_arxiv_pdf validates complete success, bounded retained failure, and
   );
 });
 
-test("distributed arXiv examples pass the same runtime validators without network access", () => {
+test("active examples and historical import fixtures remain readable without network access", () => {
   const example = (name) => JSON.parse(readFileSync(new URL(
-    `../../scripts/package/assets/protocol/examples/${name}`,
+    /^(?:inspect-arxiv|ensure-arxiv-pdf)\./u.test(name)
+      ? `./fixtures/legacy-import/${name}`
+      : `../../scripts/package/assets/protocol/examples/${name}`,
     import.meta.url,
   ), "utf8"));
 

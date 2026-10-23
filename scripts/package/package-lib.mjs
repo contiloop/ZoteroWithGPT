@@ -49,11 +49,6 @@ const ASSET_FILES = Object.freeze([
   ["protocol/examples/create-annotation.request.json", "protocol/examples/create-annotation.request.json"],
   ["protocol/examples/create-annotation.response.json", "protocol/examples/create-annotation.response.json"],
   ["protocol/examples/create-note.request.json", "protocol/examples/create-note.request.json"],
-  ["protocol/examples/inspect-arxiv.request.json", "protocol/examples/inspect-arxiv.request.json"],
-  ["protocol/examples/inspect-arxiv.response.json", "protocol/examples/inspect-arxiv.response.json"],
-  ["protocol/examples/ensure-arxiv-pdf.request.json", "protocol/examples/ensure-arxiv-pdf.request.json"],
-  ["protocol/examples/ensure-arxiv-pdf.response.json", "protocol/examples/ensure-arxiv-pdf.response.json"],
-  ["protocol/examples/ensure-arxiv-pdf.item-only.response.json", "protocol/examples/ensure-arxiv-pdf.item-only.response.json"],
 ]);
 
 const PORTABLE_PLUGIN_FILES = Object.freeze([

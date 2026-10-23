@@ -1,5 +1,4 @@
 import type {
-  ArxivCandidate,
   ArxivSource,
   ArxivUrlReference,
   LocalArxivEvidence,
@@ -8,7 +7,6 @@ import type {
 } from "../../protocol/types.js";
 import type {
   ArxivNativeInspection,
-  StagedArxivPdf,
 } from "../../ports/arxiv.js";
 import type { NativePageChar, NativeRectTuple } from "../anchors/text-layer.js";
 
@@ -159,75 +157,7 @@ export type NativeArxivOperationObject =
   | { kind: "parent"; itemKey: string }
   | { kind: "attachment"; itemKey: string; attachmentKey: string };
 
-export interface NativeArxivKeyPlan {
-  itemKey: string;
-  attachmentKey: string;
-}
-
-export interface NativeArxivParentCreate {
-  source: ArxivSource;
-  itemKey: string;
-  operationMarker: string;
-  parentProvenance: string;
-  expectedCandidates: ArxivCandidate[];
-  accessFence: string;
-}
-
-export interface NativeArxivAttachmentCreate {
-  source: ArxivSource;
-  itemKey: string;
-  attachmentKey: string;
-  operationMarker: string;
-  attachmentProvenance: string;
-  expectedCandidates: ArxivCandidate[];
-  accessFence: string;
-}
-
-export interface NativeArxivPdfInstall {
-  source: ArxivSource;
-  itemKey: string;
-  attachmentKey: string;
-  stagedPdf: StagedArxivPdf;
-  expectedCandidates: ArxivCandidate[];
-  accessFence: string;
-}
-
-/**
- * Native-only installer for an owned staged file. Implementations create the
- * destination and refuse to replace an existing file. Paths stay inside the
- * privileged Zotero adapter and never enter the protocol or operation record.
- */
-export interface NativeArxivStagedFileInstaller {
-  installCreateOnly(
-    stagingId: string,
-    destinationDirectory: string,
-    fileName: string,
-    /**
-     * Called after all asynchronous installer preparation. The native adapter
-     * performs its final complete inspection, then invokes `createImmediately`
-     * in the same synchronous continuation. The closure must perform only an
-     * exclusive create-only copy and must not return a promise.
-     */
-    commitValidatedCreate: (createImmediately: () => void) => Promise<void>,
-  ): Promise<void>;
-}
-
-export interface NativeArxivSynchronousFileFingerprintPort {
-  /**
-   * Reads and SHA-256 fingerprints the current file synchronously. `null`
-   * proves that the path is absent. Implementations must reject a present file
-   * larger than `maximumByteLength` before hashing beyond that bound.
-   */
-  fingerprintNow(
-    path: string,
-    maximumByteLength: number,
-  ): { fingerprint: string; byteLength: number } | null;
-}
-
-/**
- * Sanitizes newly authorized note content and validates an exact native body
- * before a write. Validation never rewrites existing human-authored bytes.
- */
+/** Validate existing native note bytes without sanitizing them in place. */
 export interface NativeNoteContentPolicy {
   sanitize(content: string): string;
   accepts(content: string): boolean;
@@ -288,10 +218,7 @@ export interface ZoteroNativeApi {
     annotationKey: string,
   ): Promise<boolean>;
   findByOperationMarker(marker: string): Promise<NativeMutationRecord[]>;
-  captureArxivAccessFence(): string;
-  assertArxivAccessFence(fence: string): void;
   inspectArxiv(source: ArxivSource): Promise<ArxivNativeInspection>;
-  planArxivImportKeys(createParent: boolean): Promise<NativeArxivKeyPlan>;
   getArxivParent(
     source: ArxivSource,
     itemKey: string,
@@ -301,11 +228,6 @@ export interface ZoteroNativeApi {
     itemKey: string,
     attachmentKey: string,
   ): Promise<NativeArxivAttachmentRecord | undefined>;
-  createArxivParent(input: NativeArxivParentCreate): Promise<NativeArxivParentRecord>;
-  createArxivAttachment(
-    input: NativeArxivAttachmentCreate,
-  ): Promise<NativeArxivAttachmentRecord>;
-  installArxivPdf(input: NativeArxivPdfInstall): Promise<NativeArxivAttachmentRecord>;
   findArxivByOperationMarker(marker: string): Promise<NativeArxivOperationObject[]>;
 }
 

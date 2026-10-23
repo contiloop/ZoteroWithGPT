@@ -164,7 +164,7 @@ export interface ArticleIdentity {
   version: number;
 }
 
-/** Parsed from an official arXiv URL before any source acquisition. */
+/** Local URL identity; absent version evidence must remain unknown. */
 export interface ArxivUrlReference {
   arxivId: string;
   version?: number;

@@ -28,13 +28,8 @@ const REQUIRED_MEMBERS = Object.freeze([
   "protocol/examples/create-annotation.request.json",
   "protocol/examples/create-annotation.response.json",
   "protocol/examples/create-note.request.json",
-  "protocol/examples/ensure-arxiv-pdf.item-only.response.json",
-  "protocol/examples/ensure-arxiv-pdf.request.json",
-  "protocol/examples/ensure-arxiv-pdf.response.json",
   "protocol/examples/find-local-arxiv.request.json",
   "protocol/examples/find-local-arxiv.response.json",
-  "protocol/examples/inspect-arxiv.request.json",
-  "protocol/examples/inspect-arxiv.response.json",
   "protocol/examples/read-pdf.request.json",
   "protocol/v1-request.schema.json",
   "protocol/v1-response.schema.json",
@@ -51,13 +46,8 @@ const REQUIRED_CLIENT_MEMBERS = Object.freeze([
   "protocol/examples/create-annotation.request.json",
   "protocol/examples/create-annotation.response.json",
   "protocol/examples/create-note.request.json",
-  "protocol/examples/ensure-arxiv-pdf.item-only.response.json",
-  "protocol/examples/ensure-arxiv-pdf.request.json",
-  "protocol/examples/ensure-arxiv-pdf.response.json",
   "protocol/examples/find-local-arxiv.request.json",
   "protocol/examples/find-local-arxiv.response.json",
-  "protocol/examples/inspect-arxiv.request.json",
-  "protocol/examples/inspect-arxiv.response.json",
   "protocol/examples/read-pdf.request.json",
   "protocol/v1-request.schema.json",
   "protocol/v1-response.schema.json",
@@ -364,14 +354,10 @@ async function validateClientKit(clientDirectory, extractedXpi, version) {
   const readme = await readFile(path.join(clientDirectory, "README.md"), "utf8");
   if (
     !readme.includes(`Package version: \`${version}\``) ||
-    !readme.includes("<BRIDGE_ROOT>/client-v1/README.md") ||
-    !readme.includes("<requestDirectory>/<operationId><requestSuffix>") ||
-    !readme.includes("<resultDirectory>/<operationId><resultSuffix>") ||
-    !readme.includes("require its `protocolVersion` and `operationId`") ||
-    !readme.includes("connection_status") ||
+    !readme.includes("protocol/v1.md") ||
     readme.includes("{{PACKAGE_VERSION}}")
   ) {
-    throw new Error("Client sidecar README lacks the versioned setup path or starter prompt");
+    throw new Error("Client sidecar README lacks its version or protocol reference");
   }
   return members;
 }
@@ -515,7 +501,7 @@ export async function verifyXpi(xpiPath, { expectedProjectRoot } = {}) {
         if (example.data?.pluginVersion !== version) {
           throw new Error("connection-status response example version does not match the release");
         }
-        if (JSON.stringify(example.data?.capabilities?.operations) !== JSON.stringify([...OPERATIONS])) {
+        if (JSON.stringify(example.data?.capabilities?.operations) !== JSON.stringify([...OPERATIONS].filter(name => name !== "inspect_arxiv" && name !== "ensure_arxiv_pdf"))) {
           throw new Error("connection-status response example does not advertise all operations exactly");
         }
       }

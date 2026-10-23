@@ -8,7 +8,11 @@ A passage anchor names one PDF revision and a page-local location. Missing text,
 
 The default destination for an explanation, question, proof, or reference is a native annotation at the relevant passage. There is no target annotation count. Content length never changes the destination to a separate note. A separate item note is created or changed only when requested explicitly.
 
-Saving identified existing discussion blocks preserves their complete canonical source by default, including ordinary requests to organize the proof and question just discussed. Organization may add clearly separated labels and source associations around unchanged blocks; it does not silently condense them. A user-explicit rewrite or condensation defines a different requested deliverable. Native-compatible mathematical delimiter or escape preparation changes presentation only, preserving prose, facts, conditions, numerical comparison outcomes, proof steps, substantive whitespace, and links. Compare each requested source block with the prepared body before assigning the write identity; unavailable, unrepresentable, or over-limit content stops before mutation rather than becoming a summary.
+Save only the material and form the researcher requested. “Organize” permits
+organization; “summarize” permits condensation; “copy verbatim” requires wording
+preservation. Do not archive unrelated conversation, tool status, or plugin
+labels. Preserve mathematical meaning, conditions, proof steps, empirical
+comparison directions, and supported reference links in the requested scope.
 
 An update identifies an existing annotation or note and the revision just read. Append preserves existing content and adds the requested material; replace changes only the specifically approved body. A conflicting manual or synchronized edit leaves the current record unchanged. Read the new content and obtain renewed approval before a revised edit.
 
@@ -26,7 +30,9 @@ Discovery searches all eligible libraries. Multiple parents or PDFs, conflicting
 
 The target is established only by current discovery evidence plus an actual `read_pdf` result. Keep that target in accessible conversation context so a later save need not repeat the URL, page, passage, or native keys when they remain inferable. A failed explicit paper switch suspends the prior implicit destination. Comparing or citing another paper does not switch the destination, and referenced works remain links unless the researcher separately requests their own supported action.
 
-The retained `inspect_arxiv` and `ensure_arxiv_pdf` operations remain valid for legacy clients and immutable historical results. They are outside the selected local-study workflow. Their inspection tokens, exact-version selection, partial import outcomes, and commit-time revalidation rules continue to apply when an older client invokes them.
+New `inspect_arxiv` and `ensure_arxiv_pdf` requests are unsupported. Their old
+schemas and native-stage reconciliation remain for immutable pre-cut journals;
+recovery never resumes acquisition or creates a paper.
 
 One operation identifies one immutable request. The same identity and content returns its historical outcome; changing content under that identity is a conflict. A fresh observation requires a fresh operation ID.
 
@@ -34,7 +40,9 @@ A queued operation has not executed. An interrupted queued operation becomes a d
 
 A successful historical operation remains historical after a person deletes its annotation. Replaying it does not recreate the deleted record. Multiple operations have independent outcomes; partial success does not imply rollback of earlier saves.
 
-A confirmed bibliographic parent retained after PDF failure is an `item_only` partial result, not a ready PDF or completed study save. A possibly committed import with insufficient readback remains unknown and stops subsequent annotation writes for that attempt. Retain useful confirmed imports when later passage resolution or annotation fails. Terminal indeterminate results remain immutable historical unknowns across reconnect and reinstall; startup reconciliation applies to interrupted running operations and does not turn terminal history into a fresh write.
+Historical partial imports and terminal indeterminate outcomes remain immutable.
+Interrupted running imports may be inspected against their planned native
+identities, but missing objects never authorize recreation.
 
 Storage confirmation means a native record was read back. Viewer confirmation means current content was observed in its actual active reader. Neither a deep link nor a background tab establishes visible display. Viewer failure does not authorize repeating a successful save.
 

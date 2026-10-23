@@ -1,7 +1,6 @@
-# Safe study rendering
+# Study rendering
 
-Bounded Markdown/LaTeX-to-sanitized-HTML conversion and readable fallback. No native persistence, automatic link opening, or reader selection.
-
-Treat all source as untrusted. Disable executable/raw resource markup and remote loads. Validate element-specific MathML semantics and safe reference destinations. Preserve unsupported or over-budget source readably instead of dropping it. Styles affect owned preview nodes only.
-
-Cover malicious HTML/URLs, malformed delimiters, pathological math at body limits, Unicode, lists, cancellation and alignment semantics, safe link clicks, and fallback without formatting.
+Preserve unsupported or over-budget text readably instead of dropping it.
+MathML safety must preserve cancellation and alignment meaning; a broad tag
+allowlist alone is insufficient. No automatic remote resources; safe reference
+links open only after a click.

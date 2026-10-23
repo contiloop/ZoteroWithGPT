@@ -11,7 +11,11 @@
       },
       "expected": {
         "activation": "activate",
-        "reads": ["connection_status", "find_local_arxiv", "read_pdf"],
+        "reads": [
+          "connection_status",
+          "find_local_arxiv",
+          "read_pdf"
+        ],
         "writes": [],
         "askForSaveApproval": false,
         "targetEstablished": "after_discovery_and_fresh_local_pdf_read",
@@ -28,7 +32,10 @@
       },
       "expected": {
         "activation": "continue_study",
-        "reads": ["find_local_arxiv", "read_pdf"],
+        "reads": [
+          "find_local_arxiv",
+          "read_pdf"
+        ],
         "writes": [],
         "requiresMutationApproval": false,
         "requestConnectionPhrase": false,
@@ -45,7 +52,11 @@
       },
       "expected": {
         "activation": "wait_for_manual_zotero_save",
-        "reads": ["find_local_arxiv", "find_local_arxiv", "read_pdf"],
+        "reads": [
+          "find_local_arxiv",
+          "find_local_arxiv",
+          "read_pdf"
+        ],
         "writes": [],
         "firstResponse": "ask_user_to_save_paper_and_pdf_in_zotero_then_wait",
         "resumeWithFreshLookup": true,
@@ -62,7 +73,11 @@
       },
       "expected": {
         "activation": "wait_for_manual_pdf_add",
-        "reads": ["find_local_arxiv", "find_local_arxiv", "read_pdf"],
+        "reads": [
+          "find_local_arxiv",
+          "find_local_arxiv",
+          "read_pdf"
+        ],
         "writes": [],
         "firstResponse": "ask_user_to_add_or_restore_pdf_access_then_wait",
         "resumeWithFreshLookup": true,
@@ -80,7 +95,9 @@
       },
       "expected": {
         "activation": "wait_for_manual_pdf_access_restore",
-        "reads": ["find_local_arxiv"],
+        "reads": [
+          "find_local_arxiv"
+        ],
         "writes": [],
         "firstResponse": "ask_user_to_restore_the_file_or_attachment_path_in_zotero_then_wait",
         "readPdfBeforeFreshFingerprint": false,
@@ -91,14 +108,29 @@
     {
       "id": "later-save-keeps-established-target",
       "input": {
-        "accessibleConversationTarget": ["profile", "library", "item", "attachment", "fingerprint", "version_evidence"],
-        "conversationMaterial": ["user_question", "assistant_explanation"],
+        "accessibleConversationTarget": [
+          "profile",
+          "library",
+          "item",
+          "attachment",
+          "fingerprint",
+          "version_evidence"
+        ],
+        "conversationMaterial": [
+          "user_question",
+          "assistant_explanation"
+        ],
         "request": "방금 질문과 설명을 해당 구절 옆에 저장해 줘."
       },
       "expected": {
         "activation": "save",
-        "reads": ["read_pdf", "resolve_anchor"],
-        "writes": ["create_annotation"],
+        "reads": [
+          "read_pdf",
+          "resolve_anchor"
+        ],
+        "writes": [
+          "create_annotation"
+        ],
         "requestArxivUrlAgain": false,
         "requestPageQuoteOrNativeKeyWhenInferable": false,
         "refreshTargetEvidenceBeforeWrite": true
@@ -114,7 +146,9 @@
       },
       "expected": {
         "activation": "clarify",
-        "reads": ["find_local_arxiv"],
+        "reads": [
+          "find_local_arxiv"
+        ],
         "writes": [],
         "pickFirst": false,
         "pickLatest": false,
@@ -126,12 +160,16 @@
       "id": "explicit-version-conflict",
       "input": {
         "paper": "https://arxiv.org/abs/2401.01234v2",
-        "localVersionEvidence": [1],
+        "localVersionEvidence": [
+          1
+        ],
         "request": "이 논문을 공부해 줘."
       },
       "expected": {
         "activation": "clarify",
-        "reads": ["find_local_arxiv"],
+        "reads": [
+          "find_local_arxiv"
+        ],
         "writes": [],
         "treatLocalPdfAsRequestedVersion": false,
         "response": "explain_version_conflict_and_ask_which_actual_pdf_to_use"
@@ -141,13 +179,18 @@
       "id": "unknown-local-version",
       "input": {
         "paper": "https://arxiv.org/abs/2401.01234",
-        "localVersionEvidence": [null],
+        "localVersionEvidence": [
+          null
+        ],
         "matchingPdfAttachments": 1,
         "request": "이 PDF가 내가 읽을 파일이야."
       },
       "expected": {
         "activation": "continue_after_actual_pdf_confirmation",
-        "reads": ["find_local_arxiv", "read_pdf"],
+        "reads": [
+          "find_local_arxiv",
+          "read_pdf"
+        ],
         "writes": [],
         "reportedVersion": "unknown",
         "fabricateVersion": false,
@@ -164,7 +207,9 @@
       },
       "expected": {
         "activation": "clarify",
-        "reads": ["find_local_arxiv"],
+        "reads": [
+          "find_local_arxiv"
+        ],
         "writes": [],
         "fallBackToPriorTarget": false,
         "priorImplicitDestinationSuspended": true,
@@ -180,8 +225,13 @@
       },
       "expected": {
         "activation": "save",
-        "reads": ["read_pdf", "resolve_anchor"],
-        "writes": ["create_annotation"],
+        "reads": [
+          "read_pdf",
+          "resolve_anchor"
+        ],
+        "writes": [
+          "create_annotation"
+        ],
         "destination": "논문 A",
         "comparisonSwitchesDestination": false,
         "preserveReferenceUrlAndRelevance": true,
@@ -191,7 +241,9 @@
     {
       "id": "context-loss-minimum-information",
       "input": {
-        "conversationMaterial": ["assistant_explanation"],
+        "conversationMaterial": [
+          "assistant_explanation"
+        ],
         "accessibleTargetContext": false,
         "request": "이 설명을 저장해 줘."
       },
@@ -199,7 +251,9 @@
         "activation": "clarify",
         "reads": [],
         "writes": [],
-        "askFor": ["official_arxiv_url"],
+        "askFor": [
+          "official_arxiv_url"
+        ],
         "askForBridgeRootPathOrNativeKey": false,
         "inventTarget": false
       }
@@ -207,14 +261,22 @@
     {
       "id": "long-korean-proof-canonical-body",
       "input": {
-        "conversationMaterial": ["user_question", "assistant_proof_with_equations_and_references"],
+        "conversationMaterial": [
+          "user_question",
+          "assistant_proof_with_equations_and_references"
+        ],
         "request": "긴 증명과 내 질문, 실제 참고문헌 링크를 빠짐없이 구절 옆에 저장해 줘.",
         "body": "사용자 질문: 왜 KL 이웃의 사전확률이 양수여야 하는가?\n\n설명:\n  1. 분모는 $e^{-n\\epsilon}$보다 느리게 감소한다.\n  2. 검정의 제2종 오류를 합하면 보완집합의 질량이 사라진다.\n\n참고문헌: https://doi.org/10.1017/CBO9781139029834 — 검정과 사전질량 조건의 배경."
       },
       "expected": {
         "activation": "save",
-        "reads": ["read_pdf", "resolve_anchor"],
-        "writes": ["create_annotation"],
+        "reads": [
+          "read_pdf",
+          "resolve_anchor"
+        ],
+        "writes": [
+          "create_annotation"
+        ],
         "destination": "native_annotation_comment",
         "completeness": "full",
         "canonicalizeNfcAndBoundaryBeforeOperationId": true,
@@ -225,50 +287,26 @@
       }
     },
     {
-      "id": "ordinary-save-reuses-complete-source-block",
-      "input": {
-        "accessibleSourceBlock": "사용자 질문: 식 (6)의 스케일 불변성이 RNN에서 왜 중요한지, 경계 조건과 gain 초기화 실험까지 빠짐없이 설명해 줘.\n\n[증명·해석]\n변환을 \\(W'=\\delta W+\\mathbf1\\gamma^\\top\\), \\(c=\\gamma^\\top x\\)로 두면 다음 순서가 필요하다.\n1. 각 pre-activation은 \\(a_i'=\\delta a_i+c\\)이다.\n2. 평균은 \\(\\mu'=\\delta\\mu+c\\)이다.\n3. 중심화와 표준편차는 \\(a_i'-\\mu'=\\delta(a_i-\\mu)\\), \\(\\sigma'=|\\delta|\\sigma\\)이다. 공통 이동 \\(c\\)는 평균을 빼는 과정에서 정확히 상쇄되고, 양의 공통 배율은 표준편차와 함께 상쇄된다.\n4. 따라서 \\(\\delta>0\\)이고 \\(\\sigma>0\\)일 때만 같은 gain을 유지한 \\(z'=z\\)와 \\(h'=h\\)가 성립한다. 이는 활성함수의 특별한 성질 때문이 아니라 활성함수에 들어가는 벡터가 같기 때문이다.\n\n경계 조건:\n- \\(\\delta<0\\)이면 \\(z'=-z\\)이므로 일반적으로 출력 불변성이 깨진다.\n- \\(\\delta=0\\)이거나 \\(\\sigma=0\\)이면 정규화가 정의되지 않는다.\n- 구현이 \\(\\varepsilon>0\\)을 쓰면 일반적인 정확한 불변성은 성립하지 않는다.\n\n[논문]\n3쪽 §4는 recurrent BN에서 시간 단계마다 독립적인 정규화 통계량을 유지하는 것이 성능상 유리하다고 보고한 연구를 설명하고, 순환층의 gain 초기값 0.1이 성능에 중요한 영향을 주었다고 언급한다.\n\n7쪽 §6.2는 LN이 해당 attentive-reader 실험에서 더 빠르게 학습하고 더 좋은 validation 결과를 보였다고 보고한다. LN의 gain 초기값 1.0과 0.1을 비교한 같은 실험에서는 1.0 초기값이 더 좋은 결과를 보였다.\n\n[한계]\n식 (6) 하나가 LN의 보편적 우위를 증명하지는 않는다. 이 성능 비교는 별개의 경험적 결과이며 구조와 데이터셋, 초기화 등에 영향을 받는다.\n\n참고문헌: https://arxiv.org/abs/1607.06450 — 위 식과 실험 결과의 로컬 PDF 출처.",
-        "request": "방금 설명한 증명과 내 질문을 Zotero에 정리해 줘.",
-        "explicitPreservationVariant": "위 질문, 증명 단계, 조건, 실험 결과와 참고문헌을 요약하거나 빼지 말고 해당 구절 옆에 그대로 저장해 줘.",
-        "genericAbbreviatedCandidate": "식 (6)은 공통 affine 변환에 대한 LN의 불변성을 설명한다. 관련 실험은 recurrent BN의 시간별 통계와 gain 초기값 1.0 및 0.1의 차이를 논의한다."
-      },
-      "expected": {
-        "activation": "save",
-        "reads": ["read_pdf", "resolve_anchor"],
-        "writes": ["create_annotation"],
-        "destination": "native_annotation_comment",
-        "preparedBodySource": "input.accessibleSourceBlock",
-        "reuseCompleteSourceBlockByDefault": true,
-        "preservationKeywordsRequired": false,
-        "explicitPreservationUsesStrictCompleteSourceComparison": true,
-        "proseReauthoring": false,
-        "preserveWordingFactsConditionsComparisonDirectionNumbersMathWhitespaceAndLinks": true,
-        "compareCompleteSourceBeforeOperationId": true,
-        "genericAbbreviatedCandidateAcceptableForOrdinarySave": false,
-        "genericAbbreviatedCandidateAcceptableForExplicitPreservation": false,
-        "explicitRewriteOrCondense": "honor_requested_output_scope",
-        "allowedPresentationChanges": [
-          "unicode_nfc",
-          "incidental_boundary_whitespace",
-          "native_compatible_markdown_math_delimiters_and_escapes_only"
-        ],
-        "redundantConfirmation": false,
-        "unavailableOrUnrepresentable": "reject_before_mutation"
-      }
-    },
-    {
       "id": "no-import-preserve-unrelated-collection",
       "input": {
         "paper": "https://arxiv.org/abs/2401.01234v2",
         "localPaperLibrary": "group_library",
-        "localPaperCollections": ["공동 연구"],
+        "localPaperCollections": [
+          "공동 연구"
+        ],
         "unrelatedCollection": "읽을 논문",
         "request": "설명을 이 로컬 PDF의 구절 옆에 저장해 줘."
       },
       "expected": {
         "activation": "save",
-        "reads": ["find_local_arxiv", "read_pdf", "resolve_anchor"],
-        "writes": ["create_annotation"],
+        "reads": [
+          "find_local_arxiv",
+          "read_pdf",
+          "resolve_anchor"
+        ],
+        "writes": [
+          "create_annotation"
+        ],
         "acquisitionOperations": [],
         "searchScope": "all_eligible_libraries",
         "preserveLibraryAndCollectionPlacement": true,
@@ -284,7 +322,10 @@
       },
       "expected": {
         "activation": "clarify",
-        "reads": ["read_pdf", "resolve_anchor"],
+        "reads": [
+          "read_pdf",
+          "resolve_anchor"
+        ],
         "writes": [],
         "inventCoordinates": false,
         "response": "ask_for_focused_passage_disambiguation"
@@ -315,7 +356,9 @@
       },
       "expected": {
         "activation": "clarify",
-        "reads": ["list_annotations"],
+        "reads": [
+          "list_annotations"
+        ],
         "writes": [],
         "preserveCurrentBody": true,
         "renewedIntentRequired": true,
@@ -345,7 +388,10 @@
       "input": {
         "operation": "create_annotation",
         "resultState": "succeeded",
-        "verification": { "storage": "confirmed", "viewer": "failed" }
+        "verification": {
+          "storage": "confirmed",
+          "viewer": "failed"
+        }
       },
       "expected": {
         "activation": "report",
@@ -354,6 +400,60 @@
         "reportStorage": "confirmed",
         "reportViewer": "failed",
         "retryWrite": false
+      }
+    },
+    {
+      "id": "requested-organization",
+      "input": {
+        "request": "방금 설명한 증명과 내 질문을 Zotero에 정리해 줘.",
+        "source": "Question, proof steps and conditions, relevant references, unrelated tool status."
+      },
+      "expected": {
+        "reads": [
+          "read_pdf",
+          "resolve_anchor"
+        ],
+        "writes": [
+          "create_annotation"
+        ],
+        "form": "organized_requested_material",
+        "preserveMathConditionsAndReferences": true,
+        "includeUnrelatedConversationOrToolStatus": false,
+        "redundantConfirmation": false
+      }
+    },
+    {
+      "id": "explicit-verbatim-copy",
+      "input": {
+        "request": "이 설명을 그대로 저장해 줘."
+      },
+      "expected": {
+        "reads": [
+          "read_pdf",
+          "resolve_anchor"
+        ],
+        "writes": [
+          "create_annotation"
+        ],
+        "form": "verbatim_requested_text",
+        "preserveWording": true
+      }
+    },
+    {
+      "id": "requested-summary",
+      "input": {
+        "request": "이 설명을 세 문장으로 요약해서 메모해 줘."
+      },
+      "expected": {
+        "reads": [
+          "read_pdf",
+          "resolve_anchor"
+        ],
+        "writes": [
+          "create_annotation"
+        ],
+        "form": "three_sentence_summary",
+        "copyWholeConversation": false
       }
     }
   ]

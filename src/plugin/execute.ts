@@ -1,20 +1,16 @@
 import {
   CoreOperationError,
-  decideArxivImport,
   revalidateAnnotationAnchor,
 } from "../core/index.js";
-import { ArxivAcquisitionError } from "../adapters/arxiv/index.js";
 import type {
-  AnchorResolutionPort, AnchorRevalidationPort, ArxivInspectionTokenPort,
-  ArxivNativeImportPort, ArxivSourceAcquisitionPort, OperationExecutionOutcome,
+  AnchorResolutionPort, AnchorRevalidationPort,
+  OperationExecutionOutcome,
   OperationExecutorPort, OperationIdentity, ZoteroReadPort, ZoteroWritePort,
   ZoteroStorageReadbackPort, ZoteroViewerVerificationPort,
 } from "../ports/index.js";
 import {
-  ARXIV_OPERATION_NAMES,
   BASE_OPERATION_NAMES,
   LOCAL_STUDY_OPERATION_NAMES,
-  parseArxivUrl,
   type OperationName,
   type ProtocolRequest,
   type VerificationSummary,
@@ -28,12 +24,6 @@ export interface NativeExecutionDependencies {
   anchors: AnchorResolutionPort & AnchorRevalidationPort;
   storage: ZoteroStorageReadbackPort;
   viewer: ZoteroViewerVerificationPort;
-}
-
-export interface ArxivExecutionDependencies {
-  source: ArxivSourceAcquisitionPort;
-  importer: ArxivNativeImportPort;
-  tokens: ArxivInspectionTokenPort;
 }
 
 const readVerification: VerificationSummary = {
@@ -60,11 +50,9 @@ export class NativeOperationExecutor implements OperationExecutorPort {
 
   constructor(
     private readonly ports: NativeExecutionDependencies,
-    private readonly arxiv?: ArxivExecutionDependencies,
   ) {
     this.operations = [
       ...BASE_OPERATION_NAMES,
-      ...(arxiv === undefined ? [] : ARXIV_OPERATION_NAMES),
       ...LOCAL_STUDY_OPERATION_NAMES,
     ];
   }
@@ -156,57 +144,8 @@ export class NativeOperationExecutor implements OperationExecutorPort {
           viewer: viewerEvidence.confirmed ? "confirmed" : "failed",
         });
       }
-      case "inspect_arxiv": {
-        if (this.arxiv === undefined) return this.#unsupported(request.operation);
-        const source = await this.arxiv.source.inspect(parseArxivUrl(request.payload.url));
-        const inspection = await this.arxiv.importer.inspect(source);
-        const decision = decideArxivImport(source, inspection.candidates);
-        const inspectionToken = await this.arxiv.tokens.issue({ source, ...inspection });
-        return completed({ source, ...inspection, ...decision, inspectionToken });
-      }
-      case "ensure_arxiv_pdf": {
-        if (this.arxiv === undefined) return this.#unsupported(request.operation);
-        // Mutation authority must predate source re-resolution and every later await.
-        const accessFence = this.arxiv.importer.captureAccessFence();
-        let source;
-        try {
-          source = await this.arxiv.source.inspect({ ...request.payload.source });
-        } catch (error) {
-          if (!(error instanceof ArxivAcquisitionError)) throw error;
-          if (error.code === "unknown_outcome") {
-            return {
-              kind: "indeterminate",
-              error: error.toProtocolError(),
-              verification: { storage: "not_checked", viewer: "not_checked" },
-            };
-          }
-          return {
-            kind: "failed",
-            error: error.toProtocolError(),
-            verification: { storage: "not_checked", viewer: "not_checked" },
-          };
-        }
-        if (
-          source.arxivId !== request.payload.source.arxivId ||
-          source.version !== request.payload.source.version
-        ) {
-          return {
-            kind: "rejected",
-            error: new CoreOperationError(
-              "conflict",
-              "The exact arXiv source changed during host re-resolution",
-            ).toProtocolError(),
-            verification: { storage: "not_checked", viewer: "not_checked" },
-          };
-        }
-        return this.arxiv.importer.ensure({
-          source,
-          selection: request.payload.selection,
-          inspectionToken: request.payload.inspectionToken,
-          accessFence,
-          identity,
-        });
-      }
+      case "inspect_arxiv":
+      case "ensure_arxiv_pdf": return this.#unsupported(request.operation);
     }
   }
 

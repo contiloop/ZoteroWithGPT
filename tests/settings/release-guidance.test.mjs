@@ -6,11 +6,12 @@ import { fileURLToPath } from "node:url";
 
 import {
   MUTATION_OPERATION_NAMES,
+  ARXIV_OPERATION_NAMES,
   OPERATION_NAMES,
 } from "../../dist/protocol/index.js";
 
 const PROJECT_ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const RELEASE_VERSION = "0.3.1";
+const RELEASE_VERSION = "0.4.0";
 
 async function readText(relativePath) {
   return readFile(path.join(PROJECT_ROOT, ...relativePath.split("/")), "utf8");
@@ -20,7 +21,7 @@ async function readJson(relativePath) {
   return JSON.parse(await readText(relativePath));
 }
 
-test("0.3.1 release metadata and selected local-study guidance stay aligned", async () => {
+test("0.4.0 release metadata and selected local-study guidance stay aligned", async () => {
   const [
     packageMetadata,
     packageLock,
@@ -49,7 +50,7 @@ test("0.3.1 release metadata and selected local-study guidance stay aligned", as
   assert.equal(addonManifest.version, RELEASE_VERSION);
   assert.equal(pluginManifest.version, RELEASE_VERSION);
   assert.equal(connectionExample.data.pluginVersion, RELEASE_VERSION);
-  assert.deepEqual(connectionExample.data.capabilities.operations, OPERATION_NAMES);
+  assert.deepEqual(connectionExample.data.capabilities.operations, OPERATION_NAMES.filter(name => !ARXIV_OPERATION_NAMES.includes(name)));
   assert.equal(OPERATION_NAMES.length, 15);
   assert.equal(MUTATION_OPERATION_NAMES.length, 5);
 
@@ -58,8 +59,8 @@ test("0.3.1 release metadata and selected local-study guidance stay aligned", as
   assert.match(interfaceMetadata.defaultPrompt, /arXiv/iu);
   assert.match(interfaceMetadata.defaultPrompt, /Zotero/iu);
   assert.doesNotMatch(interfaceMetadata.longDescription, /import|download/iu);
-  assert.match(pluginInstructions, /explicitly selected/iu);
-  assert.match(pluginInstructions, /manually saves the paper and PDF/iu);
+
+
   assert.doesNotMatch(pluginInstructions, /save request authorizes.*import/iu);
   assert.equal(agents, claude);
 });

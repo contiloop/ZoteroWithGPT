@@ -86,3 +86,74 @@ The resulting XPI SHA-256 is `01975e560f477ac024d23ed29cd5a4c1da1bd9bd4ad61ac256
 Public publication, an independently tested Work route, and a public Mac Safe Files installer are not claimed. The owned test papers/notes remain in Zotero; their removal was not silently performed.
 
 Final Web follow-up on the reader-hardened installed artifact used session `7b544dc8a43dccb9bee7cfb23fbb8b32`: `web-release160-read-1` freshly confirmed the complete native comment, and `web-release160-verify-1` returned storage and formatted viewer `confirmed`. These were read-only operations; no successful mutation was repeated. A second clean source extraction at `5675e2b`, with no dependencies or generated files, passed `npm ci` and `npm run verify` (both exit 0, 160 tests) and reproduced final installed XPI SHA-256 `01975e560f477ac024d23ed29cd5a4c1da1bd9bd4ad61ac256901158e29cf152` exactly.
+
+## Conversational arXiv acceptance — 2026-10-22–23
+
+This section records the later 0.2.x arXiv study-save work. It does not replace or reattribute the 0.1.0 Huginn evidence above. The native file workflow has substantial actual coverage, but the release is not fully accepted because two successful ordinary ChatGPT Web save conversations have not occurred.
+
+### Exact release under test
+
+Source `c46bc78` passed `npm run verify` with 272 tests. A clean detached checkout passed `npm ci`, build, package, and package verification and reproduced both archives and the 18-file client kit exactly. The release artifacts were:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `zotero-ai-research-companion-0.2.2.xpi` | `c1be45b8acac70e918db80c8612e91a9121673b1415e5fc3e91e27da4a129d5d` |
+| `zotero-study-save-0.2.2.zip` | `eecff4f37bb97367261146754ab7e1360a4ea77c83002ffc9122e4312bae58c3` |
+| Sorted 18-file client manifest | `56d011a5f1b4bc86a41f83230b8d4a6cbe1adc70b3461e25eedb2b7b6e6fe96a` |
+
+The XPI was installed through Zotero's normal Plugins Manager and its profile copy matched the XPI hash above. Fresh status reads reported Zotero 10.0.6, plugin 0.2.2, enabled state, and all 14 protocol operations. The owned private ChatGPT plugin was updated in place to 0.2.2, remained enabled, and retained its connected Mac Safe Files dependency. Its private resource contained only the selected bridge root; the portable ZIP remained null-configured.
+
+### Metadata and the first ordinary-chat attempt
+
+The earlier one-attempt HTTP 429 and the user's decision to defer that preflight remain historical facts. A later bounded production `inspect_arxiv` request in Zotero obtained one concrete Atom entry for *Attention Is All You Need*, `1706.03762v7`, with eight authors and matching publication/update metadata. No retry, HTML metadata, alternate endpoint, or operating-system request supplied that result.
+
+The first 0.2.0 ordinary Web conversation studied that exact version. A pre-save search found no matching native item. A natural Korean save request, without a path, manual connection step, or plugin mention, selected the production plugin and completed status and metadata inspection. Its `ensure_arxiv_pdf` operation, `sdpa-ensure-20261022-a1`, ended terminal `indeterminate` with `unknown_outcome`; no annotation request followed. Later source-backed diagnosis established that the first native field setter ran before a planned-key item had loaded primary data and that the surrounding SQLite transaction rolled back. The durable result remains historical unknown rather than being rewritten or retried under another identity.
+
+### Native import, study record, and reader
+
+A separately authorized direct local client exercised the corrected native path with *Layer Normalization*, `1607.06450v1`. It created My Library parent `JWZ83U8X` and PDF `LZGFKCAL`; native readback reported `ready`, `storage: confirmed`, and PDF SHA-256 `c464f839fb8d59f7fde92f9b4caa67c2d1f2f196b88f93fb60502249df0aaef7`. The initial full-comment create, `t7-v021-direct-create-fullproof-eq6-09`, committed native annotation `RLVBIS7N` after Zotero removed an incidental terminal newline, so its strict exact-readback outcome remains a second terminal historical unknown.
+
+Version 0.2.2 rejected an intentionally noncanonical terminal-newline body before native mutation. A newly scoped, explicitly authorized append then stored the complete 7,388-character representable body exactly in `RLVBIS7N`; a fresh listing found one annotation and no overflow item note. `t7-v022-verify-reader-after-append-16` returned both storage and viewer `confirmed`. The actual reader showed the selected Equation (6) passage, nine Korean proof/question/reference sections, formatted equations and assumptions, and an exact versioned arXiv reference that opened only after a click.
+
+The Zotero native comment editor was then used to add an owned manual marker. That editor changed interior whitespace, leaving a 7,287-character body and revision `sha256:161f3fa808cecc3e541211de781869741c0a0066553db00879c9ef7905d2118c`. A stale extension update using the prior revision was rejected with `conflict`; a fresh listing proved the entire manually edited body and revision remained unchanged. The editor observation is separate from extension persistence: the preceding extension append had passed exact readback.
+
+Fresh inspect/ensure operations then reused `JWZ83U8X` and `LZGFKCAL`, returned the same fingerprint with `itemAction: reused` and `pdfAction: reused`, and left exactly one annotation. No duplicate parent, PDF, annotation, or reference import appeared.
+
+### Owned import and failure fixtures
+
+An owned metadata-only preprint parent `3T97YX6C` represented `1512.03385v1`. Actual metadata inspection selected `attach`; ensure preserved its title, creator, and root placement while downloading one PDF, `MZM3F2NP`, with SHA-256 `1e0651b6810ecba34a3dbc5b5b0209226f889004607c1f203540a48d64e5a93a`. Fresh reads found one parent, one readable PDF, and zero annotations.
+
+A second owned parent, `VY467DKX`, represented `1512.03385v2`. Inspecting v1 with both parents present returned `needs_choice` and the reason `Multiple canonical arXiv parents require an explicit target choice.` No ensure request followed. One bounded inspection of a valid but absent future concrete version, `2612.99999v1`, returned terminal nonretryable `not_found` with null data. It caused no native write and was not retried or replaced by another route.
+
+The retained-parent `item_only` import failure and disable-during-await authority fence still require the separately reviewed controlled host probe described in the remaining-coverage table below. Production has no generic fault command, and no unreviewed diagnostic was loaded to manufacture either result.
+
+### Restart, reinstall, replay, and original-paper control
+
+The observed reliable local lifecycle was remove, normal Zotero restart to complete removal, install the exact XPI, then another normal restart before final readback. Installing again in the same Zotero run before the removal-completing restart appeared enabled temporarily but did not persist after restart; a request addressed to that unsatisfied session remained unprocessed and was not reidentified. After the complete sequence, the installed XPI hash, plugin status, operation journal, parent, PDF, and sole manually edited annotation all matched their prior values.
+
+Replaying the byte-identical historical successful reuse request returned its recorded result. Fresh searches/listings still found one Layer Normalization parent, one PDF, and one annotation with the same complete manual body and revision. The journal therefore survived normal removal/reinstall and prevented duplicate execution.
+
+The original Huginn paper remained a read-only control. A fresh 0.2.2 native read returned its unchanged PDF SHA-256 `96f4543683a06a470ccb0b6b0db27a98f283fde9467d175e838f03a629a76c7b`, and a fresh annotation listing for attachment `9B6NE4M4` remained empty. No 0.2.x write request targeted that item.
+
+### Web activation boundary
+
+Two fresh ordinary 0.2.1 conversations and one fresh ordinary 0.2.2 conversation after the full Zotero removal/reinstall lifecycle did not select the installed workflow. The 0.2.2 chat first studied `1607.06450v1` without writing; its natural Korean save request was visibly submitted once with no plugin mention, pasted path, or manual connection instruction. ChatGPT then reported no available Zotero integration, and the bridge received no request. No repeated unchanged routing attempts followed.
+
+A separate diagnostic used the owned plugin's **Try in chat** action, which visibly selected **Zotero Study Save**. A status-only Korean request forbade lookup, import, creation, and update. It added exactly one bridge request with operation `connection_status`, empty payload, and no authorization; the matching result reported enabled 0.2.2, Zotero 10.0.6, and 14 operations. This proves that explicit selection can bind the plugin and Mac Safe Files. It is not ordinary implicit activation and does not satisfy the two-chat product criterion.
+
+### Current coverage
+
+| Criterion | 0.2.x actual result |
+| --- | --- |
+| Concrete-version metadata and bounded source failure | Passed in Zotero for `1706.03762v7`, `1607.06450v1`, `1512.03385v1`, and absent `2612.99999v1`; the earlier 429 remains historical. |
+| New native parent/PDF and exact version | Passed through the direct local client for Layer Normalization v1; exact keys, local PDF fingerprint, and native storage were read back. |
+| Exact full annotation and actual reader | Passed on 0.2.2 for the 7,388-character body, selected passage, formatted mathematics, questions, assumptions, and clicked safe reference. |
+| Conflict protection and reuse | Passed; a stale update preserved the manual edit, and fresh ensure reused one parent/PDF without duplicate records. |
+| Metadata-only, version, ambiguity, and source-not-found fixtures | Passed with the two owned ResNet parents and one nonretryable absent-source result. |
+| Restart, remove/reinstall, and historical replay | Passed when removal and installation were separated by their required normal restarts. |
+| Original user paper | Passed read-only fingerprint and zero-annotation controls. |
+| Explicit plugin selection and status-only binding | Passed as a diagnostic with exactly one read request. |
+| Retained-parent partial failure and disable-after-await fence | Pending reviewed controlled-host execution; not represented by unit tests or an unreviewed runtime hook. |
+| Two ordinary Web study/save conversations | **Failed to establish.** The final natural request dispatched no plugin tool or bridge request; direct-client and explicit-selection results do not replace this requirement. |
+
+Public publication, a ChatGPT Work route, and a public Mac Safe Files installer remain outside this acceptance record. The owned T7 fixtures and historical operation evidence remain in Zotero; they were not silently removed.

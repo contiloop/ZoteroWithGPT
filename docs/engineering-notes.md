@@ -39,3 +39,15 @@ An actual pre-fix parent creation reached its first field setter without that lo
 Zotero 10.0.6's public `annotationComment` setter applies `trim().normalize()`. A comment with leading or trailing whitespace, including an incidental terminal newline, or a decomposed Unicode sequence can therefore commit successfully but differ from the approved request during exact readback. One actual run exposed this boundary: the native annotation was visible with the complete substantive study content, while the operation correctly remained indeterminate because the stored comment omitted the request's final newline.
 
 Check `comment.trim().normalize() === comment` before invoking either native annotation create or update. Reject a mismatch before changing the item or durable marker. Clients prepare the exact NFC, boundary-clean candidate before authorization and operation-ID assignment; they do not silently trim meaningful content after approval. Interior blank lines, indentation, mathematics, and references remain byte-for-byte content for readback. A historical indeterminate write remains historical even when the representability rule explains its mismatch.
+
+## Native editor saves can normalize study text
+
+During the owned 0.2.2 manual-conflict check, Zotero's native comment editor preserved all non-whitespace characters and the new marker but changed interior whitespace in the existing long study body. This was a direct native UI save after the extension's exact 7,388-character append had already passed readback. Treat the resulting native body and revision as current user data. Do not restore an older extension snapshot or attribute the editor's transformation to a later protocol write.
+
+The subsequent stale `update_annotation` request returned `conflict`, and a fresh listing proved the complete editor-produced body and revision unchanged. This validates revision fencing while also showing that byte-exact extension persistence does not imply byte-exact edits through Zotero's own editor.
+
+## Plugin removal and installation have restart boundaries
+
+Normal removal and installation are separate host lifecycle transitions. An observed reinstall attempted before the removal-completing restart appeared enabled in the current Plugins Manager but was absent after restart. A request published to that unsatisfied session remained unprocessed. The reliable acceptance sequence was remove, restart, install, restart, then verify the profile package and establish a fresh descriptor/status/descriptor connection.
+
+Do not copy an unprocessed request into the new session or assign it another operation ID. Preserve its original identity and outcome uncertainty. Journal-backed replay after the complete reinstall should return the historical result; fresh native reads, rather than replay alone, establish the current parent, attachment, and annotation state.

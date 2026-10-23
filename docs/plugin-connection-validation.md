@@ -147,3 +147,27 @@ The fixed arXiv API metadata endpoint did not provide the required metadata in t
 ## User-approved verification deferral
 
 On 2026-10-22, after the HTTP 429 observation was reported, the user explicitly approved continuing implementation while deferring the remaining metadata preflight. This changes the order of verification, not its success criterion. T1 metadata remains unverified. Real concrete-version metadata retrieval and production native/Web acceptance remain mandatory before completion. No request-limit bypass, HTML substitution, or public-source success inferred from test doubles is authorized.
+
+## Production plugin follow-up — 2026-10-22–23
+
+This follow-up preserves the preflight and deferral above as historical evidence. Later production Zotero requests obtained matching concrete-version Atom entries for `1706.03762v7`, `1607.06450v1`, and `1512.03385v1`; metadata access is therefore no longer deferred. The earlier HTTP 429 is not reclassified, and no cause is inferred for it.
+
+### Private production installation
+
+The authenticated account created one owned private **Zotero Study Save** plugin and updated that same identity through version 0.2.2. The current portable source is `zotero-study-save-0.2.2.zip`, SHA-256 `eecff4f37bb97367261146754ab7e1360a4ea77c83002ffc9122e4312bae58c3`. Account readback reported personal/private scope, version 0.2.2, the one Zotero study-save skill enabled, and Mac Safe Files connected. The earlier read-only probe remained disabled so it did not compete for activation.
+
+The portable ZIP has 25 files. Account export has one additional platform-generated `.codex-plugin/plugin.json` compatibility manifest and normalized account author/interface metadata. That generated file explains the 26-file account copy. Sanitized path and content comparison found the skill, agent policy, workflow, client resources, schemas, examples, and app dependency unchanged. The only personal workflow setting was the non-null `bridgeRoot` in `personal-config.json`; the portable source kept it null. No profile ID, session ID, pending request, result, credential, study text, or additional executable instruction was added to the portable package.
+
+Source/readback also confirmed `allow_implicit_invocation: true`, no product restriction, and the expected Mac Safe Files application dependency. These declarations establish eligibility and source integrity, not successful selection in a fresh ordinary conversation.
+
+### Actual activation observations
+
+One initial ordinary 0.2.0 conversation selected the production plugin from natural Korean save wording without a path, manual connection step, or plugin mention. It completed connection status and arXiv inspection before the native import ended as the preserved historical unknown described in the acceptance record. This shows that implicit selection occurred once; it is not a successful end-to-end save.
+
+Two fresh ordinary 0.2.1 conversations later returned no available Zotero integration and produced no bridge request. After the exact 0.2.2 account/source readback and a complete Zotero remove/restart/install/restart lifecycle, one bounded fresh ordinary 0.2.2 conversation behaved the same way. Its study-only turn caused no write, and its natural save request dispatched no plugin tool or bridge file. Management still showed the production skill enabled and Mac Safe Files connected. No description, cache, permission, or reinstall cause has been established from the available evidence.
+
+One explicit-selection diagnostic separated tool binding from automatic selection. **Try in chat** displayed a **Zotero Study Save** selection chip. The submitted instruction requested `connection_status` only and explicitly forbade lookup, import, creation, or update. ChatGPT used Mac Safe Files and created exactly one request/result pair: `connection_status`, empty payload, no authorization field, succeeded, plugin 0.2.2, Zotero 10.0.6, enabled, 14 operations. No native record changed. This is positive evidence for installed-plugin binding and dependency access, but explicit selection cannot be counted as the required ordinary-chat flow.
+
+### Current connection conclusion
+
+Private plugin creation, versioned update, source integrity, private root configuration, Mac Safe Files connection, explicit selection, and a real status request all pass on this account. Ordinary implicit selection remains inconsistent and the final 0.2.2 natural save attempt failed before tool dispatch. The two required successful ordinary-Web study/save conversations remain unmet. A mandatory mention, pasted path, manual connection prompt, direct local client, or status-only diagnostic must not be substituted for that product criterion.

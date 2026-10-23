@@ -41,3 +41,15 @@ After disable/removal, inspect the dedicated root and move only owned `bridge-v1
 Distribution is manual. The manifest's reserved .invalid update URL supplies no update service. Public release channels and the project's own distribution license remain decisions before public publication.
 
 Remove the owned personal **Zotero Study Save** plugin through ChatGPT management separately from the XPI. Leave Mac Safe Files and unrelated plugins connected. Reinstall using the portable source and restore the one private root setting; never embed an old descriptor, pending operation, or result. Both ordinary component removal procedures retain native study data and the Zotero operation journal. Actual lifecycle acceptance remains surface/version specific.
+
+## Observed Zotero reinstall ordering
+
+Actual 0.2.2 acceptance established this reliable sequence:
+
+1. Remove Research Companion in Plugins Manager.
+2. Normally quit and reopen Zotero so removal completes.
+3. Install the exact reviewed XPI through Plugins Manager.
+4. Normally quit and reopen Zotero again.
+5. Verify the installed profile XPI hash, copy the matching client kit, enable the bridge, and use a fresh descriptor/status/descriptor sequence.
+
+Installing again in the same Zotero run before the removal-completing restart can appear enabled temporarily but fail to persist after restart. In the observed run, a request addressed to that unsatisfied session remained unprocessed. It was not moved, replayed under a new ID, or treated as proof of nonexecution. After the complete sequence, fresh status and native reads passed, the operation journal remained available, and byte-identical replay of a historical successful request returned history without duplicating the parent, PDF, or annotation.

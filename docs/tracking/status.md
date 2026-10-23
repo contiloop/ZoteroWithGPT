@@ -1,8 +1,16 @@
 # Product status
 
-## Current source release: 0.3.1 — content correction in progress
+## Current installed release: 0.3.1 — package verified, complete-source acceptance failed
 
-Final review found three empirical details missing from an explicit no-summary save. Complete-content acceptance is withdrawn. The correction must reuse full accessible requested source and pass a fresh actual Web source/request/native comparison before completion.
+Source `c8dd47282ebd52a2ee5bea775c4a68774c23ed5e` passed the clean full gate with 295 tests and byte-for-byte reproduction of the 35-file XPI, 20-file client kit, and 27-file portable plugin. Artifact SHA-256 is `e6cf51532914862b0b4aedccb55dd54b3af124d4584378344bd1020493a69813` for `zotero-ai-research-companion-0.3.1.xpi` and `f2bfebbdd8d99cb4f39ba1da0acdcd2e4e9b5bc86466fc58dbc4690c8882a372` for `zotero-study-save-0.3.1.zip`.
+
+The exact XPI is installed in the actual Zotero profile. The same owned USER/PRIVATE plugin backend is installed at current release `pluginrel_REDACTED_9`, with its configured private root, default prompt, and Mac Safe Files dependency retained. Fresh enabled session `67e9d2871e85a19c37f1f186dd2e4cd9` reports Zotero 10.0.6 and all 15 operations. The 219-operation journal was byte-identical across installation.
+
+Two fresh actual Web conversations visibly selected the plugin. The first read all 14 pages of the owned Layer Normalization v1 PDF before saving. Its independently captured 498-character visible user source and 22,726-character assistant source occurred exactly in the request; the complete request, create result, and fresh native body were the same 23,571 characters. The actual reader showed the page-4 highlight and the complete comment, including the three empirical details missed in 0.3.0.
+
+The second conversation correctly stopped on three ResNet candidates, waited for an explicit verified-v1 choice, freshly read only that local PDF, wrote once to the independent target, and preserved the prior annotation. Its request/result/fresh native body were exactly equal at 3,898 characters, and the actual reader showed the page-3 highlight and full stored comment. Complete-source preparation failed before that write: the selected-plugin and arXiv-link prefix was omitted from the captured user source, three backslashes were introduced in the remaining question, prose/table/link presentation changed beyond the allowed lossless mapping, and the assistant answer's final read-only status paragraph was omitted. The write remained authorized and correctly targeted; native fidelity does not cure the source loss.
+
+The failed annotation and operation remain unchanged, with no retry or replacement. All further writes stopped. Independently reviewed 0.3.0 evidence for missing and metadata-only stops, owned manual addition, direct-native append/conflict, ordinary plugin and extension lifecycle, retained history, and immutable replay remains applicable because the 0.3.1 native runtime members are byte-identical. Those cases were not rerun or represented as current Web observations. A reviewed source-preparation correction and a fresh actual selected-Web source/request/native comparison are required before completion.
 
 ## Historical 0.3.0 — package and actual observations, content failure
 

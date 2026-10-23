@@ -1,5 +1,15 @@
 # Open limitations
 
+## 0.3.1 source preparation can rewrite or omit captured conversation blocks
+
+The first actual 0.3.1 selected conversation proved that complete preservation is possible: its independently captured visible user and assistant blocks occurred exactly in the create request, and the request, result, and fresh native body were byte-identical. The second fresh selected conversation did not preserve the same boundary.
+
+In the failed ResNet save, request preparation removed the 139-character selected-plugin and arXiv Markdown-link prefix from the 506-character visible user source. The remaining user text changed from 367 to 370 characters because three backslashes were added before `frac` tokens; the separately captured 109-character candidate choice stayed exact. The 3,591-character assistant source became a 3,389-character request block. It gained prose emphasis, changed Markdown-table spacing and the delimiter row, replaced a labeled query-bearing Highway Networks link with a bare URL, and omitted the final 70-character historical read-only status paragraph plus its two-character separator. These changes exceed the allowed lossless mathematics, Unicode-normalization, and block-boundary presentation mapping.
+
+The resulting 3,898-character create request, create result, and fresh native body were exactly equal, and the actual Zotero reader showed the correct page-3 highlight, reference URL, and final stored conclusion. The prior annotation remained unchanged. The defect is therefore in conversational source preparation before the native request, rather than target selection, approval, bridge transport, native storage, or reader display. The user's ordinary save request was explicit, and exactly one correctly targeted create occurred.
+
+Annotation `2WYFHJ28`, operation `study.write.20261023.save05`, and their request, result, and journal are preserved as failed evidence. Do not retry, replace, patch, or reidentify that write. Acceptance requires a reviewed general source-preparation correction that uses the complete accessible requested user and assistant blocks by default, followed by a fresh actual selected-Web source-to-request-to-native comparison. Topic-level or section-level checks are insufficient.
+
 ## Independent Work execution
 
 A direct Codex local-file client has completed the native study flow, but a distinct ChatGPT Work task has not been run. This matters only when offering Work as a tested replacement for Mac MCP. Account/tool availability and real local permissions cannot be established from Codex evidence. Validate on an actual user-started Work surface before advertising parity or usage behavior.
@@ -30,9 +40,13 @@ Treat the original stall as confirmed and its cause as unresolved. A finite boun
 
 The second selected-Web save returned native storage confirmed, but its immediate `verify_annotation` reported `attachment_reader_missing`. This failure did not authorize another create. Opening the owned attachment through normal Zotero UI then displayed the saved annotation, selected the exact passage on page 3, and confirmed the full comment. Keep the failed protocol observation and later actual-reader success as separate evidence; do not reclassify the initial result as a viewer pass.
 
+Both 0.3.1 saves also retained real `attachment_reader_missing` Web-verifier outcomes before normal Zotero UI inspection. The owned Layer Normalization reader later showed annotation `6HS9XLR7` on page 4 of 14 with its complete 23,571-character comment. The owned ResNet reader later showed annotation `2WYFHJ28` on page 3 of 12 with its stored comment. These observations establish actual reader display separately. The ResNet source-preparation failure remains failed even though its stored body rendered.
+
 ## Observed selected-Web latency
 
 One selected-plugin ResNet turn took 4 minutes 42 seconds before completing. The request eventually produced the expected local read/save progression. This is a single environment observation, not an established cause, service-level guarantee, or reason to repeat unchanged requests.
+
+In the 0.3.1 correction run, the first selected save turn took 4 minutes 41 seconds and the second took 3 minutes 56 seconds. Both completed. These are additional environment observations only; no platform, bridge, model, or native-reader cause is inferred.
 
 ## Historical ordinary ChatGPT Web activation inconsistency
 

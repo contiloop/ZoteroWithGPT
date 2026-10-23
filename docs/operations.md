@@ -9,7 +9,7 @@ npm ci
 npm run verify
 ```
 
-The installable results are `artifacts/zotero-ai-research-companion-0.3.0.xpi`, its matching `-client` directory of plain-text instructions/schemas/examples, and `artifacts/zotero-study-save-0.3.0.zip`. `npm run package` regenerates all three after source or bundled-document changes. Compare SHA-256 values before calling a clean build identical to the installed package.
+The installable results are `artifacts/zotero-ai-research-companion-0.3.1.xpi`, its matching `-client` directory of plain-text instructions/schemas/examples, and `artifacts/zotero-study-save-0.3.1.zip`. `npm run package` regenerates all three after source or bundled-document changes. Compare SHA-256 values before calling a clean build identical to the installed package.
 
 ## Install and connect
 
@@ -55,7 +55,7 @@ Use a deliberately owned PDF and preserve existing native records and operation 
 5. Fresh native reads prove the exact complete comment, current anchor fingerprint, one intended record, no overflow note, and no duplicate operation. A deliberate manual-edit conflict preserves the current body. Missing/metadata-only and failed-switch cases produce no mutation and resume only after fresh local lookup and PDF reading. A lookup result without a current fingerprint produces no `read_pdf` or repair request and resumes only after manual restoration plus fresh discovery returns a fingerprint.
 6. Normal Zotero removal/reinstall retains native records and the journal. ChatGPT **Uninstall** and **Delete plugin** remain distinct; do not delete the owned backend during the lifecycle check.
 
-Automatic plugin invocation is not a 0.3.0 completion gate. It may remain eligible for a later save when context is clear, but acceptance starts with visible explicit selection. Direct Codex local-file verification remains a separate proven route and cannot establish the Web observation. The actual 0.3.0 installation passed these Web, native mutation, reader, and ordinary lifecycle checks on 2026-10-23. Two fresh selected conversations established independent local targets; missing and metadata-only targets stopped, and an owned manual PDF addition was discovered and read afresh. Direct-local append and stale-edit checks separately preserved the complete body. Package verification alone must never be substituted for those actual observations.
+Automatic plugin invocation is not a 0.3.0 completion gate. It may remain eligible for a later save when context is clear, but acceptance starts with visible explicit selection. Direct Codex local-file verification remains a separate proven route and cannot establish the Web observation. The actual 0.3.0 installation established Web, native mutation, reader, and ordinary lifecycle observations on 2026-10-23, but independent final review found empirical content omitted before writing, so complete-content acceptance failed. Version 0.3.1 requires fresh corrected-client acceptance. Two fresh selected conversations established independent local targets; missing and metadata-only targets stopped, and an owned manual PDF addition was discovered and read afresh. Direct-local append and stale-edit checks separately preserved the complete body. Package verification alone must never be substituted for those actual observations.
 
 ## Observed Zotero reinstall ordering
 

@@ -1,6 +1,6 @@
 # Personal ChatGPT plugin connection preflight
 
-## 0.3.0 selected-workflow state — passed 2026-10-23
+## 0.3.0 selected connection observations — complete-content acceptance failed
 
 The existing owned private plugin was updated in place from its guarded prior release to 0.3.0. Post-update and post-reinstall readback retained backend `plugins_REDACTED_10`, current release `pluginrel_REDACTED_8`, name `zotero-study-save`, USER scope, and PRIVATE discoverability. The source under test is `zotero-study-save-0.3.0.zip`, SHA-256 `d569208c3ce1cb3976e10780bbf7a33615058ca7d5ea9826287eb6a0c41e956f`. The update overlaid the existing plugin rather than creating a new identity or deleting omitted source.
 
@@ -15,6 +15,8 @@ The account lifecycle used the ordinary **Uninstall** action and never **Delete 
 The matching Zotero extension separately completed remove, normal restart, install from the pinned 0.3.0 XPI, and another normal restart. Post-restart manager UI showed Research Companion 0.3.0 enabled. Fresh session `c846fc1e865a2513d1f1e832e2a1af85` reported Zotero 10.0.6 and all 15 operations. The profile-installed XPI matched the release artifact byte for byte at SHA-256 `634eff4538c2c438f425b1a8a9bed9e85bcd2d4eb18bd11ffe2e8ee84cae4410`.
 
 The 215-record durable history was byte-identical before any post-reinstall requests. Fresh listings returned the complete current Layer Normalization and ResNet annotations. A byte-identical historical create request replayed under its original identity returned the byte-identical stored result while the operation count stayed 218 and the native annotation count stayed one. Connection, account install state, native persistence, and replay therefore passed as separate observations rather than being inferred from the management screen alone.
+
+Connection and lifecycle observations above remain valid. Independent final review nevertheless found three empirical details omitted between discussion and the first prepared save body. Exact request/native equality did not establish source completeness; this attempt does not satisfy complete-content acceptance. A corrected current-package Web run is required.
 
 ## Historical account and host preflight
 

@@ -10,7 +10,7 @@ Actual production Zotero obtained concrete-version arXiv metadata and imported L
 
 The owned reader displayed the full Korean proof, mathematical notation, questions, and references beside page 4 Equation (6). On 0.2.2, a precommit terminal-newline test was rejected without changing the record. A newly approved append then stored the complete 7,388-character result exactly in the existing annotation; a fresh read confirmed one record and no overflow note. Direct native UI editing later changed interior whitespace; the extension rejected a stale revision and preserved that entire manually edited body exactly. Historical uncertain operations remain unchanged rather than being retried.
 
-See [open limitations](findings.md) and [actual acceptance](../acceptance-results.md) for surface-specific evidence and pending checks.
+The unresolved ordinary-Web activation and remaining actual acceptance checks prevent a completed-release claim.
 
 ## Approved 0.1.0 baseline
 

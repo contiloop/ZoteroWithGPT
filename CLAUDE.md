@@ -22,7 +22,8 @@ A macOS Zotero extension connects ChatGPT Web study conversations to native pass
 │       └── decisions/
 │           ├── index.md              → consequential decision catalog
 │           ├── 0001-native-file-bridge.md → native persistence and file transport trade-off
-│           └── 0002-reader-rendering.md  → portable source and permissive rendering dependencies
+│           ├── 0002-reader-rendering.md  → portable source and permissive rendering dependencies
+│           └── 0003-conversational-arxiv-save.md → conversation workflow and exact-version import
 ├── addon/
 │   └── AGENTS.md                     → host bootstrap and extension identity
 ├── src/
@@ -32,13 +33,16 @@ A macOS Zotero extension connects ChatGPT Web study conversations to native pass
 │   ├── plugin/AGENTS.md              → composition and resource lifecycle
 │   └── adapters/
 │       ├── anchors/AGENTS.md          → evidence-based page geometry
+│       ├── arxiv/AGENTS.md            → bounded source retrieval and identity policy
 │       ├── file-bridge/AGENTS.md      → local files and session ownership
 │       ├── operation-store/AGENTS.md  → durable identity and recovery
 │       ├── reader/AGENTS.md           → preview ownership and actual visibility
 │       ├── rendering/AGENTS.md        → bounded safe Markdown and mathematics
 │       ├── settings/AGENTS.md         → local setup and disable semantics
 │       └── zotero/AGENTS.md           → guarded native data access
-├── integration/AGENTS.md             → client instructions and surface-specific evidence
+├── integration/
+│   ├── AGENTS.md                     → client instructions and surface-specific evidence
+│   └── chatgpt-plugin/AGENTS.md      → private personal workflow and portable package
 └── scripts/AGENTS.md                 → deterministic package and artifact validation
 ```
 
@@ -46,8 +50,9 @@ A macOS Zotero extension connects ChatGPT Web study conversations to native pass
 
 - Study records remain native Zotero data; do not write SQLite or annotate by changing PDF bytes.
 - A write requires the user's specified save or approval, current target evidence, and conflict protection.
-- Long comments stay beside their passage; length never triggers a separate note or silent truncation.
-- Operation identities survive ordinary reinstall; uncertain outcomes are reconciled before any retry.
+- Long comments stay beside their passage; preserve the complete approved body or reject before mutation. Length never triggers a separate note.
+- Studying alone never imports. A save may import its clearly identified arXiv version; ambiguity requires a choice and confirmed PDF readiness precedes annotation geometry.
+- Operation identities survive ordinary reinstall. Interrupted running outcomes require reconciliation; terminal unknowns remain historical and must never be retried under a replacement identity.
 - Treat paper and comment content as untrusted display data; no script execution or automatic remote resources.
 
 ## Before changing code

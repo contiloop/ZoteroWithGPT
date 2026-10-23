@@ -7,13 +7,15 @@ ChatGPT Web supplies the conversation and study analysis. An already authenticat
 | Component | Responsibility and direction |
 | --- | --- |
 | Conversation client | Selects paper, requests reading, obtains save authority, publishes requests and reads results; never receives Zotero runtime objects |
+| ChatGPT personal plugin | Packages save-intent instructions and the existing Mac Safe Files dependency; keeps only the bridge root in private instance configuration |
 | File bridge | Converts complete versioned files into operation submissions and publishes responses; depends on transport and execution interfaces |
 | Operation coordinator | Validates and snapshots requests, claims immutable identity, serializes mutations, and records outcomes; depends on ports rather than Gecko or Zotero globals |
 | Native library and anchor adapters | Translate typed requests into Zotero application access and PDF-reader geometry; return native keys and snapshots |
+| arXiv acquisition and native import | Resolve a concrete source version, acquire bounded bytes through ports, and inspect/create/reuse native items and attachments with commit-time evidence |
 | Operation journal and recovery | Persist operation identities, results, and native reconciliation evidence within one Zotero profile |
 | Reader and rendering adapters | Derive a sanitized Markdown/MathML preview from canonical native comments; inspect actual visible reader state |
 | Settings and plugin composition | Bind native implementations, selected directory, connection lifecycle, and reader lifecycle |
-| Package tooling | Bundles the extension and matching plain-text client kit; does not bundle a user's transport or profile |
+| Package tooling | Bundles matching XPI, plain-text client kit, and portable ChatGPT plugin; does not bundle a user's transport, personal configuration, or profile |
 
 The TypeScript core imports protocol definitions and abstract ports. Concrete Zotero, Gecko filesystem, DOM rendering, hashing, and persistence adapters implement those ports. Plugin composition owns concrete wiring. Replacing a transport therefore does not change the meaning of a study save.
 
@@ -24,3 +26,11 @@ The conversation client searches and reads a selected PDF, obtains a fingerprint
 The bridge validates file identity and scope before submission. The coordinator claims the operation and serializes its mutation. The native adapter revalidates the current PDF, anchor, and target state, commits ordinary Zotero data, and reads it back. The journal records the result before transport publication. A later verification request inspects storage and the active reader independently.
 
 Only metadata, bounded extracted text, geometry candidates, and JSON results cross the file boundary. PDF binaries, credentials, executable code, and arbitrary filesystem commands do not. Native annotations and optional notes remain in Zotero; preview nodes are disposable. Zotero remains responsible for ordinary library sync.
+
+## Saving a newly studied arXiv paper
+
+The personal plugin retains the studied arXiv URL and full conversation material. A save request authorizes importing that identified paper when necessary; studying alone authorizes no import. `inspect_arxiv` obtains concrete-version Atom metadata and native candidates. `ensure_arxiv_pdf` consumes the exact inspection token and explicit selection, rechecks current evidence, and returns a ready PDF or a separately identified partial/uncertain outcome. Only a ready, locally parsed PDF can supply passage geometry for subsequent annotations.
+
+The Zotero host performs network retrieval; Mac Safe Files remains a UTF-8 file transport. A module-scoped admission lane serializes arXiv traffic, spaces metadata requests, retains service cooldowns across connections, and cancels disconnected work. Typed HTTP, staging, file-installation, and native-library ports isolate source acquisition from host implementations. Import evidence and planned native keys are recorded durably before their corresponding writes. Native transactions protect parent and attachment commits; an exclusive file copy and synchronous evidence checks protect the final storage boundary.
+
+Installation and native success are separate from ordinary ChatGPT Web activation. The current acceptance record must establish that surface explicitly; direct local requests do not prove automatic skill selection in a new Web conversation.

@@ -26,4 +26,12 @@ The retained operation journal can include complete historical responses and stu
 
 Credentials belong to the existing transport's own installation and revocation process. No key is copied into requests, chat, package files, or this repository. Removing this extension does not rotate or revoke another product's credentials; disabling the bridge revokes this extension's future dispatch authority.
 
+## Personal plugin and source acquisition
+
+The portable ChatGPT plugin declares the existing Mac Safe Files dependency and contains no personal root. Its private instance records only `bridgeRoot`; profile/session identities, pending requests, results, credentials, and study history are discovered or retained locally rather than embedded in the plugin. Account-exported archives can contain that root and account-generated author metadata. Keep them private; distribute the clean portable ZIP instead. Removing the personal plugin does not remove the independent Mac connection or native Zotero data.
+
+The two arXiv operations do not expose arbitrary HTTP access. The host constructs fixed HTTPS metadata/PDF routes from validated article identities and validates every redirect and final URL against the expected resource. It omits credentials, follows redirects manually, and bounds time, bytes, XML work, and redirect count. Service rate limits produce bounded failure/cooldown guidance rather than automatic retries or alternate-endpoint bypasses. Retrieved XML, PDF text, references, and conversation content remain untrusted data and cannot supply executable instructions or save authority.
+
+PDF staging and imported-file installation are local host operations behind typed ports. They do not add a shell tool, network listener, generic evaluator, or public Zotero API. Imported bytes must match locally parsed/fingerprinted evidence before annotation geometry is accepted. An uncertain native commit remains unknown; missing active search results do not authorize recreating its planned keys.
+
 Gecko path checks reject observed escapes and symlinks before and after reads, but do not provide an OS-level no-follow open. A hostile same-user process can race the check and open. Keep the directory private and dedicated; this release does not provide isolation against malicious processes running as the same user.

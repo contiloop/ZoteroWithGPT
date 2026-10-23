@@ -16,6 +16,18 @@ Gecko IOUtils does not expose a no-follow directory-handle read. A same-user att
 
 Bundled dependencies have evaluated notices, but the project's own license and publication channel have not been selected. Public publication needs that decision and authorization. Local packaging and installation are available without asserting a public redistribution license.
 
-## arXiv metadata verification deferred
+## Ordinary ChatGPT Web activation remains incomplete
 
-The actual Zotero 10.0.6 metadata request to the fixed arXiv Atom endpoint returned HTTP 429 in the 2026-10-22 preflight. The bounded read-only PDF request succeeded, but that does not prove concrete-version metadata retrieval. The user explicitly approved continuing implementation with this external verification deferred. Respect request limits; do not silently substitute HTML metadata or another transport. Real metadata and end-to-end native/Web acceptance remain completion requirements. See [the preflight record](../plugin-connection-validation.md).
+The private production plugin is installed, enabled, configured, and connected to Mac Safe Files. An ordinary 0.2.0 save request selected it but reached a subsequently repaired native import failure. Two fresh ordinary 0.2.1 conversations then returned no available Zotero integration without dispatching the workflow, despite the management UI showing the production plugin enabled and Mac Safe Files connected. These are observed activation failures; their cause has not been established. Version 0.2.2 account/source/connection readback succeeded, but the required two complete ordinary-Web save conversations remain pending. A direct local-client success, mandatory mention, pasted path, or manual connection prompt cannot replace that criterion. Preserve this blocker until new actual surface evidence resolves it.
+
+## Native Zotero editor whitespace changes
+
+During the owned 0.2.2 manual-conflict test, directly saving a manual marker in Zotero's native comment editor changed interior whitespace in the existing study body. Non-whitespace characters and the marker were preserved; the extension's earlier append had passed exact full-content readback. The subsequent stale extension update returned `conflict` and left the entire manually edited body unchanged. Keep this host-editor behavior separate from extension persistence; do not promise byte-preserving native UI edits or silently restore an older body after a person edits it.
+
+## Historical uncertain operations
+
+Two owned pre-fix acceptance operations remain terminal historical unknowns: one parent-creation attempt failed before native field initialization completed, and one annotation committed a body differing by a final newline. Public native initialization and precommit comment-representability fixes are now installed and separately verified. Those explanations do not rewrite terminal outcomes or authorize replay under a fresh identity. Preserve their journals and any existing native data.
+
+## Resolved external preflight: arXiv metadata
+
+The 2026-10-22 HTTP 429 preflight and the user's implementation deferral remain historical facts. Later actual production Zotero requests obtained concrete-version Atom metadata for 1706.03762v7 and 1607.06450v1, and the latter PDF was imported and locally parsed/fingerprinted. The metadata-access check is therefore no longer deferred. No cause is inferred for the earlier response, and no alternate endpoint or HTML metadata substitute established these passes. Continue respecting rate limits. See [the connection record](../plugin-connection-validation.md) for the historical preflight.

@@ -18,11 +18,17 @@ Generated explanations distinguish author claims, user questions, assistant inte
 
 ## Identity and outcomes
 
+For a clearly identified studied arXiv paper, the explicit study-save request also authorizes obtaining its missing bibliographic item and PDF. New items belong at the personal My Library root. Reused items retain metadata, attachments, collection placement, and manual study records. Referenced papers are links unless separately requested for import. The exact studied version is preserved; a title, URL, or page number alone does not establish matching PDF identity.
+
+Inspection is read-only. Import consumes its current inspection token and selected create, attach, or verified-reuse decision. Competing parents, conflicting versions, and unverified attachments require a choice rather than a first-match decision. Revalidation at native commit boundaries prevents a stale inspection from authorizing a different library state.
+
 One operation identifies one immutable request. The same identity and content returns its historical outcome; changing content under that identity is a conflict. A fresh observation requires a fresh operation ID.
 
 A queued operation has not executed. An interrupted queued operation becomes a definitive rejected non-write rather than resuming on startup. An interrupted running operation may have committed; recovery inspects its native identity before deciding. If that cannot establish an outcome, it remains indeterminate and must not be resubmitted as a new operation.
 
 A successful historical operation remains historical after a person deletes its annotation. Replaying it does not recreate the deleted record. Multiple operations have independent outcomes; partial success does not imply rollback of earlier saves.
+
+A confirmed bibliographic parent retained after PDF failure is an `item_only` partial result, not a ready PDF or completed study save. A possibly committed import with insufficient readback remains unknown and stops subsequent annotation writes for that attempt. Retain useful confirmed imports when later passage resolution or annotation fails. Terminal indeterminate results remain immutable historical unknowns across reconnect and reinstall; startup reconciliation applies to interrupted running operations and does not turn terminal history into a fresh write.
 
 Storage confirmation means a native record was read back. Viewer confirmation means current content was observed in its actual active reader. Neither a deep link nor a background tab establishes visible display. Viewer failure does not authorize repeating a successful save.
 

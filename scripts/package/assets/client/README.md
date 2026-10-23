@@ -122,6 +122,32 @@ descriptor, status, descriptor, and native target evidence before a write.
 Reading and study require no mutation approval; only the current user's explicit
 save request or acceptance of an exact proposal authorizes a native write.
 
+When that explicit save identifies existing accessible conversation blocks, copy
+their complete canonical Markdown or TeX source by default rather than
+regenerate shorter prose. An ordinary request to save or organize a prior
+question, proof, or explanation needs no special preservation wording. Before
+assigning the mutation operation ID, compare every requested block with the
+prepared body and require all wording, facts, conditions, comparison directions,
+numerical results, proof steps, substantive whitespace, mathematical meaning,
+and links to remain. Labels or source associations may surround the complete
+blocks when requested; organizing alone does not permit content inside them to
+be rewritten or dropped.
+
+If the user explicitly requests a rewritten or condensed deliverable, honor
+that requested form and output scope precisely, and compare it with the source
+inventory and stated scope before mutation. Do not silently rewrite an ordinary
+save, and do not replace a requested summary with the full untransformed source.
+
+Unicode NFC, incidental boundary-whitespace cleanup, and native-compatible math
+delimiter or escape preparation remain allowed. Those presentation steps must
+not reword prose, weaken a qualifier, or omit a result such as which numeric
+setting performed better. If the source is unavailable or the full content
+cannot be represented within the limits, stop before mutation instead of
+inventing, making an unrequested summary, splitting, or using overflow storage.
+This internal comparison adds no confirmation when the user's current save
+intent, content, target, and passage are already clear; existing approval rules
+still apply when preparation changes an already approved body.
+
 ## Starter prompt
 
 The configured personal ChatGPT plugin reads this kit internally and stores the

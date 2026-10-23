@@ -225,6 +225,38 @@
       }
     },
     {
+      "id": "ordinary-save-reuses-complete-source-block",
+      "input": {
+        "accessibleSourceBlock": "사용자 질문: 식 (6)의 스케일 불변성이 RNN에서 왜 중요한지, 경계 조건과 gain 초기화 실험까지 빠짐없이 설명해 줘.\n\n[증명·해석]\n변환을 \\(W'=\\delta W+\\mathbf1\\gamma^\\top\\), \\(c=\\gamma^\\top x\\)로 두면 다음 순서가 필요하다.\n1. 각 pre-activation은 \\(a_i'=\\delta a_i+c\\)이다.\n2. 평균은 \\(\\mu'=\\delta\\mu+c\\)이다.\n3. 중심화와 표준편차는 \\(a_i'-\\mu'=\\delta(a_i-\\mu)\\), \\(\\sigma'=|\\delta|\\sigma\\)이다. 공통 이동 \\(c\\)는 평균을 빼는 과정에서 정확히 상쇄되고, 양의 공통 배율은 표준편차와 함께 상쇄된다.\n4. 따라서 \\(\\delta>0\\)이고 \\(\\sigma>0\\)일 때만 같은 gain을 유지한 \\(z'=z\\)와 \\(h'=h\\)가 성립한다. 이는 활성함수의 특별한 성질 때문이 아니라 활성함수에 들어가는 벡터가 같기 때문이다.\n\n경계 조건:\n- \\(\\delta<0\\)이면 \\(z'=-z\\)이므로 일반적으로 출력 불변성이 깨진다.\n- \\(\\delta=0\\)이거나 \\(\\sigma=0\\)이면 정규화가 정의되지 않는다.\n- 구현이 \\(\\varepsilon>0\\)을 쓰면 일반적인 정확한 불변성은 성립하지 않는다.\n\n[논문]\n3쪽 §4는 recurrent BN에서 시간 단계마다 독립적인 정규화 통계량을 유지하는 것이 성능상 유리하다고 보고한 연구를 설명하고, 순환층의 gain 초기값 0.1이 성능에 중요한 영향을 주었다고 언급한다.\n\n7쪽 §6.2는 LN이 해당 attentive-reader 실험에서 더 빠르게 학습하고 더 좋은 validation 결과를 보였다고 보고한다. LN의 gain 초기값 1.0과 0.1을 비교한 같은 실험에서는 1.0 초기값이 더 좋은 결과를 보였다.\n\n[한계]\n식 (6) 하나가 LN의 보편적 우위를 증명하지는 않는다. 이 성능 비교는 별개의 경험적 결과이며 구조와 데이터셋, 초기화 등에 영향을 받는다.\n\n참고문헌: https://arxiv.org/abs/1607.06450 — 위 식과 실험 결과의 로컬 PDF 출처.",
+        "request": "방금 설명한 증명과 내 질문을 Zotero에 정리해 줘.",
+        "explicitPreservationVariant": "위 질문, 증명 단계, 조건, 실험 결과와 참고문헌을 요약하거나 빼지 말고 해당 구절 옆에 그대로 저장해 줘.",
+        "genericAbbreviatedCandidate": "식 (6)은 공통 affine 변환에 대한 LN의 불변성을 설명한다. 관련 실험은 recurrent BN의 시간별 통계와 gain 초기값 1.0 및 0.1의 차이를 논의한다."
+      },
+      "expected": {
+        "activation": "save",
+        "reads": ["read_pdf", "resolve_anchor"],
+        "writes": ["create_annotation"],
+        "destination": "native_annotation_comment",
+        "preparedBodySource": "input.accessibleSourceBlock",
+        "reuseCompleteSourceBlockByDefault": true,
+        "preservationKeywordsRequired": false,
+        "explicitPreservationUsesStrictCompleteSourceComparison": true,
+        "proseReauthoring": false,
+        "preserveWordingFactsConditionsComparisonDirectionNumbersMathWhitespaceAndLinks": true,
+        "compareCompleteSourceBeforeOperationId": true,
+        "genericAbbreviatedCandidateAcceptableForOrdinarySave": false,
+        "genericAbbreviatedCandidateAcceptableForExplicitPreservation": false,
+        "explicitRewriteOrCondense": "honor_requested_output_scope",
+        "allowedPresentationChanges": [
+          "unicode_nfc",
+          "incidental_boundary_whitespace",
+          "native_compatible_markdown_math_delimiters_and_escapes_only"
+        ],
+        "redundantConfirmation": false,
+        "unavailableOrUnrepresentable": "reject_before_mutation"
+      }
+    },
+    {
       "id": "no-import-preserve-unrelated-collection",
       "input": {
         "paper": "https://arxiv.org/abs/2401.01234v2",

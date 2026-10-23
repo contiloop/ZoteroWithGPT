@@ -122,6 +122,32 @@ Use a fresh operation ID for every new observation, including reads, status chec
 
 Build one complete protocol-v1 JSON object using `docs/protocol/v1.md`. The JSON `operationId` must equal the filename operation ID. Reads omit `authorization`; mutations include exactly one current authorization record with `kind: "explicit_request"` or `kind: "approved_proposal"` and a nonempty scope naming the approved content and target. Keep full annotation comments as annotation comments and stay within the published request limit; do not truncate content or turn a long comment into a note.
 
+When an explicit save identifies existing accessible conversation blocks, copy
+their complete canonical Markdown or TeX source by default rather than
+regenerate shorter prose. An ordinary request to save or organize a prior
+question, proof, or explanation needs no special preservation wording. Before
+assigning the mutation operation ID, compare every requested block with the
+prepared body and require all wording, facts, conditions, comparison directions,
+numerical results, proof steps, substantive whitespace, mathematical meaning,
+and links to remain. Labels or source associations may surround the complete
+blocks when requested; organizing alone does not permit content inside them to
+be rewritten or dropped.
+
+If the user explicitly requests a rewritten or condensed deliverable, honor
+that requested form and output scope precisely, and compare it with the source
+inventory and stated scope before mutation. Do not silently rewrite an ordinary
+save, and do not replace a requested summary with the full untransformed source.
+
+Unicode NFC, incidental boundary-whitespace cleanup, and native-compatible math
+delimiter or escape preparation remain allowed. Those presentation steps must
+not reword prose, weaken a qualifier, or omit a result such as which numeric
+setting performed better. If the source is unavailable or the full content
+cannot be represented within the limits, stop before mutation instead of
+inventing, making an unrequested summary, splitting, or using overflow storage.
+This internal comparison adds no confirmation when the user's current save
+intent, content, target, and passage are already clear; existing approval rules
+still apply when preparation changes an already approved body.
+
 `fs_write_text` performs an atomic UTF-8 write and enforces the server's write bound. Publish the complete request in one call:
 
 ```text

@@ -1,8 +1,20 @@
 # Personal ChatGPT plugin connection preflight
 
-## 0.3.0 selected-workflow state — pending
+## 0.3.0 selected-workflow state — passed 2026-10-23
 
-The active criterion is an explicitly selected private plugin, not automatic invocation. The 0.3.0 account plugin has not been updated or exercised in this cycle. Its source identity/account defaults, preserved private `bridgeRoot`, Mac Safe Files binding, selected read-only local lookup/PDF read, later authorized save, and account Uninstall/Install lifecycle all remain pending. The historical observations below retain their original versions and outcomes; their implicit-activation failures are no longer a 0.3.0 completion gate.
+The existing owned private plugin was updated in place from its guarded prior release to 0.3.0. Post-update and post-reinstall readback retained backend `plugins_REDACTED_10`, current release `pluginrel_REDACTED_8`, name `zotero-study-save`, USER scope, and PRIVATE discoverability. The source under test is `zotero-study-save-0.3.0.zip`, SHA-256 `d569208c3ce1cb3976e10780bbf7a33615058ca7d5ea9826287eb6a0c41e956f`. The update overlaid the existing plugin rather than creating a new identity or deleting omitted source.
+
+Account source readback listed the 27 portable package files plus the generated account compatibility manifest. The Mac Safe Files dependency remained app `asdk_app_REDACTED_1`. The only private per-instance setting remained `bridgeRoot: /Users/USER/Desktop/ZoteroWithGPT/.local/bridge`; the portable package kept that setting null. No profile ID, bridge session, request/result, credential, or study body entered the portable plugin.
+
+The account UI reported version 0.3.0 and Mac Safe Files **Connected**. Two fresh conversations visibly selected **Zotero Study Save** and then executed actual local file operations through that dependency. The first conversation performed offline local lookup and PDF reads before a later authorized passage-linked save. The second reused the installation with independent target context, surfaced a v1/v2 ambiguity, read and saved only the chosen owned v1 PDF, and later stopped accurately on missing and metadata-only targets. The selected workflow did not invoke `inspect_arxiv` or `ensure_arxiv_pdf` and did not need a pasted bridge path or connection command.
+
+One automation attempt removed the selection chip while replacing composer text. It generated no bridge request and is excluded from acceptance. The two counted chats visibly retained the chip immediately before submission. Historical implicit-activation failures remain below as platform observations, but automatic invocation is not the 0.3.0 criterion.
+
+The account lifecycle used the ordinary **Uninstall** action and never **Delete plugin**. The detail page confirmed uninstall, exposed **Install plugin** for the same owned backend, and then confirmed installation. Post-install UI again showed version 0.3.0 and Mac Safe Files connected; Plugin Creator readback retained the same backend, release, scope, dependency, file set, and private root. No new release or plugin identity was created for this reinstall.
+
+The matching Zotero extension separately completed remove, normal restart, install from the pinned 0.3.0 XPI, and another normal restart. Post-restart manager UI showed Research Companion 0.3.0 enabled. Fresh session `c846fc1e865a2513d1f1e832e2a1af85` reported Zotero 10.0.6 and all 15 operations. The profile-installed XPI matched the release artifact byte for byte at SHA-256 `634eff4538c2c438f425b1a8a9bed9e85bcd2d4eb18bd11ffe2e8ee84cae4410`.
+
+The 215-record durable history was byte-identical before any post-reinstall requests. Fresh listings returned the complete current Layer Normalization and ResNet annotations. A byte-identical historical create request replayed under its original identity returned the byte-identical stored result while the operation count stayed 218 and the native annotation count stayed one. Connection, account install state, native persistence, and replay therefore passed as separate observations rather than being inferred from the management screen alone.
 
 ## Historical account and host preflight
 

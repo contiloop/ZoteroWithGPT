@@ -16,9 +16,23 @@ Gecko IOUtils does not expose a no-follow directory-handle read. A same-user att
 
 Bundled dependencies have evaluated notices, but the project's own license and publication channel have not been selected. Public publication needs that decision and authorization. Local packaging and installation are available without asserting a public redistribution license.
 
-## Current 0.3.0 selected-workflow acceptance is pending
+## Reader-backed request can starve the serialized bridge
 
-The source and portable guidance define explicit plugin selection, offline `find_local_arxiv`, a current attachment fingerprint, and an actual local `read_pdf` before study. A lookup without a fingerprint stops for manual file or path restoration and fresh discovery; it does not call the shared reader as repair. This release cycle has not yet installed the 0.3.0 XPI, updated the private account plugin, run the selected Web conversation, performed a native mutation, or observed the saved comment in the reader. Package and direct-local checks cannot establish those surfaces. Complete the bounded checklist in `docs/operations.md` with a deliberately owned PDF before calling 0.3.0 accepted.
+During the first 0.3.0 actual-runtime attempt, read-only `list_annotations` operation `t5-direct-layernorm-before-web-annotations-1` remained durable `running`, produced no result, and prevented a later Web `connection_status` request in the same serialized scanner from progressing. No mutation was submitted. The initial recovery used normal Quit/relaunch and did not copy the later request into the fresh session.
+
+Recovery terminalized the interrupted read-only operation as `indeterminate/unknown_outcome` with the mutation-oriented text “No native object carries the historical operation identity; the write must not be retried blindly.” The conservative state is safe, but the reference to a write is misleading for a read-only operation and should be corrected when recovery messaging is next changed.
+
+The pending native stage was not established. The first JavaScript stage probe was unevaluated because the runner contained appended text and hit a redeclaration error. A later clean cold-reader probe began with a restored but unselected owned PDF and an empty reader registry; `Reader.open`, registry acquisition, `_initPromise`, and `view.initializedPromise` all completed within 683 ms. It did not reproduce the hang. During an earlier diagnostic restart, normal Quit left the diagnostic UI unresponsive and one Activity Monitor Force Quit was used; the initial recovery and later diagnostic recovery are separate events. No write request or unsaved-work prompt was present.
+
+Treat the original stall as confirmed and its cause as unresolved. A finite bound around native reader acquisition remains a resilience improvement because one stuck reader-backed handler can block later bridge work, but the clean probe does not justify a speculative root-cause fix.
+
+## Viewer verification depends on an active attachment reader
+
+The second selected-Web save returned native storage confirmed, but its immediate `verify_annotation` reported `attachment_reader_missing`. This failure did not authorize another create. Opening the owned attachment through normal Zotero UI then displayed the saved annotation, selected the exact passage on page 3, and confirmed the full comment. Keep the failed protocol observation and later actual-reader success as separate evidence; do not reclassify the initial result as a viewer pass.
+
+## Observed selected-Web latency
+
+One selected-plugin ResNet turn took 4 minutes 42 seconds before completing. The request eventually produced the expected local read/save progression. This is a single environment observation, not an established cause, service-level guarantee, or reason to repeat unchanged requests.
 
 ## Historical ordinary ChatGPT Web activation inconsistency
 

@@ -40,6 +40,7 @@ A macOS Zotero extension connects ChatGPT Web study conversations to native pass
 │       ├── rendering/AGENTS.md        → bounded safe Markdown and mathematics
 │       ├── settings/AGENTS.md         → local setup and disable semantics
 │       └── zotero/AGENTS.md           → guarded native data access
+├── tests/host/AGENTS.md              → owned temporary native acceptance diagnostics
 ├── integration/
 │   ├── AGENTS.md                     → client instructions and surface-specific evidence
 │   └── chatgpt-plugin/AGENTS.md      → private personal workflow and portable package

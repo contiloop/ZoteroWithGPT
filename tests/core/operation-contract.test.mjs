@@ -248,6 +248,44 @@ test("same operation ID and payload is replayed without executing twice", async 
   assert.deepEqual(serializer.calls, ["profile-A"]);
 });
 
+test("offline local arXiv lookup remains a replayable read outside mutation serialization", async () => {
+  const store = new MemoryOperationStore();
+  const serializer = new InlineMutationSerializer();
+  const coordinator = new OperationCoordinator({
+    store,
+    digest: new StableDigest(),
+    serializer,
+  });
+  const request = validateProtocolRequest({
+    protocolVersion: 1,
+    operationId: "op.find-local-core-1",
+    operation: "find_local_arxiv",
+    profileId: "profile-A",
+    payload: { url: "https://arxiv.org/abs/2401.01234v2", limit: 25 },
+  });
+  let executions = 0;
+  const execute = async () => {
+    executions += 1;
+    return {
+      kind: "completed",
+      data: {
+        source: { arxivId: "2401.01234", version: 2 },
+        matches: [],
+        truncated: false,
+      },
+      verification: { storage: "not_applicable", viewer: "not_applicable" },
+    };
+  };
+
+  const first = await coordinator.submit(request, "profile-A", execute);
+  const replay = await coordinator.submit(request, "profile-A", execute);
+
+  assert.equal(first.state, "succeeded");
+  assert.deepEqual(replay, first);
+  assert.equal(executions, 1);
+  assert.deepEqual(serializer.calls, []);
+});
+
 test("submit snapshots request content before the digest await", async () => {
   const store = new MemoryOperationStore();
   const coordinator = new OperationCoordinator({

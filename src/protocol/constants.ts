@@ -42,9 +42,15 @@ export const ARXIV_OPERATION_NAMES = [
   "ensure_arxiv_pdf",
 ] as const satisfies readonly OperationName[];
 
+/** Parsed protocol members that remain unadvertised until their native wiring lands. */
+export const LOCAL_STUDY_OPERATION_NAMES = [
+  "find_local_arxiv",
+] as const satisfies readonly OperationName[];
+
 export const OPERATION_NAMES = [
   ...BASE_OPERATION_NAMES,
   ...ARXIV_OPERATION_NAMES,
+  ...LOCAL_STUDY_OPERATION_NAMES,
 ] as const satisfies readonly OperationName[];
 
 export const MUTATION_OPERATION_NAMES = [

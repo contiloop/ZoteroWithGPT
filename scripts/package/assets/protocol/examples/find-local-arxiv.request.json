@@ -1,0 +1,10 @@
+{
+  "protocolVersion": 1,
+  "operationId": "op.find-local-arxiv-example-1",
+  "operation": "find_local_arxiv",
+  "profileId": "profile-A",
+  "payload": {
+    "url": "https://arxiv.org/pdf/2401.01234v2.pdf?download=1#page=3",
+    "limit": 25
+  }
+}

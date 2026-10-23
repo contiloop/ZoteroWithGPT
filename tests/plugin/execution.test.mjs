@@ -68,9 +68,13 @@ test('readback errors after a write remain uncertain rather than rejected', asyn
   assert.equal(result.verification.storage, 'not_checked');
 });
 
-test('unwired arXiv operations fail closed as unsupported capabilities', async () => {
+test('unwired protocol operations fail closed as unsupported capabilities', async () => {
   const executor = new NativeOperationExecutor({});
   for (const request of [
+    {
+      operation: 'find_local_arxiv',
+      payload: { url: 'https://arxiv.org/abs/2401.01234v2', limit: 25 },
+    },
     { operation: 'inspect_arxiv', payload: { url: 'https://arxiv.org/abs/2401.01234v2' } },
     {
       operation: 'ensure_arxiv_pdf',

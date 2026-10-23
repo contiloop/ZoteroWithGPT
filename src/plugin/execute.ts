@@ -87,6 +87,7 @@ export class NativeOperationExecutor implements OperationExecutorPort {
     const { reads, writes, anchors, storage, viewer } = this.ports;
     switch (request.operation) {
       case "connection_status": return completed(await reads.connectionStatus(request));
+      case "find_local_arxiv": return this.#unsupported(request.operation);
       case "search_papers": return completed(await reads.searchPapers(request));
       case "read_pdf": return completed(await reads.readPdf(request));
       case "list_annotations": return completed(await reads.listAnnotations(request));
@@ -207,7 +208,9 @@ export class NativeOperationExecutor implements OperationExecutorPort {
     }
   }
 
-  #unsupported(operation: "inspect_arxiv" | "ensure_arxiv_pdf"): OperationExecutionOutcome {
+  #unsupported(
+    operation: "inspect_arxiv" | "ensure_arxiv_pdf" | "find_local_arxiv",
+  ): OperationExecutionOutcome {
     return {
       kind: "rejected",
       error: new CoreOperationError(

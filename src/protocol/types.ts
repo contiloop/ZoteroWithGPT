@@ -14,7 +14,8 @@ export type OperationName =
   | "update_note"
   | "verify_annotation"
   | "inspect_arxiv"
-  | "ensure_arxiv_pdf";
+  | "ensure_arxiv_pdf"
+  | "find_local_arxiv";
 
 export type MutationOperationName =
   | "create_annotation"
@@ -173,6 +174,11 @@ export interface InspectArxivPayload {
   url: string;
 }
 
+export interface FindLocalArxivPayload {
+  url: string;
+  limit?: number;
+}
+
 export type ImportSelection =
   | { kind: "create" }
   | { kind: "attach"; itemKey: string; expectedItemRevision: string }
@@ -204,6 +210,7 @@ export interface OperationPayloadMap {
   verify_annotation: VerifyAnnotationPayload;
   inspect_arxiv: InspectArxivPayload;
   ensure_arxiv_pdf: EnsureArxivPdfPayload;
+  find_local_arxiv: FindLocalArxivPayload;
 }
 
 interface RequestBase<O extends OperationName> {
@@ -243,7 +250,8 @@ export type ProtocolRequest =
   | AuthorizedMutationRequest<"update_note">
   | ProfiledReadRequest<"verify_annotation">
   | ProfiledReadRequest<"inspect_arxiv">
-  | AuthorizedMutationRequest<"ensure_arxiv_pdf">;
+  | AuthorizedMutationRequest<"ensure_arxiv_pdf">
+  | ProfiledReadRequest<"find_local_arxiv">;
 
 export type RequestFor<O extends OperationName> = Extract<ProtocolRequest, { operation: O }>;
 
@@ -298,6 +306,34 @@ export interface PaperMatch {
 
 export interface SearchPapersResult {
   matches: PaperMatch[];
+}
+
+export interface LocalArxivIdentity {
+  /** Canonical arXiv identifier without a version suffix. */
+  arxivId: string;
+  /** Requested or observed version; null means no version was specified or established. */
+  version: number | null;
+}
+
+export type LocalArxivEvidenceOrigin = "url" | "archive_id" | "extra" | "provenance";
+
+export interface LocalArxivEvidence extends LocalArxivIdentity {
+  /** Null identifies parent-item evidence; otherwise this names a returned PDF attachment. */
+  attachmentKey: string | null;
+  origin: LocalArxivEvidenceOrigin;
+  /** Required only for attachment provenance and equal to the current attachment fingerprint. */
+  fingerprint?: string;
+}
+
+export interface LocalArxivMatch {
+  paper: PaperMatch;
+  evidence: LocalArxivEvidence[];
+}
+
+export interface FindLocalArxivResult {
+  source: LocalArxivIdentity;
+  matches: LocalArxivMatch[];
+  truncated: boolean;
 }
 
 export interface PassageCandidate {
@@ -496,6 +532,7 @@ export interface OperationResultMap {
   verify_annotation: VerifyAnnotationResult;
   inspect_arxiv: InspectArxivResult;
   ensure_arxiv_pdf: EnsureArxivPdfResult;
+  find_local_arxiv: FindLocalArxivResult;
 }
 
 export type ResultFor<O extends OperationName> = OperationResultMap[O];

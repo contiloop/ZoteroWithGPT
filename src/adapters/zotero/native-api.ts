@@ -1,6 +1,8 @@
 import type {
   ArxivCandidate,
   ArxivSource,
+  ArxivUrlReference,
+  LocalArxivEvidence,
   ResolvedAnchor,
   TransportDescription,
 } from "../../protocol/types.js";
@@ -29,6 +31,16 @@ export interface NativePaperRecord {
   creators: string[];
   year?: number;
   attachments: NativeAttachmentSummary[];
+}
+
+export interface NativeLocalArxivMatch {
+  paper: NativePaperRecord;
+  evidence: LocalArxivEvidence[];
+}
+
+export interface NativeLocalArxivDiscovery {
+  matches: NativeLocalArxivMatch[];
+  truncated: boolean;
 }
 
 export interface NativePdfAttachment {
@@ -227,6 +239,15 @@ export interface NativeNoteContentPolicy {
  */
 export interface ZoteroNativeApi {
   runtimeStatus(): Promise<NativeRuntimeStatus>;
+  /**
+   * Searches current-profile eligible libraries without network access. An
+   * implementation rejects with `too_large` rather than returning a partial
+   * evidence set when one candidate has more than 100 evidence records.
+   */
+  findLocalArxiv(
+    reference: ArxivUrlReference,
+    limit: number,
+  ): Promise<NativeLocalArxivDiscovery>;
   searchPapers(query: string, limit: number): Promise<NativePaperRecord[]>;
   getPdfAttachment(
     libraryId: string,

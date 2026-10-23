@@ -1,0 +1,80 @@
+{
+  "protocolVersion": 1,
+  "operationId": "op.find-local-arxiv-example-1",
+  "state": "succeeded",
+  "data": {
+    "source": {
+      "arxivId": "2401.01234",
+      "version": 2
+    },
+    "matches": [
+      {
+        "paper": {
+          "libraryId": "1",
+          "itemKey": "ITEM0001",
+          "title": "A locally studied paper",
+          "creators": ["Ada Researcher"],
+          "year": 2024,
+          "attachments": [
+            {
+              "attachmentKey": "ATTACH01",
+              "title": "Full Text PDF",
+              "contentType": "application/pdf",
+              "fingerprint": "sha256:current-pdf"
+            },
+            {
+              "attachmentKey": "ATTACH02",
+              "title": "Inaccessible PDF",
+              "contentType": "application/pdf"
+            }
+          ]
+        },
+        "evidence": [
+          {
+            "attachmentKey": null,
+            "origin": "url",
+            "arxivId": "2401.01234",
+            "version": 1
+          },
+          {
+            "attachmentKey": null,
+            "origin": "archive_id",
+            "arxivId": "2401.01234",
+            "version": 2
+          },
+          {
+            "attachmentKey": null,
+            "origin": "extra",
+            "arxivId": "2401.01234",
+            "version": 3
+          },
+          {
+            "attachmentKey": null,
+            "origin": "provenance",
+            "arxivId": "2401.01234",
+            "version": 2
+          },
+          {
+            "attachmentKey": "ATTACH01",
+            "origin": "url",
+            "arxivId": "2401.01234",
+            "version": 2
+          },
+          {
+            "attachmentKey": "ATTACH01",
+            "origin": "provenance",
+            "arxivId": "2401.01234",
+            "version": 2,
+            "fingerprint": "sha256:current-pdf"
+          }
+        ]
+      }
+    ],
+    "truncated": false
+  },
+  "error": null,
+  "verification": {
+    "storage": "not_applicable",
+    "viewer": "not_applicable"
+  }
+}

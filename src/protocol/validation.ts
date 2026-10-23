@@ -149,6 +149,19 @@ function validateArticleIdentity(value: unknown, path: string): Record<string, u
   return identity;
 }
 
+function validateLocalArxivIdentity(
+  value: unknown,
+  path: string,
+): { arxivId: string; version: number | null } {
+  const identity = expectRecord(value, path);
+  expectOnlyKeys(identity, ["arxivId", "version"], path);
+  const arxivId = expectArxivId(identity.arxivId, `${path}.arxivId`);
+  const version = identity.version === null
+    ? null
+    : expectPositiveInteger(identity.version, `${path}.version`);
+  return { arxivId, version };
+}
+
 /** Parses official arXiv article links and discards non-identity URL decoration. */
 export function parseArxivUrl(value: string): ArxivUrlReference {
   if (utf8Length(value) > MAX_URL_BYTES) {
@@ -517,6 +530,16 @@ function validatePayload(operation: OperationName, value: unknown): void {
         maxBytes: MAX_URL_BYTES,
       });
       parseArxivUrl(url);
+      return;
+    }
+    case "find_local_arxiv": {
+      expectOnlyKeys(payload, ["url", "limit"], "$.payload");
+      const url = expectString(payload.url, "$.payload.url", {
+        nonempty: true,
+        maxBytes: MAX_URL_BYTES,
+      });
+      parseArxivUrl(url);
+      if (hasOwn(payload, "limit")) expectLimit(payload.limit, "$.payload.limit");
       return;
     }
     case "ensure_arxiv_pdf":
@@ -1065,45 +1088,262 @@ function validateConnectionStatusResult(value: unknown, path: string): void {
   expectString(transport.description, `${path}.transport.description`, { nonempty: true });
 }
 
-function validateAttachmentSummary(value: unknown, path: string): void {
+interface ValidatedAttachmentSummary {
+  attachmentKey: string;
+  contentType: string;
+  fingerprint?: string;
+}
+
+function validateAttachmentSummary(
+  value: unknown,
+  path: string,
+): ValidatedAttachmentSummary {
   const attachment = expectRecord(value, path);
   expectOnlyKeys(attachment, ["attachmentKey", "title", "contentType", "fingerprint"], path);
-  expectIdentifier(attachment.attachmentKey, `${path}.attachmentKey`);
+  const attachmentKey = expectIdentifier(attachment.attachmentKey, `${path}.attachmentKey`);
   expectString(attachment.title, `${path}.title`);
-  expectString(attachment.contentType, `${path}.contentType`, { nonempty: true });
+  const contentType = expectString(attachment.contentType, `${path}.contentType`, { nonempty: true });
+  let fingerprint: string | undefined;
   if (hasOwn(attachment, "fingerprint")) {
-    expectIdentifier(attachment.fingerprint, `${path}.fingerprint`);
+    fingerprint = expectIdentifier(attachment.fingerprint, `${path}.fingerprint`);
   }
+  return fingerprint === undefined
+    ? { attachmentKey, contentType }
+    : { attachmentKey, contentType, fingerprint };
+}
+
+interface ValidatedPaperMatch {
+  libraryId: string;
+  itemKey: string;
+  attachments: ValidatedAttachmentSummary[];
+}
+
+function validatePaperMatch(value: unknown, path: string): ValidatedPaperMatch {
+  const match = expectRecord(value, path);
+  expectOnlyKeys(
+    match,
+    ["libraryId", "itemKey", "title", "creators", "year", "attachments"],
+    path,
+  );
+  const libraryId = expectIdentifier(match.libraryId, `${path}.libraryId`);
+  const itemKey = expectIdentifier(match.itemKey, `${path}.itemKey`);
+  expectString(match.title, `${path}.title`);
+  expectArray(match.creators, `${path}.creators`).forEach(
+    (creator, creatorIndex) =>
+      expectString(creator, `${path}.creators[${creatorIndex}]`),
+  );
+  if (hasOwn(match, "year") && !Number.isSafeInteger(match.year)) {
+    fail("invalid_request", `${path}.year must be a safe integer`);
+  }
+  const attachments = expectArray(match.attachments, `${path}.attachments`).map(
+    (attachment, attachmentIndex) =>
+      validateAttachmentSummary(
+        attachment,
+        `${path}.attachments[${attachmentIndex}]`,
+      ),
+  );
+  return { libraryId, itemKey, attachments };
 }
 
 function validateSearchPapersResult(value: unknown, path: string): void {
   const result = expectRecord(value, path);
   expectOnlyKeys(result, ["matches"], path);
   expectArray(result.matches, `${path}.matches`).forEach((entry, index) => {
-    const match = expectRecord(entry, `${path}.matches[${index}]`);
-    expectOnlyKeys(
-      match,
-      ["libraryId", "itemKey", "title", "creators", "year", "attachments"],
-      `${path}.matches[${index}]`,
-    );
-    expectIdentifier(match.libraryId, `${path}.matches[${index}].libraryId`);
-    expectIdentifier(match.itemKey, `${path}.matches[${index}].itemKey`);
-    expectString(match.title, `${path}.matches[${index}].title`);
-    expectArray(match.creators, `${path}.matches[${index}].creators`).forEach(
-      (creator, creatorIndex) =>
-        expectString(creator, `${path}.matches[${index}].creators[${creatorIndex}]`),
-    );
-    if (hasOwn(match, "year") && !Number.isSafeInteger(match.year)) {
-      fail("invalid_request", `${path}.matches[${index}].year must be a safe integer`);
-    }
-    expectArray(match.attachments, `${path}.matches[${index}].attachments`).forEach(
-      (attachment, attachmentIndex) =>
-        validateAttachmentSummary(
-          attachment,
-          `${path}.matches[${index}].attachments[${attachmentIndex}]`,
-        ),
-    );
+    validatePaperMatch(entry, `${path}.matches[${index}]`);
   });
+}
+
+const LOCAL_EVIDENCE_ORIGIN_ORDER = {
+  url: 0,
+  archive_id: 1,
+  extra: 2,
+  provenance: 3,
+} as const;
+
+interface ValidatedLocalArxivEvidence {
+  attachmentKey: string | null;
+  origin: keyof typeof LOCAL_EVIDENCE_ORIGIN_ORDER;
+  arxivId: string;
+  version: number | null;
+  fingerprint?: string;
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function compareNullableText(left: string | null, right: string | null): number {
+  if (left === right) return 0;
+  if (left === null) return -1;
+  if (right === null) return 1;
+  return compareText(left, right);
+}
+
+function compareNullableNumber(left: number | null, right: number | null): number {
+  if (left === right) return 0;
+  if (left === null) return -1;
+  if (right === null) return 1;
+  return left - right;
+}
+
+function compareLocalEvidence(
+  left: ValidatedLocalArxivEvidence,
+  right: ValidatedLocalArxivEvidence,
+): number {
+  return (
+    Number(left.attachmentKey !== null) - Number(right.attachmentKey !== null) ||
+    LOCAL_EVIDENCE_ORIGIN_ORDER[left.origin] - LOCAL_EVIDENCE_ORIGIN_ORDER[right.origin] ||
+    compareText(left.arxivId, right.arxivId) ||
+    compareNullableNumber(left.version, right.version) ||
+    compareText(left.fingerprint ?? "", right.fingerprint ?? "") ||
+    compareNullableText(left.attachmentKey, right.attachmentKey)
+  );
+}
+
+function validateLocalArxivEvidence(
+  value: unknown,
+  path: string,
+  attachments: ReadonlyMap<string, ValidatedAttachmentSummary>,
+): ValidatedLocalArxivEvidence {
+  const evidence = expectRecord(value, path);
+  expectOnlyKeys(
+    evidence,
+    ["attachmentKey", "origin", "arxivId", "version", "fingerprint"],
+    path,
+  );
+  const attachmentKey = evidence.attachmentKey === null
+    ? null
+    : expectIdentifier(evidence.attachmentKey, `${path}.attachmentKey`);
+  if (
+    evidence.origin !== "url" &&
+    evidence.origin !== "archive_id" &&
+    evidence.origin !== "extra" &&
+    evidence.origin !== "provenance"
+  ) {
+    fail("invalid_request", `${path}.origin is not supported`);
+  }
+  const origin = evidence.origin;
+  const { arxivId, version } = validateLocalArxivIdentity(
+    { arxivId: evidence.arxivId, version: evidence.version },
+    path,
+  );
+  const hasFingerprint = hasOwn(evidence, "fingerprint");
+
+  if (attachmentKey === null) {
+    if (hasFingerprint) {
+      fail("invalid_request", `${path}.fingerprint is forbidden for parent evidence`);
+    }
+  } else {
+    const attachment = attachments.get(attachmentKey);
+    if (attachment === undefined) {
+      fail("invalid_request", `${path}.attachmentKey must name a returned PDF attachment`);
+    }
+    if (origin === "archive_id" || origin === "extra") {
+      fail("invalid_request", `${path}.origin is only valid for parent evidence`);
+    }
+    if (origin === "provenance") {
+      const fingerprint = expectIdentifier(evidence.fingerprint, `${path}.fingerprint`);
+      if (attachment.fingerprint === undefined || fingerprint !== attachment.fingerprint) {
+        fail(
+          "invalid_request",
+          `${path}.fingerprint must match the current returned attachment fingerprint`,
+        );
+      }
+      return { attachmentKey, origin, arxivId, version, fingerprint };
+    }
+    if (hasFingerprint) {
+      fail("invalid_request", `${path}.fingerprint is only valid for attachment provenance`);
+    }
+  }
+  return { attachmentKey, origin, arxivId, version };
+}
+
+function validateFindLocalArxivResult(value: unknown, path: string): void {
+  const result = expectRecord(value, path);
+  expectOnlyKeys(result, ["source", "matches", "truncated"], path);
+  const source = validateLocalArxivIdentity(result.source, `${path}.source`);
+  const matches = expectArray(result.matches, `${path}.matches`);
+  if (matches.length > MAX_RESULT_LIMIT) {
+    fail("too_large", `${path}.matches exceeds ${MAX_RESULT_LIMIT} entries`);
+  }
+  const nativeKeys = new Set<string>();
+  let priorMatch: { libraryId: string; itemKey: string } | undefined;
+  matches.forEach((entry, matchIndex) => {
+    const matchPath = `${path}.matches[${matchIndex}]`;
+    const localMatch = expectRecord(entry, matchPath);
+    expectOnlyKeys(localMatch, ["paper", "evidence"], matchPath);
+    const paper = validatePaperMatch(localMatch.paper, `${matchPath}.paper`);
+    const nativeKey = JSON.stringify([paper.libraryId, paper.itemKey]);
+    if (nativeKeys.has(nativeKey)) {
+      fail("invalid_request", `${path}.matches must not repeat a native paper key`);
+    }
+    nativeKeys.add(nativeKey);
+    if (
+      priorMatch !== undefined &&
+      (compareText(priorMatch.libraryId, paper.libraryId) > 0 ||
+        (priorMatch.libraryId === paper.libraryId &&
+          compareText(priorMatch.itemKey, paper.itemKey) >= 0))
+    ) {
+      fail("invalid_request", `${path}.matches must use deterministic native-key order`);
+    }
+    priorMatch = { libraryId: paper.libraryId, itemKey: paper.itemKey };
+
+    const attachments = new Map<string, ValidatedAttachmentSummary>();
+    let priorAttachmentKey: string | undefined;
+    for (const [attachmentIndex, attachment] of paper.attachments.entries()) {
+      if (attachment.contentType !== "application/pdf") {
+        fail(
+          "invalid_request",
+          `${matchPath}.paper.attachments[${attachmentIndex}].contentType must be application/pdf`,
+        );
+      }
+      if (attachments.has(attachment.attachmentKey)) {
+        fail("invalid_request", `${matchPath}.paper.attachments repeats an attachment key`);
+      }
+      if (
+        priorAttachmentKey !== undefined &&
+        compareText(priorAttachmentKey, attachment.attachmentKey) >= 0
+      ) {
+        fail(
+          "invalid_request",
+          `${matchPath}.paper.attachments must use deterministic attachment-key order`,
+        );
+      }
+      attachments.set(attachment.attachmentKey, attachment);
+      priorAttachmentKey = attachment.attachmentKey;
+    }
+
+    const evidenceValues = expectArray(localMatch.evidence, `${matchPath}.evidence`);
+    if (evidenceValues.length > MAX_RESULT_LIMIT) {
+      fail("too_large", `${matchPath}.evidence exceeds ${MAX_RESULT_LIMIT} entries`);
+    }
+    if (evidenceValues.length === 0) {
+      fail("invalid_request", `${matchPath}.evidence must not be empty`);
+    }
+    const evidence = evidenceValues.map((item, evidenceIndex) =>
+      validateLocalArxivEvidence(
+        item,
+        `${matchPath}.evidence[${evidenceIndex}]`,
+        attachments,
+      ),
+    );
+    for (let index = 1; index < evidence.length; index += 1) {
+      const previous = evidence[index - 1];
+      const current = evidence[index];
+      if (previous === undefined || current === undefined) continue;
+      const order = compareLocalEvidence(previous, current);
+      if (order === 0) {
+        fail("invalid_request", `${matchPath}.evidence must not contain duplicates`);
+      }
+      if (order > 0) {
+        fail("invalid_request", `${matchPath}.evidence must use deterministic evidence order`);
+      }
+    }
+    if (!evidence.some((item) => item.arxivId === source.arxivId)) {
+      fail("invalid_request", `${matchPath} lacks evidence for the requested arXiv identifier`);
+    }
+  });
+  expectBoolean(result.truncated, `${path}.truncated`);
 }
 
 function validatePassageCandidate(value: unknown, path: string): void {
@@ -1330,6 +1570,8 @@ function validateOperationResult(operation: OperationName, value: unknown, path:
     case "ensure_arxiv_pdf":
       validateEnsureArxivResult(value, path, "ready");
       return;
+    case "find_local_arxiv":
+      return validateFindLocalArxivResult(value, path);
   }
 }
 
@@ -1369,9 +1611,9 @@ export function validateProtocolResponse<O extends OperationName>(
   } else if (result.state === "succeeded") {
     if (result.error !== null) fail("invalid_request", "Succeeded responses require null error");
     validateOperationResult(operation, result.data, "$response.data");
-    if (operation === "inspect_arxiv") {
+    if (operation === "inspect_arxiv" || operation === "find_local_arxiv") {
       if (verification.storage !== "not_applicable" || verification.viewer !== "not_applicable") {
-        fail("invalid_request", "inspect_arxiv does not produce storage or viewer evidence");
+        fail("invalid_request", `${operation} does not produce storage or viewer evidence`);
       }
     }
     if (operation === "ensure_arxiv_pdf") {

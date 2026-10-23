@@ -13,11 +13,13 @@ import {
   type ConnectionStatusResult,
   type CreateAnnotationResult,
   type CreateNoteResult,
+  type FindLocalArxivResult,
   type ListAnnotationsResult,
   type ListNotesResult,
   type NativeAnnotation,
   type NativeAnnotationColor,
   type OperationName,
+  parseArxivUrl,
   type ReadNoteResult,
   type ReadPdfResult,
   type RequestFor,
@@ -182,6 +184,32 @@ export class ZoteroLibraryAdapter
         ...(match.year === undefined ? {} : { year: match.year }),
         attachments: match.attachments.map((attachment) => ({ ...attachment })),
       })),
+    };
+  }
+
+  async findLocalArxiv(
+    request: RequestFor<"find_local_arxiv">,
+  ): Promise<FindLocalArxivResult> {
+    this.#assertProfile(request.profileId);
+    const source = parseArxivUrl(request.payload.url);
+    const result = await this.#native.findLocalArxiv(
+      source,
+      request.payload.limit ?? DEFAULT_LIMIT,
+    );
+    return {
+      source: { arxivId: source.arxivId, version: source.version ?? null },
+      matches: result.matches.map((match) => ({
+        paper: {
+          libraryId: match.paper.libraryId,
+          itemKey: match.paper.itemKey,
+          title: match.paper.title,
+          creators: [...match.paper.creators],
+          ...(match.paper.year === undefined ? {} : { year: match.paper.year }),
+          attachments: match.paper.attachments.map((attachment) => ({ ...attachment })),
+        },
+        evidence: match.evidence.map((entry) => ({ ...entry })),
+      })),
+      truncated: result.truncated,
     };
   }
 

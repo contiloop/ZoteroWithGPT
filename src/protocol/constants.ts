@@ -42,7 +42,7 @@ export const ARXIV_OPERATION_NAMES = [
   "ensure_arxiv_pdf",
 ] as const satisfies readonly OperationName[];
 
-/** Parsed protocol members that remain unadvertised until their native wiring lands. */
+/** Native local-study reads that do not depend on remote acquisition adapters. */
 export const LOCAL_STUDY_OPERATION_NAMES = [
   "find_local_arxiv",
 ] as const satisfies readonly OperationName[];

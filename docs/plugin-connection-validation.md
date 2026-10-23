@@ -1,5 +1,11 @@
 # Personal ChatGPT plugin connection preflight
 
+## 0.3.0 selected-workflow state — pending
+
+The active criterion is an explicitly selected private plugin, not automatic invocation. The 0.3.0 account plugin has not been updated or exercised in this cycle. Its source identity/account defaults, preserved private `bridgeRoot`, Mac Safe Files binding, selected read-only local lookup/PDF read, later authorized save, and account Uninstall/Install lifecycle all remain pending. The historical observations below retain their original versions and outcomes; their implicit-activation failures are no longer a 0.3.0 completion gate.
+
+## Historical account and host preflight
+
 Validated on 2026-10-22 against the authenticated personal ChatGPT Web account and the actual macOS Zotero 10.0.6 host. This preflight is **blocked**: the account supports private plugin creation, installation, update, dependency binding, and private per-instance configuration, and the Zotero host passed the bounded native item, attachment, abstract-page, and PDF checks, but the required fixed arXiv API metadata request returned HTTP 429 in the Zotero process. The single authorized request did not supply the required concrete source, title, authors, dates, and abstract metadata.
 
 This is account and host evidence. Local Codex installation, plugin-directory discovery, source inspection, and operating-system HTTP results were not treated as substitutes for the observed ChatGPT Web and Zotero behavior.
@@ -176,6 +182,6 @@ The account UI exposed **Uninstall** and **Delete plugin** as distinct actions. 
 
 Post-install management showed **Use Zotero Study Save** checked and version 0.2.2. The detail surface again reported Mac Safe Files **Connected**. Plugin Creator readback retained backend `plugins_REDACTED_10`, current release `pluginrel_REDACTED_7`, personal/private scope, all 26 account files, and the same app dependency. Sanitized configuration inspection found exactly the selected non-null `bridgeRoot` in the private resource; no profile/session ID, request, result, credential, or study content appeared. No new release was created, and **Delete plugin** was never used.
 
-### Current connection conclusion
+### Historical 0.2.2 connection conclusion
 
-Private plugin creation, versioned update, source integrity, private root configuration, Mac Safe Files connection, normal Uninstall/Install recovery, explicit selection, and a real status request all pass on this account. Ordinary implicit selection remains inconsistent, and the final post-private-reinstall 0.2.2 natural save attempt for corrected target `1502.03167v1` failed before tool dispatch. The two required successful ordinary-Web study/save conversations remain unmet and block T7 acceptance. A mandatory mention, pasted path, manual connection prompt, direct local client, or status-only diagnostic must not be substituted for that product criterion.
+Private plugin creation, versioned update, source integrity, private root configuration, Mac Safe Files connection, normal Uninstall/Install recovery, explicit selection, and a real status request all passed on this account. Ordinary implicit selection remained inconsistent, and the final post-private-reinstall 0.2.2 natural save attempt for corrected target `1502.03167v1` failed before tool dispatch. The two required successful ordinary-Web study/save conversations were unmet under that historical criterion. Decision 0004 supersedes that completion criterion with visible explicit selection and local-PDF study; it does not rewrite these observations or count a status-only diagnostic as the current end-to-end pass.

@@ -109,6 +109,12 @@ the PDF or restore access and wait. Then perform a fresh `find_local_arxiv` and
 a fresh `read_pdf`. An empty lookup proves only that no identifier evidence was
 found. Standalone PDFs outside a parent paper item are outside this lookup.
 
+When the selected attachment has no current fingerprint, its local bytes are
+inaccessible or unverified. Do not invoke `read_pdf` or another read to repair
+it. Ask the user to restore the file or attachment path manually in Zotero and
+wait. Perform a fresh `find_local_arxiv` after restoration, and call `read_pdf`
+only when that result supplies a current fingerprint for the attachment.
+
 A study target is established only after discovery and successful reading of
 the actual local PDF. Retain its profile, library, item, attachment, fingerprint,
 and version evidence only in accessible conversation context. Refresh the

@@ -87,17 +87,23 @@ step.
    `skills/zotero-study-save/resources/personal-config.json` → `bridgeRoot` to
    the exact absolute root shown by Zotero. Do not add a profile ID, session
    ID, descriptor, operation ID, credential, or study content.
-4. Confirm that the private plugin is installed and enabled. Start a fresh
-   ordinary ChatGPT conversation and make a normal request such as “Save the
-   proof you just explained and my question to Zotero.” A plugin `@` mention is
-   optional for diagnosis and is not part of the normal workflow.
+4. Manually save the paper and its PDF in Zotero. Confirm that the private
+   plugin is installed and enabled, start a fresh ChatGPT conversation,
+   explicitly select **Zotero Study Save**, provide one official arXiv abstract
+   or PDF URL, and ask to study the paper from the PDF already in Zotero.
+   Selection is required for the initial 0.3.0 workflow; automatic invocation
+   remains an optional convenience rather than an installation test.
 
 The plugin discovers the current descriptor, enabled status, profile, session,
 relative paths, limits, and supported operations on every workflow. Users do
 not paste the bridge path or repeat a manual connection command in each
-conversation. Configuring the root does not authorize a Zotero write: a current
-save request or acceptance of an exact save proposal is still required. Merely
-studying, linking, or asking questions remains read-only.
+conversation. Configuring the root or selecting the plugin does not authorize a
+Zotero write. Initial discovery and local PDF reading are read-only; a later
+current save request or acceptance of an exact save proposal is required for
+the specified records. The workflow does not download or import a missing PDF.
+An attachment without a current fingerprint stops before `read_pdf`; restore
+its file or path in Zotero and let the plugin run fresh discovery rather than
+using another read as repair.
 
 ## Other local-file clients
 
@@ -142,7 +148,8 @@ setup has all of the following:
   `bridgeRoot` equals the exact dedicated root;
 - `bridge-v1.json` and its status file report the same profile and session;
 - the `connection_status` response read from that session's result directory
-  has a `data.profile.id` matching the descriptor profile;
+  has a `data.profile.id` matching the descriptor profile and advertises all 15
+  operations, including `find_local_arxiv`;
 - the request and result directories are relative to the selected root; and
 - no API key, tunnel key, or credential appears in the directory.
 

@@ -34,7 +34,7 @@ does not enable processing. If a directory is already shown, Enable starts a
 fresh session. **Reconnect** closes the current session and starts another
 fresh session in the same directory.
 
-## An ordinary ChatGPT save request does not activate Zotero Study Save
+## Zotero Study Save is unavailable or cannot read the local paper
 
 In ChatGPT plugin management, confirm that the owned private **Zotero Study
 Save** plugin is installed and enabled and that its Mac Safe Files dependency
@@ -44,11 +44,24 @@ non-null setting, `bridgeRoot`, and that it equals the dedicated root displayed
 by Zotero. Do not paste that path into each conversation or store current
 profile/session values in the plugin.
 
-Start a fresh ordinary conversation and use explicit save wording after the
-paper and requested material are clear. A plugin `@` mention may help diagnose
-selection, but it is not the normal activation requirement. Merely opening a
-paper link, studying it, or asking a question intentionally does not authorize
-or trigger a Zotero mutation.
+Manually save the paper and PDF in Zotero. Start a fresh conversation,
+explicitly select **Zotero Study Save**, provide one official arXiv URL, and ask
+to study the paper from its local PDF. The fresh status must advertise
+`find_local_arxiv`; the workflow then performs fresh local discovery and
+`read_pdf` without mutation authority. Do not diagnose a missing local paper by
+calling `inspect_arxiv`, `ensure_arxiv_pdf`, a downloader, or an import route.
+
+If discovery returns no item, metadata only, multiple plausible parents or
+PDFs, truncated or conflicting evidence, an unreadable attachment, or an
+explicit-version mismatch, follow the focused prompt to add or repair the PDF
+or choose the intended paper. Then let the selected workflow run fresh
+discovery and a fresh local PDF read. An unknown local version stays unknown. A
+failed paper switch cannot send a later save back to the prior paper.
+
+If discovery returns the selected attachment without a current fingerprint,
+restore its file or attachment path manually in Zotero. The workflow must stop
+before `read_pdf` and wait; another read is not a repair step. Resume with fresh
+discovery and require it to return a fingerprint before reading.
 
 If ChatGPT reports that Mac Safe Files is unavailable or access is denied,
 follow that connection owner's setup or permission flow. Do not broaden access
@@ -161,5 +174,5 @@ see `uninstall.md` for the exact optional transient files and preference keys.
 Do not delete Zotero data, another ChatGPT or Zotero plugin, an MCP server, or a
 tunnel while diagnosing this XPI. Mac Safe Files and tunnel setup belong to
 their owner's runbook. ChatGPT Work remains independently unverified, and local
-package success does not establish ordinary-chat activation or end-to-end
-native acceptance on a different account or Mac.
+package success does not establish explicit Web selection, local PDF reading,
+or end-to-end native acceptance on a different account or Mac.

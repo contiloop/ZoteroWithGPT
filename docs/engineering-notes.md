@@ -58,6 +58,14 @@ During the owned 0.2.2 manual-conflict check, Zotero's native comment editor pre
 
 The subsequent stale `update_annotation` request returned `conflict`, and a fresh listing proved the complete editor-produced body and revision unchanged. This validates revision fencing while also showing that byte-exact extension persistence does not imply byte-exact edits through Zotero's own editor.
 
+## File-path getters can repair legacy attachment descriptors
+
+In installed Zotero 10.0.6, `item.js` lines 3084–3099 in `getFilePathAsync()` and lines 2965–2987 in the synchronous file-path getter can repair an old macOS raw `attachmentPath` descriptor beginning with `AAAA...` by issuing an `UPDATE itemAttachments` query. A read-only discovery operation must not trigger that hidden mutation merely to decide whether an attachment is a PDF candidate.
+
+`find_local_arxiv` therefore checks the raw attachment-path field for that legacy descriptor before invoking either getter. It retains an otherwise matching PDF attachment when a current fingerprint cannot be obtained and omits fingerprint-bound provenance evidence; it does not borrow another attachment's fingerprint or turn parent metadata into PDF-version proof. Active local-study clients treat that missing fingerprint as inaccessible or unverified bytes, stop before `read_pdf`, and wait for manual path or access restoration plus fresh discovery. The existing shared import and `read_pdf` paths keep their established file access behavior.
+
+An independent controlled probe against the installed getter path observed zero legacy getter calls and zero repair queries during local discovery, while ordinary stored-file hashing still worked. That probe establishes the read-only guard at this boundary. No actual native mutation acceptance run for the complete 0.3.0 workflow has been performed in this release cycle yet.
+
 ## Plugin removal and installation have restart boundaries
 
 Normal removal and installation are separate host lifecycle transitions. An observed reinstall attempted before the removal-completing restart appeared enabled in the current Plugins Manager but was absent after restart. A request published to that unsatisfied session remained unprocessed. The reliable acceptance sequence was remove, restart, install, restart, then verify the profile package and establish a fresh descriptor/status/descriptor connection.

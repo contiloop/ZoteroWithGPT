@@ -23,7 +23,8 @@ A macOS Zotero extension connects ChatGPT Web study conversations to native pass
 │           ├── index.md              → consequential decision catalog
 │           ├── 0001-native-file-bridge.md → native persistence and file transport trade-off
 │           ├── 0002-reader-rendering.md  → portable source and permissive rendering dependencies
-│           └── 0003-conversational-arxiv-save.md → conversation workflow and exact-version import
+│           ├── 0003-conversational-arxiv-save.md → historical import workflow and exact-version acquisition
+│           └── 0004-selected-local-arxiv-study.md → selected local-PDF study workflow
 ├── addon/
 │   └── AGENTS.md                     → host bootstrap and extension identity
 ├── src/
@@ -52,7 +53,7 @@ A macOS Zotero extension connects ChatGPT Web study conversations to native pass
 - Study records remain native Zotero data; do not write SQLite or annotate by changing PDF bytes.
 - A write requires the user's specified save or approval, current target evidence, and conflict protection.
 - Long comments stay beside their passage; preserve the complete approved body or reject before mutation. Length never triggers a separate note.
-- Studying alone never imports. A save may import its clearly identified arXiv version; ambiguity requires a choice and confirmed PDF readiness precedes annotation geometry.
+- The selected local-study workflow never imports or downloads. The user adds the paper and PDF manually; fresh offline discovery with a current attachment fingerprint plus an actual local PDF read precede study and annotation geometry. A missing fingerprint requires manual path or access restoration and fresh discovery before `read_pdf`. Legacy import operations remain compatible protocol members outside this workflow.
 - Operation identities survive ordinary reinstall. Interrupted running outcomes require reconciliation; terminal unknowns remain historical and must never be retried under a replacement identity.
 - Treat paper and comment content as untrusted display data; no script execution or automatic remote resources.
 

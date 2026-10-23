@@ -7,13 +7,14 @@ import { fileURLToPath } from "node:url";
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = path.resolve(testDirectory, "..");
-const TARGET_PLUGIN_VERSION = "0.2.2";
+const TARGET_PLUGIN_VERSION = "0.3.0";
 
 const REQUIRED_SCENARIOS = [
   "selected-study-startup-read-only",
   "unique-local-pdf-read-without-approval",
   "missing-local-item-wait-and-refresh",
   "metadata-only-wait-and-refresh",
+  "missing-fingerprint-wait-and-refresh",
   "later-save-keeps-established-target",
   "ambiguous-local-candidates",
   "explicit-version-conflict",
@@ -200,6 +201,13 @@ function validateScenarios(document) {
     assert.equal(expected.resumeWithFreshLookup, true);
     assert.deepEqual(expected.reads.slice(-2), ["find_local_arxiv", "read_pdf"]);
   }
+
+  const missingFingerprint = byId.get("missing-fingerprint-wait-and-refresh").expected;
+  assert.deepEqual(missingFingerprint.reads, ["find_local_arxiv"]);
+  assert.deepEqual(missingFingerprint.writes, []);
+  assert.deepEqual(missingFingerprint.repairOperations, []);
+  assert.equal(missingFingerprint.readPdfBeforeFreshFingerprint, false);
+  assert.equal(missingFingerprint.resumeWithFreshLookup, true);
 
   const laterSave = byId.get("later-save-keeps-established-target").expected;
   assert.deepEqual(laterSave.writes, ["create_annotation"]);

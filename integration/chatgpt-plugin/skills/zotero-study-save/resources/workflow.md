@@ -175,6 +175,14 @@ user says a fix is complete: run a fresh `find_local_arxiv`, reassess all
 matches and evidence, and then perform a fresh `read_pdf` against the selected
 current attachment.
 
+If the selected PDF attachment has no current fingerprint, its local bytes are
+inaccessible or unverified even when Zotero metadata labels it as a PDF. Do not
+call `read_pdf`, another file-path read, or any repair operation against that
+result. Ask the user to restore the file or attachment path manually in Zotero
+and wait. After the user finishes, run a fresh `find_local_arxiv`. Continue to
+`read_pdf` only when that fresh result supplies a current fingerprint for the
+same selected attachment.
+
 Read the actual local source. Use `read_pdf` page ranges needed for the user's
 current question, and continue with more bounded reads when the answer needs
 more pages. Do not substitute a Web abstract, browser excerpt, remembered paper

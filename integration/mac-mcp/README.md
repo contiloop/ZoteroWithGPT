@@ -96,6 +96,13 @@ and a fresh `read_pdf`; never reuse the old result. An empty result means only
 that identifier evidence was not found, and a standalone PDF outside a parent
 item is not covered by this operation.
 
+When the selected attachment has no current fingerprint, treat its local bytes
+as inaccessible or unverified and do not call `read_pdf` or another read to
+repair it. Ask the user to restore the file or attachment path manually in
+Zotero and wait. Issue a fresh `find_local_arxiv` after restoration; call
+`read_pdf` only if the fresh result supplies a current fingerprint for that
+attachment.
+
 The conversation target exists only after local discovery and a successful
 fresh PDF read. Store its profile, library, item, attachment, fingerprint, and
 version evidence only in accessible conversation context. A comparison does not

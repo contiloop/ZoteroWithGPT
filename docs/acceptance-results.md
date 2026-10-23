@@ -1,5 +1,13 @@
 # Study-session acceptance
 
+## 0.3.0 selected local-study acceptance — pending
+
+The current release changes the completion criterion to an explicitly selected **Zotero Study Save** conversation over a paper and PDF that the researcher added to Zotero manually. Source/package verification does not establish the required account, installed-XPI, native-write, or reader evidence. No 0.3.0 plugin update, Zotero installation, selected Web study, mutation, or reader check has been performed in this cycle yet. Follow the bounded checklist in `operations.md`; do not reuse the historical 0.2.2 import or implicit-activation evidence as a current pass.
+
+Automatic invocation is no longer a completion gate. The current run must visibly select the plugin, issue read-only `find_local_arxiv` plus `read_pdf`, later save complete approved content against refreshed target evidence, and inspect the actual native reader. All observations below remain historical evidence for earlier versions and must keep their original versions, hashes, operation counts, outcomes, and limitations.
+
+## Historical acceptance through 0.2.2
+
 Observed on 2026-10-21–22 with Zotero 10.0.6 on macOS arm64 and the packaged Research Companion 0.1.0. This record separates actual ChatGPT Web actions, direct Codex local actions, native UI observations, and automated checks. The local study flow and integrated source verification passed; final independent release review is separate from public publication.
 
 ## Real paper and test ownership

@@ -31,6 +31,8 @@ const REQUIRED_MEMBERS = Object.freeze([
   "protocol/examples/ensure-arxiv-pdf.item-only.response.json",
   "protocol/examples/ensure-arxiv-pdf.request.json",
   "protocol/examples/ensure-arxiv-pdf.response.json",
+  "protocol/examples/find-local-arxiv.request.json",
+  "protocol/examples/find-local-arxiv.response.json",
   "protocol/examples/inspect-arxiv.request.json",
   "protocol/examples/inspect-arxiv.response.json",
   "protocol/examples/read-pdf.request.json",
@@ -52,6 +54,8 @@ const REQUIRED_CLIENT_MEMBERS = Object.freeze([
   "protocol/examples/ensure-arxiv-pdf.item-only.response.json",
   "protocol/examples/ensure-arxiv-pdf.request.json",
   "protocol/examples/ensure-arxiv-pdf.response.json",
+  "protocol/examples/find-local-arxiv.request.json",
+  "protocol/examples/find-local-arxiv.response.json",
   "protocol/examples/inspect-arxiv.request.json",
   "protocol/examples/inspect-arxiv.response.json",
   "protocol/examples/read-pdf.request.json",
@@ -74,6 +78,7 @@ const OPERATIONS = new Set([
   "verify_annotation",
   "inspect_arxiv",
   "ensure_arxiv_pdf",
+  "find_local_arxiv",
 ]);
 const MUTATIONS = new Set([
   "create_annotation",
@@ -130,6 +135,15 @@ function validateMemberNames(members) {
   }
   for (const required of REQUIRED_MEMBERS) {
     if (!seen.has(required)) throw new Error(`XPI is missing ${required}`);
+  }
+  const expectedProtocolMembers = REQUIRED_MEMBERS
+    .filter((member) => member.startsWith("protocol/"))
+    .sort();
+  const actualProtocolMembers = members
+    .filter((member) => member.startsWith("protocol/"))
+    .sort();
+  if (JSON.stringify(actualProtocolMembers) !== JSON.stringify(expectedProtocolMembers)) {
+    throw new Error("XPI protocol resources do not match the exact release allowlist");
   }
   const unwanted = members.find((member) =>
     member.endsWith(".map") || member.endsWith(".ts") || member.startsWith("src/"));
@@ -295,6 +309,9 @@ function validateThirdParty(metadata, notices, members) {
     metadata.updatePolicy?.manifestSentinel !== MANUAL_UPDATE_SENTINEL
   ) {
     throw new Error("BUILD_METADATA.json must identify the reserved no-service update sentinel");
+  }
+  if (metadata.recipe?.preserveSymlinks !== true) {
+    throw new Error("BUILD_METADATA.json must preserve dependency symlink paths");
   }
   if (!Array.isArray(metadata.runtimePackages)) {
     throw new Error("BUILD_METADATA.json lacks runtimePackages");
@@ -494,6 +511,14 @@ export async function verifyXpi(xpiPath, { expectedProjectRoot } = {}) {
       );
       requireSchemaValid(validators.response, example, member);
       validateResponseExample(example, member);
+      if (member === "protocol/examples/connection-status.response.json") {
+        if (example.data?.pluginVersion !== version) {
+          throw new Error("connection-status response example version does not match the release");
+        }
+        if (JSON.stringify(example.data?.capabilities?.operations) !== JSON.stringify([...OPERATIONS])) {
+          throw new Error("connection-status response example does not advertise all operations exactly");
+        }
+      }
     }
     const notices = await readFile(path.join(temporaryDirectory, "THIRD_PARTY_NOTICES"), "utf8");
     validateThirdParty(metadata, notices, extracted);

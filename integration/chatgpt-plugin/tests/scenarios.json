@@ -70,6 +70,25 @@
       }
     },
     {
+      "id": "missing-fingerprint-wait-and-refresh",
+      "input": {
+        "lookupMatches": 1,
+        "matchingPdfAttachments": 1,
+        "selectedAttachmentFingerprint": null,
+        "attachmentPathState": "legacy_or_unverified",
+        "request": "이 논문을 공부해 줘."
+      },
+      "expected": {
+        "activation": "wait_for_manual_pdf_access_restore",
+        "reads": ["find_local_arxiv"],
+        "writes": [],
+        "firstResponse": "ask_user_to_restore_the_file_or_attachment_path_in_zotero_then_wait",
+        "readPdfBeforeFreshFingerprint": false,
+        "resumeWithFreshLookup": true,
+        "repairOperations": []
+      }
+    },
+    {
       "id": "later-save-keeps-established-target",
       "input": {
         "accessibleConversationTarget": ["profile", "library", "item", "attachment", "fingerprint", "version_evidence"],

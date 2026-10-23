@@ -3,6 +3,7 @@ import { canonicalizeJson } from "../../protocol/canonical.js";
 import type {
   ArxivCandidate,
   ArxivSource,
+  ArxivUrlReference,
   NativeRectangle,
   ResolvedAnchor,
 } from "../../protocol/types.js";
@@ -29,6 +30,7 @@ import type {
   NativeAnnotationRecord,
   NativeAnnotationUpdate,
   NativeInspectedRegionEvidence,
+  NativeLocalArxivDiscovery,
   NativeMutationRecord,
   NativeNoteCreate,
   NativeNoteContentPolicy,
@@ -1395,6 +1397,16 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
     }
     return records.sort((left, right) =>
       JSON.stringify(left).localeCompare(JSON.stringify(right)),
+    );
+  }
+
+  async findLocalArxiv(
+    _reference: ArxivUrlReference,
+    _limit: number,
+  ): Promise<NativeLocalArxivDiscovery> {
+    throw new CoreOperationError(
+      "unsupported_capability",
+      "find_local_arxiv is defined by protocol v1 but native discovery is not active in this build",
     );
   }
 

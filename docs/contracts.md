@@ -114,7 +114,7 @@ Payload: `{}`. `profileId` may be omitted for discovery.
 
 Result fields: protocol version, plugin version, Zotero version, profile identity, enabled state, supported operations, annotation types, native colors, size capabilities, and transport description.
 
-Only operations wired in the running build appear in `capabilities.operations`. The two arXiv operations below are additive protocol-v1 members, but a build that has not wired their source acquisition and native import adapters returns `unsupported_capability` and does not advertise them.
+Only operations wired in the running build appear in `capabilities.operations`. The two remote arXiv operations below are additive protocol-v1 members, but a build that has not wired their source acquisition and native import adapters returns `unsupported_capability` and does not advertise them. `find_local_arxiv` is also a parsed protocol-v1 member, but it remains unadvertised and returns `unsupported_capability` until its offline native discovery and executor wiring are active.
 
 ### `inspect_arxiv`
 
@@ -199,6 +199,38 @@ type EnsureArxivPdfData = {
 For `succeeded`, `completion` is `ready`, both attachment fields are nonnull, `pdfAction` is `downloaded` or `reused`, storage is `confirmed` by actual native readback, and viewer is `not_checked`. This operation creates no annotations.
 
 If a parent item was definitively committed and read back but PDF acquisition or import then fails, the response may be `failed` with `storage_error` and bounded retained data: `completion: "item_only"`, null attachment fields, `pdfAction: "none"`, and a parent-item deep link. Its verification is `storage: "confirmed"`, `viewer: "not_checked"`. Other precommit failed or rejected responses have null data. A possibly committed outcome is `indeterminate` with `unknown_outcome` and null data; retryability never authorizes a different operation ID for a possibly committed request.
+
+### `find_local_arxiv`
+
+Payload: `{ "url": "https://arxiv.org/abs/2401.01234v2", "limit": 25 }`. `limit` is optional, defaults to 25, and must be an integer from 1 through 100. The URL uses the same nonempty 4,096-byte official arXiv URL and identifier grammar as `inspect_arxiv`, including modern and legacy identifiers, an optional explicit positive version suffix, optional terminal `.pdf`, and optional query or fragment decoration. The extension normalizes the identifier locally and performs no HTTP request.
+
+This is a profiled read. Authorization is forbidden. It searches all eligible libraries in the current Zotero profile and never imports, writes, or selects a paper. Its exact success data is:
+
+```typescript
+type LocalArxivIdentity = {
+  arxivId: string; // canonical, without a version suffix
+  version: number | null; // null when no version was specified or established
+};
+type LocalArxivEvidence = LocalArxivIdentity & {
+  attachmentKey: string | null;
+  origin: "url" | "archive_id" | "extra" | "provenance";
+  fingerprint?: string;
+};
+type FindLocalArxivData = {
+  source: LocalArxivIdentity;
+  matches: Array<{
+    paper: PaperMatch;
+    evidence: LocalArxivEvidence[];
+  }>;
+  truncated: boolean;
+};
+```
+
+`source.version` is the requested version or `null` for an unversioned URL. Every returned arXiv ID is canonical and unversioned; every nonnull version is a positive safe integer. Each match has at least one parent or child evidence record for the requested ID. Conflicting IDs and versions found on that candidate remain in `evidence`; they are not discarded to manufacture a unique match.
+
+An evidence record with `attachmentKey: null` belongs to the parent. `archive_id` and `extra` are parent-only origins. A nonnull key must identify one of that paper's returned PDF attachments. Attachment `provenance` requires `fingerprint`, and it must equal that attachment's current returned fingerprint. Every other evidence form omits `fingerprint`, including parent provenance. If a current fingerprint cannot be read, the attachment summary remains present without `fingerprint`; the extension does not attach provenance evidence to another child or use another attachment as a fallback.
+
+Native paper keys and identical evidence records are deduplicated. Matches are ordered by `libraryId` then `itemKey`; attachments by `attachmentKey`; evidence by parent before attachment, then origin in `url`, `archive_id`, `extra`, `provenance` order, arXiv ID, null before concrete version, and fingerprint. String fields use ascending JavaScript code-unit comparison (`<`/`>`), never locale collation. At most `limit` matches are returned, and `truncated` is true exactly when more qualifying matches exist. A candidate may return at most 100 evidence records. More evidence produces `too_large`; it never produces an incomplete evidence set.
 
 ### `search_papers`
 
@@ -490,6 +522,7 @@ The following shapes describe `data` inside the response envelope, not additiona
 | `connection_status` | `ConnectionStatus` |
 | `inspect_arxiv` | `InspectArxivData` |
 | `ensure_arxiv_pdf` | `EnsureArxivPdfData` with `completion: "ready"` on success |
+| `find_local_arxiv` | `FindLocalArxivData` |
 | `search_papers` | `{ matches: PaperMatch[] }` |
 | `read_pdf` | `{ attachmentFingerprint: string, attachmentRevision: string, pages: PdfPage[] }` |
 | `list_annotations` | `{ annotations: NativeAnnotation[] }` |
@@ -576,7 +609,7 @@ For annotation creation, `saved.comment` is the persisted complete comment; for 
 
 Verification descriptions are diagnostic text, not stable machine-readable error codes. Read each evidence object's `confirmed` boolean together with the envelope's independent `verification.storage` and `verification.viewer` states. Neither a successful verification request nor a deep link proves that its viewer evidence is confirmed. The current file transport reports `kind: "custom"`; other transport kinds in the versioned shape do not claim an installed HTTP or native-messaging endpoint.
 
-The response validator receives the submitted operation name and validates its complete result shape. The published response schema has no generic object fallback: each of the fourteen success data shapes is closed to unknown fields. It also constrains lifecycle data. Queued and running responses have null data and error; succeeded responses have a complete success shape and null error; rejected and indeterminate responses have null data. The sole failed-data exception is the confirmed `ensure_arxiv_pdf` `item_only` shape described above. A malformed arXiv object cannot pass through one of the legacy result alternatives.
+The response validator receives the submitted operation name and validates its complete result shape. The published response schema has no generic object fallback: each of the fifteen operation success shapes is closed to unknown fields. It also constrains lifecycle data. Queued and running responses have null data and error; succeeded responses have a complete success shape and null error; rejected and indeterminate responses have null data. The sole failed-data exception is the confirmed `ensure_arxiv_pdf` `item_only` shape described above. A malformed arXiv object cannot pass through one of the legacy result alternatives.
 
 ## Identity, lifecycle, conflicts, and recovery
 

@@ -17,7 +17,8 @@
     { "$ref": "#/$defs/updateNoteRequest" },
     { "$ref": "#/$defs/verifyAnnotationRequest" },
     { "$ref": "#/$defs/inspectArxivRequest" },
-    { "$ref": "#/$defs/ensureArxivPdfRequest" }
+    { "$ref": "#/$defs/ensureArxivPdfRequest" },
+    { "$ref": "#/$defs/findLocalArxivRequest" }
   ],
   "$defs": {
     "identifier": {
@@ -352,6 +353,22 @@
         }
       }
     },
+    "findLocalArxivPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "x-maxUtf8Bytes": 4096,
+          "description": "Official uncredentialed HTTP(S) arXiv abs/PDF article URL parsed locally without an HTTP request. Runtime validation retains only the canonical identifier and optional positive version, ignores query and fragment decoration, and rejects normalization characters, nonstandard ports, invalid numeric components, zero versions, and all-zero serials.",
+          "pattern": "^(?![\\s\\S]*[\\u0000-\\u001F\\u007F])(?![^?#]*\\x5C)(?![^?#]*/(?:\\.|%2[eE])(?:\\.|%2[eE])?(?:/|[?#]|$))(?:http://(?:www\\.)?arxiv\\.org(?::80)?|https://(?:www\\.)?arxiv\\.org(?::443)?)/(?:abs|pdf)/[^?#]+(?:\\?[^#]*)?(?:#.*)?$"
+        },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 100 }
+      }
+    },
     "ensureArxivPdfPayload": {
       "type": "object",
       "additionalProperties": false,
@@ -383,6 +400,7 @@
     "resolveAnchorRequest": { "$ref": "#/$defs/readOperationResolve" },
     "verifyAnnotationRequest": { "$ref": "#/$defs/readOperationVerify" },
     "inspectArxivRequest": { "$ref": "#/$defs/readOperationInspectArxiv" },
+    "findLocalArxivRequest": { "$ref": "#/$defs/readOperationFindLocalArxiv" },
     "readOperationSearch": {
       "allOf": [{ "$ref": "#/$defs/profiledRead" }, { "properties": { "operation": { "const": "search_papers" }, "payload": { "$ref": "#/$defs/searchPapersPayload" } } }],
       "unevaluatedProperties": false
@@ -413,6 +431,10 @@
     },
     "readOperationInspectArxiv": {
       "allOf": [{ "$ref": "#/$defs/profiledRead" }, { "properties": { "operation": { "const": "inspect_arxiv" }, "payload": { "$ref": "#/$defs/inspectArxivPayload" } } }],
+      "unevaluatedProperties": false
+    },
+    "readOperationFindLocalArxiv": {
+      "allOf": [{ "$ref": "#/$defs/profiledRead" }, { "properties": { "operation": { "const": "find_local_arxiv" }, "payload": { "$ref": "#/$defs/findLocalArxivPayload" } } }],
       "unevaluatedProperties": false
     },
     "createAnnotationRequest": {

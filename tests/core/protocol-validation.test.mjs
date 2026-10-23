@@ -318,13 +318,18 @@ function responseEnvelope(operationId, state, data, error, verification) {
   return { protocolVersion: 1, operationId, state, data, error, verification };
 }
 
-test("protocol v1 adds exactly the two arXiv operations and classifies only ensure as a mutation", () => {
-  assert.equal(OPERATION_NAMES.length, 14);
-  assert.deepEqual(OPERATION_NAMES.slice(-2), ["inspect_arxiv", "ensure_arxiv_pdf"]);
-  assert.equal(new Set(OPERATION_NAMES).size, 14);
+test("protocol v1 retains five mutations while adding the offline local arXiv read", () => {
+  assert.equal(OPERATION_NAMES.length, 15);
+  assert.deepEqual(OPERATION_NAMES.slice(-3), [
+    "inspect_arxiv",
+    "ensure_arxiv_pdf",
+    "find_local_arxiv",
+  ]);
+  assert.equal(new Set(OPERATION_NAMES).size, 15);
   assert.equal(MUTATION_OPERATION_NAMES.length, 5);
   assert.equal(MUTATION_OPERATION_NAMES.includes("inspect_arxiv"), false);
   assert.equal(MUTATION_OPERATION_NAMES.includes("ensure_arxiv_pdf"), true);
+  assert.equal(MUTATION_OPERATION_NAMES.includes("find_local_arxiv"), false);
 });
 
 test("inspect_arxiv accepts bounded official arXiv URLs without read authorization", () => {
@@ -650,6 +655,8 @@ test("distributed arXiv examples pass the same runtime validators without networ
   const itemOnlyResponse = example("ensure-arxiv-pdf.item-only.response.json");
   const connectionResponse = example("connection-status.response.json");
   const annotationResponse = example("create-annotation.response.json");
+  const localRequest = example("find-local-arxiv.request.json");
+  const localResponse = example("find-local-arxiv.response.json");
 
   assert.deepEqual(
     validateProtocolResponse("connection_status", connectionResponse),
@@ -663,6 +670,8 @@ test("distributed arXiv examples pass the same runtime validators without networ
   assert.deepEqual(validateProtocolResponse("inspect_arxiv", inspectResponse), inspectResponse);
   assert.deepEqual(validateProtocolRequest(ensureRequest), ensureRequest);
   assert.deepEqual(validateProtocolResponse("ensure_arxiv_pdf", readyResponse), readyResponse);
+  assert.deepEqual(validateProtocolRequest(localRequest), localRequest);
+  assert.deepEqual(validateProtocolResponse("find_local_arxiv", localResponse), localResponse);
   assert.deepEqual(
     validateProtocolResponse("ensure_arxiv_pdf", itemOnlyResponse),
     itemOnlyResponse,

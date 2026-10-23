@@ -77,6 +77,13 @@ class NativeApiDouble {
     return { zoteroVersion: "10.0.6-runtime", profileName: "Test Profile" };
   }
 
+  async findLocalArxiv() {
+    throw new CoreOperationError(
+      "unsupported_capability",
+      "Offline local arXiv discovery is not active in this native test double",
+    );
+  }
+
   async searchPapers() {
     return [
       {
@@ -285,6 +292,7 @@ test("connection status advertises only the twelve currently wired operations", 
   assert.equal(result.capabilities.operations.length, 12);
   assert.equal(result.capabilities.operations.includes("inspect_arxiv"), false);
   assert.equal(result.capabilities.operations.includes("ensure_arxiv_pdf"), false);
+  assert.equal(result.capabilities.operations.includes("find_local_arxiv"), false);
   assert.equal(result.capabilities.operations.includes("verify_annotation"), true);
 });
 
@@ -301,6 +309,20 @@ test("connection status advertises arXiv operations when production composition 
     payload: {},
   });
   assert.deepEqual(result.capabilities.operations, operations);
+  assert.equal(result.capabilities.operations.includes("find_local_arxiv"), false);
+});
+
+test("offline arXiv discovery fails clearly while the native port is inert", async () => {
+  await assert.rejects(
+    () => adapter().findLocalArxiv({
+      protocolVersion: 1,
+      operationId: "op-find-local-inert",
+      operation: "find_local_arxiv",
+      profileId: "profile-A",
+      payload: { url: "https://arxiv.org/abs/2401.01234v2" },
+    }),
+    (error) => error instanceof CoreOperationError && error.code === "unsupported_capability",
+  );
 });
 
 test("paper discovery returns ambiguous titles and every PDF candidate", async () => {

@@ -54,6 +54,7 @@ function runtimeResponseOperation(filename) {
   if (filename.startsWith('create-annotation.')) return 'create_annotation';
   if (filename.startsWith('inspect-arxiv.')) return 'inspect_arxiv';
   if (filename.startsWith('ensure-arxiv-pdf.')) return 'ensure_arxiv_pdf';
+  if (filename.startsWith('find-local-arxiv.')) return 'find_local_arxiv';
   throw new Error(`No runtime response operation mapping for ${filename}`);
 }
 

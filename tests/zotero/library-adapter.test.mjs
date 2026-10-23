@@ -287,7 +287,7 @@ function windowLikeWithDocument(window, document) {
   };
 }
 
-test("connection status advertises only the twelve currently wired operations", async () => {
+test("connection status advertises thirteen native operations without acquisition", async () => {
   const result = await adapter().connectionStatus({
     protocolVersion: 1,
     operationId: "op-connection-capabilities",
@@ -295,10 +295,10 @@ test("connection status advertises only the twelve currently wired operations", 
     payload: {},
   });
 
-  assert.equal(result.capabilities.operations.length, 12);
+  assert.equal(result.capabilities.operations.length, 13);
   assert.equal(result.capabilities.operations.includes("inspect_arxiv"), false);
   assert.equal(result.capabilities.operations.includes("ensure_arxiv_pdf"), false);
-  assert.equal(result.capabilities.operations.includes("find_local_arxiv"), false);
+  assert.equal(result.capabilities.operations.includes("find_local_arxiv"), true);
   assert.equal(result.capabilities.operations.includes("verify_annotation"), true);
 });
 

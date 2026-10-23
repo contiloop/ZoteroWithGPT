@@ -37,7 +37,7 @@ import type {
   VisiblePreviewFailureReason,
   ZoteroViewerVerificationPort,
 } from "../ports/zotero.js";
-import { ARXIV_OPERATION_NAMES, BASE_OPERATION_NAMES } from "../protocol/index.js";
+import { ARXIV_OPERATION_NAMES, BASE_OPERATION_NAMES, LOCAL_STUDY_OPERATION_NAMES } from "../protocol/index.js";
 
 export interface ProductionConnectionEnvironment extends GeckoFileBridgeGlobals {
   Zotero: ZoteroNativeEnvironment["Zotero"] & {
@@ -173,7 +173,7 @@ export async function openProductionConnection(
     fileSystem: new GeckoFileBridgeFileSystem(environment), directory,
     connectedProfileId: profileId, onError: environment.reportError,
   });
-  const activeOperations = [...BASE_OPERATION_NAMES, ...ARXIV_OPERATION_NAMES];
+  const activeOperations = [...BASE_OPERATION_NAMES, ...ARXIV_OPERATION_NAMES, ...LOCAL_STUDY_OPERATION_NAMES];
   const library = new ZoteroLibraryAdapter({
     native, noteContent, digest, profileId, pluginVersion: version, enabled: true,
     accessGate: gate, transport: bridge.describe(), operations: activeOperations,

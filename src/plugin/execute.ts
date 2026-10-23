@@ -13,6 +13,7 @@ import type {
 import {
   ARXIV_OPERATION_NAMES,
   BASE_OPERATION_NAMES,
+  LOCAL_STUDY_OPERATION_NAMES,
   parseArxivUrl,
   type OperationName,
   type ProtocolRequest,
@@ -64,6 +65,7 @@ export class NativeOperationExecutor implements OperationExecutorPort {
     this.operations = [
       ...BASE_OPERATION_NAMES,
       ...(arxiv === undefined ? [] : ARXIV_OPERATION_NAMES),
+      ...LOCAL_STUDY_OPERATION_NAMES,
     ];
   }
 
@@ -87,7 +89,7 @@ export class NativeOperationExecutor implements OperationExecutorPort {
     const { reads, writes, anchors, storage, viewer } = this.ports;
     switch (request.operation) {
       case "connection_status": return completed(await reads.connectionStatus(request));
-      case "find_local_arxiv": return this.#unsupported(request.operation);
+      case "find_local_arxiv": return completed(await reads.findLocalArxiv(request));
       case "search_papers": return completed(await reads.searchPapers(request));
       case "read_pdf": return completed(await reads.readPdf(request));
       case "list_annotations": return completed(await reads.listAnnotations(request));
@@ -209,7 +211,7 @@ export class NativeOperationExecutor implements OperationExecutorPort {
   }
 
   #unsupported(
-    operation: "inspect_arxiv" | "ensure_arxiv_pdf" | "find_local_arxiv",
+    operation: "inspect_arxiv" | "ensure_arxiv_pdf",
   ): OperationExecutionOutcome {
     return {
       kind: "rejected",

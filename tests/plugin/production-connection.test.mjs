@@ -278,7 +278,8 @@ test('production connection binds and advertises working arXiv inspection throug
   });
   assert.equal(status.state, 'succeeded');
   assert.equal(status.data.pluginVersion, '0.2.0');
-  assert.equal(status.data.capabilities.operations.length, 14);
+  assert.equal(status.data.capabilities.operations.length, 15);
+  assert.ok(status.data.capabilities.operations.includes('find_local_arxiv'));
   assert.ok(status.data.capabilities.operations.includes('inspect_arxiv'));
   assert.ok(status.data.capabilities.operations.includes('ensure_arxiv_pdf'));
 
@@ -360,6 +361,19 @@ test('production connection binds and advertises working arXiv inspection throug
   assert.equal(cooldown.error.retryable, true);
   assert.match(cooldown.error.message, /120 seconds/u);
   assert.equal(fetchCalls.length, 3, 'fresh IDs and reconnect must not bypass Retry-After');
+  const local = await publish(reconnected.subscription, {
+    protocolVersion: 1,
+    operationId: 'production.find-local-during-429',
+    operation: 'find_local_arxiv',
+    profileId: reconnected.profileId,
+    payload: { url: 'https://arxiv.org/abs/2401.01234v2' },
+  });
+  assert.equal(local.state, 'succeeded');
+  assert.deepEqual(local.data, {
+    source: { arxivId: '2401.01234', version: 2 }, matches: [], truncated: false,
+  });
+  assert.deepEqual(local.verification, { storage: 'not_applicable', viewer: 'not_applicable' });
+  assert.equal(fetchCalls.length, 3, 'offline discovery must remain available during remote cooldown');
   await reconnected.close();
   connectionForCleanup = undefined;
 });

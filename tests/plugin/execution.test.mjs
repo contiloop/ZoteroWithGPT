@@ -68,13 +68,35 @@ test('readback errors after a write remain uncertain rather than rejected', asyn
   assert.equal(result.verification.storage, 'not_checked');
 });
 
-test('unwired protocol operations fail closed as unsupported capabilities', async () => {
+test('local arXiv discovery dispatches without remote acquisition dependencies', async () => {
+  const request = {
+    operation: 'find_local_arxiv',
+    payload: { url: 'https://arxiv.org/abs/2401.01234v2', limit: 25 },
+  };
+  const data = {
+    source: { arxivId: '2401.01234', version: 2 },
+    matches: [],
+    truncated: false,
+  };
+  let reads = 0;
+  const executor = new NativeOperationExecutor({
+    reads: { findLocalArxiv: async actual => {
+      assert.equal(actual, request);
+      reads++;
+      return data;
+    } },
+  });
+  assert.ok(executor.operations.includes('find_local_arxiv'));
+  const result = await executor.execute(request, { operationId: 'local-1', requestDigest: 'digest' });
+  assert.equal(reads, 1);
+  assert.equal(result.kind, 'completed');
+  assert.equal(result.data, data);
+  assert.deepEqual(result.verification, { storage: 'not_applicable', viewer: 'not_applicable' });
+});
+
+test('unwired acquisition operations fail closed as unsupported capabilities', async () => {
   const executor = new NativeOperationExecutor({});
   for (const request of [
-    {
-      operation: 'find_local_arxiv',
-      payload: { url: 'https://arxiv.org/abs/2401.01234v2', limit: 25 },
-    },
     { operation: 'inspect_arxiv', payload: { url: 'https://arxiv.org/abs/2401.01234v2' } },
     {
       operation: 'ensure_arxiv_pdf',

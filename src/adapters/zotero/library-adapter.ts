@@ -8,6 +8,7 @@ import {
   MAX_TEXT_BYTES,
   NATIVE_ANNOTATION_COLORS,
   BASE_OPERATION_NAMES,
+  LOCAL_STUDY_OPERATION_NAMES,
   OPERATION_NAMES,
   PROTOCOL_VERSION,
   type ConnectionStatusResult,
@@ -134,7 +135,7 @@ export class ZoteroLibraryAdapter
     this.#enabled = options.enabled;
     this.#accessGate = options.accessGate;
     this.#transport = options.transport;
-    this.#operations = [...(options.operations ?? BASE_OPERATION_NAMES)];
+    this.#operations = [...(options.operations ?? [...BASE_OPERATION_NAMES, ...LOCAL_STUDY_OPERATION_NAMES])];
     if (
       this.#operations.length !== new Set(this.#operations).size ||
       this.#operations.some((operation) =>

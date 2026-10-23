@@ -10,7 +10,7 @@ import {
 } from "../../dist/protocol/index.js";
 
 const PROJECT_ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const RELEASE_VERSION = "0.3.0";
+const RELEASE_VERSION = "0.3.1";
 
 async function readText(relativePath) {
   return readFile(path.join(PROJECT_ROOT, ...relativePath.split("/")), "utf8");
@@ -20,7 +20,7 @@ async function readJson(relativePath) {
   return JSON.parse(await readText(relativePath));
 }
 
-test("0.3.0 release metadata and selected local-study guidance stay aligned", async () => {
+test("0.3.1 release metadata and selected local-study guidance stay aligned", async () => {
   const [
     packageMetadata,
     packageLock,

@@ -163,14 +163,14 @@ test("build produces a deterministic versioned XPI with a validated release surf
   );
 });
 
-test("current release builds the exact 0.3.0 archive inventories", async (t) => {
+test("current release builds the exact 0.3.1 archive inventories", async (t) => {
   const output = await mkdtemp(path.join(os.tmpdir(), "research-companion-release-package-"));
   t.after(() => rm(output, { recursive: true, force: true }));
 
   const result = await buildXpi({ projectRoot: PROJECT_ROOT, outputDirectory: output });
   const report = await verifyXpi(result.outputPath, { expectedProjectRoot: PROJECT_ROOT });
 
-  assert.equal(report.version, "0.3.0");
+  assert.equal(report.version, "0.3.1");
   assert.equal(report.members.length, 35);
   assert.equal(report.clientMembers.length, 20);
   assert.equal(report.pluginMembers.length, 27);

@@ -91,7 +91,7 @@ step.
    plugin is installed and enabled, start a fresh ChatGPT conversation,
    explicitly select **Zotero Study Save**, provide one official arXiv abstract
    or PDF URL, and ask to study the paper from the PDF already in Zotero.
-   Selection is required for the initial 0.3.0 workflow; automatic invocation
+   Selection is required for the selected local-study workflow; automatic invocation
    remains an optional convenience rather than an installation test.
 
 The plugin discovers the current descriptor, enabled status, profile, session,

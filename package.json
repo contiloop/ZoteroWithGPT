@@ -13,7 +13,8 @@
     "test": "npm run build && node --test",
     "package": "node scripts/package/build-xpi.mjs",
     "verify:package": "node scripts/verify/package.mjs",
-    "verify": "npm run typecheck && npm test && npm run build && npm run package && npm run verify:package"
+    "verify:plugin": "node integration/chatgpt-plugin/tests/validate-package.mjs",
+    "verify": "npm run typecheck && npm test && npm run build && npm run package && npm run verify:package && npm run verify:plugin"
   },
   "devDependencies": {
     "ajv": "8.20.0",

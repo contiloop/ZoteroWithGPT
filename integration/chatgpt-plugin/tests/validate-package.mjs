@@ -7,7 +7,9 @@ import { fileURLToPath } from "node:url";
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = path.resolve(testDirectory, "..");
-const TARGET_PLUGIN_VERSION = "0.3.0";
+const TARGET_PLUGIN_VERSION = JSON.parse(
+  await readFile(path.resolve(pluginRoot, "../../package.json"), "utf8"),
+).version;
 
 const REQUIRED_SCENARIOS = [
   "selected-study-startup-read-only",

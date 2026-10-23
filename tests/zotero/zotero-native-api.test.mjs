@@ -1549,6 +1549,88 @@ test("offline arXiv discovery returns complete ordered native evidence without e
   );
 });
 
+test("offline arXiv discovery never invokes a legacy macOS path-repair getter", async () => {
+  const { env, host } = fixtureEnvironment();
+  const currentBytes = new Uint8Array([37, 80, 68, 70, 45, 83, 65, 70, 69]);
+  const legacyBytes = new Uint8Array([37, 80, 68, 70, 45, 79, 76, 68]);
+  const currentFingerprint = fixtureFingerprint(currentBytes);
+  const legacyFingerprint = fixtureFingerprint(legacyBytes);
+  host.diskByPath.set("/local/current-safe.pdf", currentBytes);
+  host.diskByPath.set("/legacy/resolved-by-native.pdf", legacyBytes);
+
+  const parent = addFixtureItem(host, "journalArticle", {
+    key: "LEGACYPARENT",
+    fields: {
+      title: "Legacy path safety",
+      archiveID: "arXiv:2401.01234v1",
+    },
+  });
+  addFixtureItem(host, "attachment", {
+    key: "CURRENTPDF",
+    parentItemID: parent.id,
+    attachmentContentType: "application/pdf",
+    attachmentPath: "storage:current-safe.pdf",
+    filePath: "/local/current-safe.pdf",
+    fields: { title: "Ordinary current PDF" },
+  });
+  const legacyPdf = addFixtureItem(host, "attachment", {
+    key: "LEGACYPDF",
+    parentItemID: parent.id,
+    attachmentContentType: "application/pdf",
+    attachmentPath: "AAAAopaque-persistent-descriptor",
+    fields: { title: "Legacy persistent-descriptor PDF" },
+  });
+  legacyPdf.relations.set(ARXIV_PROVENANCE_RELATION_PREDICATE, [
+    arxivAttachmentProvenance(
+      { arxivId: "2401.01234", version: 2 },
+      legacyFingerprint,
+    ),
+  ]);
+  let asyncRepairGetterCalls = 0;
+  let syncRepairGetterCalls = 0;
+  let nativeWrites = 0;
+  legacyPdf.getFilePathAsync = async () => {
+    asyncRepairGetterCalls += 1;
+    nativeWrites += 1;
+    return "/legacy/resolved-by-native.pdf";
+  };
+  legacyPdf.getFilePath = () => {
+    syncRepairGetterCalls += 1;
+    nativeWrites += 1;
+    return "/legacy/resolved-by-native.pdf";
+  };
+  const native = createZoteroNativeApi(env);
+
+  const result = await native.findLocalArxiv({ arxivId: "2401.01234" }, 25);
+
+  assert.deepEqual(result.matches[0].paper.attachments, [
+    {
+      attachmentKey: "CURRENTPDF",
+      title: "Ordinary current PDF",
+      contentType: "application/pdf",
+      fingerprint: currentFingerprint,
+    },
+    {
+      attachmentKey: "LEGACYPDF",
+      title: "Legacy persistent-descriptor PDF",
+      contentType: "application/pdf",
+    },
+  ]);
+  assert.deepEqual(result.matches[0].evidence, [
+    {
+      attachmentKey: null,
+      origin: "archive_id",
+      arxivId: "2401.01234",
+      version: 1,
+    },
+  ]);
+  assert.equal(asyncRepairGetterCalls, 0);
+  assert.equal(syncRepairGetterCalls, 0);
+  assert.equal(nativeWrites, 0);
+  assert.equal(host.transactionStarts, 0);
+  assert.deepEqual(host.ioReadPaths, ["/local/current-safe.pdf"]);
+});
+
 test("offline arXiv discovery searches every eligible library and deduplicates native parents", async () => {
   const { env, host } = fixtureEnvironment();
   const requested = { arxivId: "2401.01234" };

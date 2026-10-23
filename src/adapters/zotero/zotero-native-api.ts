@@ -682,6 +682,14 @@ function uniqueSortedLocalArxivEvidence(
   return [...unique.values()].sort(compareLocalArxivEvidence);
 }
 
+function hasLegacyMacPersistentDescriptor(item: ZoteroItemLike): boolean {
+  // Zotero's file-path getters repair this legacy form by updating
+  // itemAttachments. Local discovery is read-only, so it must treat the
+  // fingerprint as unavailable without invoking either getter.
+  const rawPath = item.attachmentPath;
+  return typeof rawPath === "string" && rawPath.startsWith("AAAA");
+}
+
 function parseIdentityText(value: unknown): ArxivIdentityEvidence | undefined {
   if (typeof value !== "string") return undefined;
   let candidate = value.trim().replace(/^arxiv\s*:\s*/iu, "");
@@ -2178,13 +2186,17 @@ export class ZoteroGlobalNativeApi implements ZoteroNativeApi {
       attachment: PreparedLocalArxivAttachment,
     ): Promise<void> => {
       if (!fingerprints.has(attachment.attachmentKey)) {
-        try {
-          fingerprints.set(
-            attachment.attachmentKey,
-            await this.#fingerprint(attachment.item),
-          );
-        } catch {
+        if (hasLegacyMacPersistentDescriptor(attachment.item)) {
           fingerprints.set(attachment.attachmentKey, undefined);
+        } else {
+          try {
+            fingerprints.set(
+              attachment.attachmentKey,
+              await this.#fingerprint(attachment.item),
+            );
+          } catch {
+            fingerprints.set(attachment.attachmentKey, undefined);
+          }
         }
       }
       const fingerprint = fingerprints.get(attachment.attachmentKey);

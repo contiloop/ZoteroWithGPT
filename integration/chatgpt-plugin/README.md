@@ -1,15 +1,17 @@
 # Zotero Study Save personal plugin
 
-This portable source adds the Zotero study-save workflow to ordinary ChatGPT
-conversations and connects it to the existing Mac Safe Files app. It does not
-contain a server, credential, developer path, Zotero profile, live session, or
-study history. The Zotero XPI, its matching client kit, and this ChatGPT plugin
-remain separate installable components.
+This portable source lets a selected ChatGPT plugin study a PDF already saved
+in Zotero and later save approved discussion beside its source passage. It uses
+the existing Mac Safe Files app. It does not contain a server, credential,
+developer path, Zotero profile, live session, paper target, or study history.
+The Zotero XPI, its matching client kit, and this ChatGPT plugin remain separate
+installable components.
 
 ## Private one-time setup
 
 1. Install the matching Zotero AI Research Companion XPI and client kit. In
    Zotero, select one dedicated bridge root, enable it, and require **Ready**.
+   Before starting a study conversation, manually save the paper and PDF in Zotero.
 2. Approve that exact dedicated root in Mac Safe Files using the platform and
    macOS prompts. Do not broaden access to a home directory, Desktop, Zotero
    data directory, or shared research directory.
@@ -20,19 +22,52 @@ remain separate installable components.
    contains the exact root displayed by Zotero. The portable source keeps this
    value `null`; do not add profile IDs, session IDs, request/result paths,
    operation IDs, credentials, or study material to that resource.
-4. Start a new conversation and use a normal save request such as “Save the
-   proof you just explained and my question to Zotero.” A plugin `@` mention is
-   optional for diagnosis and is not part of the normal workflow.
+4. Start a new ChatGPT conversation, select Zotero Study Save, provide one
+   official arXiv abstract or PDF link, and ask, for example, “이 논문을 Zotero에
+   저장된 PDF로 읽고 함께 공부해 줘.” The selection establishes the workflow;
+   later turns in that conversation do not need another selection chip or the
+   same URL again.
 
 On each use, the skill discovers the current descriptor, status, profile,
-session, relative paths, limits, and capabilities again. A configured root does
-not authorize a write by itself. The current user's save request or acceptance
-of an exact proposal supplies the mutation intent, while Mac Safe Files and
-macOS prompts remain authoritative for file access.
+session, relative paths, limits, and capabilities internally. The user does not
+provide a connection phrase, root, request file, profile, or native key. A
+configured root does not authorize a write. The current user's save request or
+acceptance of an exact proposal supplies mutation intent, while Mac Safe Files
+and macOS prompts remain authoritative for file access.
 
 If the personal resource is unset or Mac Safe Files is unavailable, the skill
-gives a short setup action and stops. It does not repeat this full guide on each
-failed request.
+gives a short setup action and stops. If the companion does not advertise
+`find_local_arxiv`, it gives a concise compatibility message and stops. It does
+not repeat this full guide on each failed request.
+
+## Local study and later saves
+
+The selected plugin first performs read-only connection checks, looks up the
+official arXiv identity across all eligible Zotero libraries, and reads the
+actual local PDF. It briefly confirms the paper title, PDF attachment, and
+known or unknown version evidence. A Web abstract or parent item metadata does
+not substitute for reading local pages, and the plugin does not claim to have
+read pages it did not request.
+
+This workflow never downloads or imports a paper. If Zotero has no matching
+item, has only metadata, has multiple plausible parents or PDFs, or cannot read
+the attachment, the plugin asks a focused question or asks the user to save,
+attach, or restore the PDF manually. It waits and performs a fresh lookup after
+the user finishes. It does not move an item, change its collection placement,
+or choose the first candidate.
+
+The established target remains in the accessible conversation. A later request
+such as “방금 질문과 설명을 해당 구절 옆에 저장해 줘” does not require the URL,
+page, quote, or native key again when they are inferable. Comparing another
+paper does not switch the save destination. An explicit switch requires a new
+lookup and local read; if that fails, a later save asks which paper should
+receive it instead of falling back to the old destination.
+
+Reading and studying are read-only. An annotation or note write requires the
+current user's explicit save request or acceptance of an exact proposal. The
+plugin preserves the complete requested Korean question, proof, explanation,
+equations, and real reference links beside the relevant passage. It does not
+truncate, summarize, split, or divert long content to an overflow note.
 
 ## Update or reinstall
 
@@ -61,8 +96,7 @@ Remove the personal **Zotero Study Save** plugin through ChatGPT's plugin
 management. This does not remove Mac Safe Files, the Zotero XPI, its dedicated
 bridge directory, or its operation journal, and it does not delete native Zotero records.
 Use the separate Zotero uninstall guide when removing the XPI. Ordinary removal
-preserves imported papers, PDFs, annotations, notes, and duplicate-prevention
-history.
+preserves papers, PDFs, annotations, notes, and operation history.
 
 ## Final package layout
 
@@ -105,7 +139,8 @@ Run the local source gate before staging the final archive:
 node integration/chatgpt-plugin/tests/validate-package.mjs
 ```
 
-That gate validates package structure and documented scenario decisions. Only
-an actual private-account installation in a fresh ChatGPT conversation can
-establish implicit activation and app-tool availability. Only an actual Zotero
-reader run can establish native storage and viewer behavior.
+That gate validates package structure and documented scenario decisions. It is
+not evidence that ChatGPT honored the selected workflow, that Mac Safe Files
+exposed its tools, or that a local PDF was read. Those claims require an actual
+private-account conversation. Only an actual Zotero reader run can establish
+native storage and viewer behavior.

@@ -49,6 +49,60 @@ The selected status file has this exact shape:
 }
 ```
 
+## Selected-plugin local arXiv study
+
+For the Zotero Study Save conversation workflow, the user first saves the paper
+and PDF manually in Zotero, explicitly selects the plugin in ChatGPT, supplies
+one official arXiv abstract or PDF link, and asks to study it. Connection,
+descriptor checks, local discovery, and PDF reads are internal. Do not ask the
+user for a connection phrase, bridge path, request file, profile, library, item
+key, or attachment key.
+
+After a fresh `connection_status`, require `find_local_arxiv` in
+`capabilities.operations`. Protocol v1 defines 15 operations and 5 mutations.
+The remote `inspect_arxiv` read and `ensure_arxiv_pdf` mutation remain in the
+contract for backward compatibility and historical replay, but they are outside
+this local-study flow. Never invoke them, a downloader, or another acquisition
+route to repair a missing item or PDF, including after a save request.
+
+Publish `find_local_arxiv` as a profiled read with no authorization:
+
+```json
+{
+  "protocolVersion": 1,
+  "operationId": "fresh-local-lookup-id",
+  "operation": "find_local_arxiv",
+  "profileId": "<PROFILE_ID>",
+  "payload": {
+    "url": "https://arxiv.org/abs/2401.01234v2",
+    "limit": 25
+  }
+}
+```
+
+The result searches all eligible libraries without network access or mutation.
+Parent metadata identifies only a candidate parent. Trust attachment provenance
+only when its fingerprint matches that same attachment's current fingerprint.
+Treat null version evidence as unknown, and do not interpret an unversioned URL
+as a latest-version request. Multiple parents or PDFs, conflicting or truncated
+evidence, and an explicit-version mismatch require a focused title, version, or
+attachment-name clarification. Never choose the first match or expose native
+keys as ordinary choices.
+
+If no item is found, ask the user to save the paper and PDF manually in Zotero
+and wait. If only metadata exists or the PDF is inaccessible, ask the user to
+add the PDF or restore access and wait. After the user finishes, issue a fresh `find_local_arxiv`
+and a fresh `read_pdf`; never reuse the old result. An empty result means only
+that identifier evidence was not found, and a standalone PDF outside a parent
+item is not covered by this operation.
+
+The conversation target exists only after local discovery and a successful
+fresh PDF read. Store its profile, library, item, attachment, fingerprint, and
+version evidence only in accessible conversation context. A comparison does not
+switch the destination. A failed explicit switch suspends the previous implicit
+destination until the user clarifies it. Refresh the descriptor, status,
+descriptor, and native target evidence before every write.
+
 ## Publish one request
 
 Choose one operation ID matching `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`. Its final filename is exactly:

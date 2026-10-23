@@ -7,73 +7,102 @@ import {
   validateProtocolRequest,
 } from "../../../dist/protocol/index.js";
 
-const inspectionSource = {
-  arxivId: "2401.01234",
-  version: 2,
-  abstractUrl: "https://arxiv.org/abs/2401.01234v2",
-  pdfUrl: "https://arxiv.org/pdf/2401.01234v2",
-  metadata: {
-    title: "Example paper",
-    authors: ["Example Author"],
-    published: "2024-01-01T00:00:00Z",
-    updated: "2024-01-02T00:00:00Z",
-    abstract: "Example abstract",
-  },
-};
-
-function ensureRequest(source) {
+function localLookupRequest(payload = {
+  url: "https://arxiv.org/abs/2401.01234v2",
+  limit: 25,
+}) {
   return {
     protocolVersion: 1,
-    operationId: "test.ensure.projected-source",
-    operation: "ensure_arxiv_pdf",
+    operationId: "test.find-local.projected-source",
+    operation: "find_local_arxiv",
     profileId: "profile-A",
-    authorization: {
-      kind: "explicit_request",
-      scope: "Import the exact studied arXiv PDF for this save.",
-    },
-    payload: {
-      source,
-      inspectionToken: "inspection-token-A",
-      selection: { kind: "create" },
-    },
+    payload,
   };
 }
 
-test("ensure_arxiv_pdf accepts projected identity and rejects a full inspection source", () => {
-  const projectedIdentity = {
-    arxivId: inspectionSource.arxivId,
-    version: inspectionSource.version,
-  };
-  assert.deepEqual(validateProtocolRequest(ensureRequest(projectedIdentity)).payload.source, projectedIdentity);
+test("find_local_arxiv accepts the bounded offline lookup and forbids mutation authority", () => {
+  const request = localLookupRequest();
+  assert.deepEqual(validateProtocolRequest(request), request);
+
   assert.throws(
-    () => validateProtocolRequest(ensureRequest(inspectionSource)),
+    () => validateProtocolRequest({
+      ...request,
+      authorization: {
+        kind: "explicit_request",
+        scope: "이미 로컬에 저장된 이 논문을 함께 공부해 줘.",
+      },
+    }),
     (error) =>
       error instanceof ProtocolValidationError &&
       error.code === "invalid_request" &&
-      error.message === "$.payload.source.abstractUrl is not supported",
+      /only valid for mutations/u.test(error.message),
   );
 });
 
-test("workflow projects ensure source and covers abstract-path terminal .pdf normalization", async () => {
+test("find_local_arxiv keeps URL input strict and never accepts a download instruction", () => {
+  assert.throws(
+    () => validateProtocolRequest(localLookupRequest({
+      url: "https://arxiv.org/abs/2401.01234v2",
+      limit: 25,
+      download: true,
+    })),
+    (error) =>
+      error instanceof ProtocolValidationError &&
+      error.code === "invalid_request" &&
+      error.message === "$.payload.download is not supported",
+  );
+});
+
+test("selected-plugin scenarios require local discovery and prohibit acquisition writes", async () => {
   const scenarios = JSON.parse(
     await readFile(new URL("./scenarios.json", import.meta.url), "utf8"),
   );
-  const scenario = scenarios.scenarios.find(
-    (candidate) => candidate.id === "abstract-dot-pdf-normalization",
+  const startup = scenarios.scenarios.find(
+    (candidate) => candidate.id === "selected-study-startup-read-only",
   );
-  assert.ok(scenario, "missing abstract-dot-pdf-normalization scenario");
-  assert.equal(scenario.input.paper, "https://arxiv.org/abs/2401.01234v2.pdf?download=1#theorem");
-  assert.equal(scenario.expected.normalizedSource, "canonical_https_arxiv_version");
+  const missing = scenarios.scenarios.find(
+    (candidate) => candidate.id === "missing-local-item-wait-and-refresh",
+  );
+  const metadataOnly = scenarios.scenarios.find(
+    (candidate) => candidate.id === "metadata-only-wait-and-refresh",
+  );
 
+  assert.deepEqual(startup.expected.reads, [
+    "connection_status",
+    "find_local_arxiv",
+    "read_pdf",
+  ]);
+  assert.deepEqual(startup.expected.writes, []);
+  assert.deepEqual(missing.expected.acquisitionOperations, []);
+  assert.deepEqual(metadataOnly.expected.acquisitionOperations, []);
+  assert.equal(missing.expected.resumeWithFreshLookup, true);
+  assert.equal(metadataOnly.expected.resumeWithFreshLookup, true);
+});
+
+test("workflow binds the target to discovery plus a fresh local PDF read", async () => {
   const workflow = await readFile(
     new URL("../skills/zotero-study-save/resources/workflow.md", import.meta.url),
     "utf8",
   );
-  assert.match(
-    workflow,
-    /source: \{ arxivId: inspect\.data\.source\.arxivId, version: inspect\.data\.source\.version \}/u,
-  );
-  assert.match(workflow, /inspectionToken: inspect\.data\.inspectionToken/u);
-  assert.match(workflow, /selection: inspect\.data\.selection/u);
-  assert.match(workflow, /optional terminal `\.pdf` on either recognized path/u);
+
+  assert.match(workflow, /Require `find_local_arxiv` in `capabilities\.operations`/u);
+  assert.match(workflow, /target is established only after[\s\S]*fresh `read_pdf`/u);
+  assert.match(workflow, /never invoke `inspect_arxiv` or `ensure_arxiv_pdf`/u);
+  assert.match(workflow, /An unversioned URL is not a request for the latest version/u);
+  assert.match(workflow, /failed switch suspends the prior implicit destination/u);
+});
+
+test("active Mac client guides keep legacy acquisition outside local study", async () => {
+  const [macGuide, packagedClientGuide] = await Promise.all([
+    readFile(new URL("../../mac-mcp/README.md", import.meta.url), "utf8"),
+    readFile(new URL("../../../scripts/package/assets/client/README.md", import.meta.url), "utf8"),
+  ]);
+
+  for (const guide of [macGuide, packagedClientGuide]) {
+    assert.match(guide, /15 operations and 5 mutations/u);
+    assert.match(guide, /`find_local_arxiv`/u);
+    assert.match(guide, /`inspect_arxiv`[\s\S]*`ensure_arxiv_pdf`[\s\S]*(?:outside|backward compatibility)/u);
+    assert.match(guide, /Never invoke them[\s\S]*acquisition/u);
+    assert.match(guide, /fresh `find_local_arxiv`[\s\S]*fresh `read_pdf`/u);
+  }
 });

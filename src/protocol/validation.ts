@@ -1090,6 +1090,7 @@ function validateConnectionStatusResult(value: unknown, path: string): void {
 
 interface ValidatedAttachmentSummary {
   attachmentKey: string;
+  contentType: string;
   fingerprint?: string;
 }
 
@@ -1101,12 +1102,14 @@ function validateAttachmentSummary(
   expectOnlyKeys(attachment, ["attachmentKey", "title", "contentType", "fingerprint"], path);
   const attachmentKey = expectIdentifier(attachment.attachmentKey, `${path}.attachmentKey`);
   expectString(attachment.title, `${path}.title`);
-  expectString(attachment.contentType, `${path}.contentType`, { nonempty: true });
+  const contentType = expectString(attachment.contentType, `${path}.contentType`, { nonempty: true });
   let fingerprint: string | undefined;
   if (hasOwn(attachment, "fingerprint")) {
     fingerprint = expectIdentifier(attachment.fingerprint, `${path}.fingerprint`);
   }
-  return fingerprint === undefined ? { attachmentKey } : { attachmentKey, fingerprint };
+  return fingerprint === undefined
+    ? { attachmentKey, contentType }
+    : { attachmentKey, contentType, fingerprint };
 }
 
 interface ValidatedPaperMatch {
@@ -1188,11 +1191,12 @@ function compareLocalEvidence(
   right: ValidatedLocalArxivEvidence,
 ): number {
   return (
-    compareNullableText(left.attachmentKey, right.attachmentKey) ||
+    Number(left.attachmentKey !== null) - Number(right.attachmentKey !== null) ||
     LOCAL_EVIDENCE_ORIGIN_ORDER[left.origin] - LOCAL_EVIDENCE_ORIGIN_ORDER[right.origin] ||
     compareText(left.arxivId, right.arxivId) ||
     compareNullableNumber(left.version, right.version) ||
-    compareText(left.fingerprint ?? "", right.fingerprint ?? "")
+    compareText(left.fingerprint ?? "", right.fingerprint ?? "") ||
+    compareNullableText(left.attachmentKey, right.attachmentKey)
   );
 }
 
@@ -1286,7 +1290,13 @@ function validateFindLocalArxivResult(value: unknown, path: string): void {
 
     const attachments = new Map<string, ValidatedAttachmentSummary>();
     let priorAttachmentKey: string | undefined;
-    for (const attachment of paper.attachments) {
+    for (const [attachmentIndex, attachment] of paper.attachments.entries()) {
+      if (attachment.contentType !== "application/pdf") {
+        fail(
+          "invalid_request",
+          `${matchPath}.paper.attachments[${attachmentIndex}].contentType must be application/pdf`,
+        );
+      }
       if (attachments.has(attachment.attachmentKey)) {
         fail("invalid_request", `${matchPath}.paper.attachments repeats an attachment key`);
       }

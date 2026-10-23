@@ -576,12 +576,31 @@
         }
       ]
     },
+    "localArxivPaperMatch": {
+      "allOf": [
+        { "$ref": "#/$defs/paperMatch" },
+        {
+          "type": "object",
+          "properties": {
+            "attachments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "contentType": { "const": "application/pdf" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
     "localArxivMatch": {
       "type": "object",
       "additionalProperties": false,
       "required": ["paper", "evidence"],
       "properties": {
-        "paper": { "$ref": "#/$defs/paperMatch" },
+        "paper": { "$ref": "#/$defs/localArxivPaperMatch" },
         "evidence": {
           "type": "array",
           "minItems": 1,

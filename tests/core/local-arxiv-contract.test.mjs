@@ -247,6 +247,28 @@ test("find_local_arxiv validates source, conflicts, attachment membership, and f
   );
 });
 
+test("find_local_arxiv returns only PDF attachments without narrowing search_papers", () => {
+  const nonPdfPaper = structuredClone(data.matches[0].paper);
+  nonPdfPaper.attachments[0].contentType = "text/html";
+
+  const searchResponse = responseWith({ matches: [nonPdfPaper] });
+  assert.deepEqual(
+    validateProtocolResponse("search_papers", searchResponse),
+    searchResponse,
+  );
+
+  expectCode(
+    () => validateProtocolResponse("find_local_arxiv", responseWith({
+      ...data,
+      matches: [{
+        paper: nonPdfPaper,
+        evidence: data.matches[0].evidence,
+      }],
+    })),
+    "invalid_request",
+  );
+});
+
 test("find_local_arxiv rejects duplicate or incomplete sets instead of hiding evidence", () => {
   const match = data.matches[0];
   expectCode(
@@ -320,6 +342,49 @@ test("find_local_arxiv rejects duplicate or incomplete sets instead of hiding ev
   );
 });
 
+test("find_local_arxiv orders attachment evidence by origin before child key", () => {
+  const match = structuredClone(data.matches[0]);
+  const parentEvidence = match.evidence.slice(0, 4);
+  const firstChildUrl = match.evidence[4];
+  const firstChildProvenance = match.evidence[5];
+  const secondChildUrl = {
+    attachmentKey: "ATTACH02",
+    origin: "url",
+    arxivId: "2401.01234",
+    version: 2,
+  };
+  const documentedOrder = [
+    ...parentEvidence,
+    firstChildUrl,
+    secondChildUrl,
+    firstChildProvenance,
+  ];
+  const orderedResponse = responseWith({
+    ...data,
+    matches: [{ ...match, evidence: documentedOrder }],
+  });
+  assert.deepEqual(
+    validateProtocolResponse("find_local_arxiv", orderedResponse),
+    orderedResponse,
+  );
+
+  expectCode(
+    () => validateProtocolResponse("find_local_arxiv", responseWith({
+      ...data,
+      matches: [{
+        ...match,
+        evidence: [
+          ...parentEvidence,
+          firstChildUrl,
+          firstChildProvenance,
+          secondChildUrl,
+        ],
+      }],
+    })),
+    "invalid_request",
+  );
+});
+
 test("the committed schemas describe the same strict local lookup contract", async () => {
   const [requestSchema, responseSchema] = await Promise.all([
     readFile(path.join(PROTOCOL_ASSETS, "v1-request.schema.json"), "utf8").then(JSON.parse),
@@ -328,6 +393,10 @@ test("the committed schemas describe the same strict local lookup contract", asy
   const validators = createProtocolSchemaValidators(requestSchema, responseSchema);
   assert.equal(validators.request(request), true, JSON.stringify(validators.request.errors));
   assert.equal(validators.response(responseWith()), true, JSON.stringify(validators.response.errors));
+
+  const nonPdf = structuredClone(data);
+  nonPdf.matches[0].paper.attachments[0].contentType = "text/html";
+  assert.equal(validators.response(responseWith(nonPdf)), false);
 
   const invalidEvidence = structuredClone(data);
   invalidEvidence.matches[0].evidence[5].fingerprint = undefined;

@@ -1,6 +1,6 @@
 # Conversational save with exact-version arXiv import
 
-Status: superseded for the active study workflow by [0004-selected-local-arxiv-study.md](0004-selected-local-arxiv-study.md). This record remains authoritative for the retained legacy import operations and their historical outcomes.
+Status: superseded for the active study workflow by explicit plugin selection, manual paper/PDF acquisition, offline arXiv lookup, and conversation-local targets. This record remains authoritative for the retained legacy import operations and their historical outcomes.
 
 ## Context
 

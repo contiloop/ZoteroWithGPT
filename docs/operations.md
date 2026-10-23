@@ -42,7 +42,7 @@ Distribution is manual. The manifest's reserved .invalid update URL supplies no 
 
 Remove the owned personal **Zotero Study Save** plugin through ChatGPT management separately from the XPI. Leave Mac Safe Files and unrelated plugins connected. Reinstall using the portable source and restore the one private root setting; never embed an old descriptor, pending operation, or result. Both ordinary component removal procedures retain native study data and the Zotero operation journal. Actual lifecycle acceptance remains surface/version specific.
 
-The observed personal-plugin lifecycle used the detail page's **Uninstall** action, not **Delete plugin**. The owned backend and release history remained available, and the same page exposed **Install plugin**. After installation, verify all of the following before use: the expected version, **Use Zotero Study Save** checked, Mac Safe Files connected, unchanged owned backend/current release, the expected account file inventory, and exactly the private `bridgeRoot` customization. The accepted 0.2.2 run restored all of those values without creating a release or deleting the owned backend; the 0.3.0 account update and lifecycle checks remain pending.
+The observed personal-plugin lifecycle used the detail page's **Uninstall** action, not **Delete plugin**. The owned backend and release history remained available, and the same page exposed **Install plugin**. After installation, verify all of the following before use: the expected version, **Use Zotero Study Save** checked, Mac Safe Files connected, unchanged owned backend/current release, the expected account file inventory, and exactly the private `bridgeRoot` customization. Both the historical 0.2.2 run and the current 0.3.0 run restored those values without creating a release during reinstall or deleting the owned backend. The current 0.3.0 private account update and subsequent ordinary lifecycle checks passed.
 
 ## 0.3.0 selected-workflow acceptance
 
@@ -55,11 +55,11 @@ Use a deliberately owned PDF and preserve existing native records and operation 
 5. Fresh native reads prove the exact complete comment, current anchor fingerprint, one intended record, no overflow note, and no duplicate operation. A deliberate manual-edit conflict preserves the current body. Missing/metadata-only and failed-switch cases produce no mutation and resume only after fresh local lookup and PDF reading. A lookup result without a current fingerprint produces no `read_pdf` or repair request and resumes only after manual restoration plus fresh discovery returns a fingerprint.
 6. Normal Zotero removal/reinstall retains native records and the journal. ChatGPT **Uninstall** and **Delete plugin** remain distinct; do not delete the owned backend during the lifecycle check.
 
-Automatic plugin invocation is not a 0.3.0 completion gate. It may remain eligible for a later save when context is clear, but acceptance starts with visible explicit selection. Direct Codex local-file verification remains a separate proven route and cannot establish the Web observation. The current 0.3.0 Web, installed-XPI, native mutation, and reader checks are pending; package verification alone must not be reported as those results.
+Automatic plugin invocation is not a 0.3.0 completion gate. It may remain eligible for a later save when context is clear, but acceptance starts with visible explicit selection. Direct Codex local-file verification remains a separate proven route and cannot establish the Web observation. The actual 0.3.0 installation passed these Web, native mutation, reader, and ordinary lifecycle checks on 2026-10-23. Two fresh selected conversations established independent local targets; missing and metadata-only targets stopped, and an owned manual PDF addition was discovered and read afresh. Direct-local append and stale-edit checks separately preserved the complete body. Package verification alone must never be substituted for those actual observations.
 
 ## Observed Zotero reinstall ordering
 
-Actual 0.2.2 acceptance established this reliable sequence:
+Actual 0.2.2 and 0.3.0 acceptance established this reliable sequence:
 
 1. Remove Research Companion in Plugins Manager.
 2. Normally quit and reopen Zotero so removal completes.

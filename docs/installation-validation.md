@@ -1,8 +1,14 @@
 # Installation and recovery validation
 
-## 0.3.0 installation state — pending
+## 0.3.0 installation and ordinary lifecycle — verified 2026-10-23
 
-The 0.3.0 XPI has not yet been installed in Zotero in this release cycle. Its profile copy, 15-operation status, native read/write behavior, reader visibility, removal/reinstall retention, and journal replay therefore remain pending. The procedure in `operations.md` is the active acceptance checklist. The results below are historical evidence for earlier packages and do not establish the current artifact.
+On Zotero 10.0.6 on macOS arm64, the installed profile XPI matched SHA-256 `634eff4538c2c438f425b1a8a9bed9e85bcd2d4eb18bd11ffe2e8ee84cae4410`. The owned private ChatGPT plugin used matching 0.3.0 source ZIP SHA-256 `d569208c3ce1cb3976e10780bbf7a33615058ca7d5ea9826287eb6a0c41e956f`. Two fresh explicitly selected Web conversations read actual local PDFs and saved separate passage-linked annotations; fresh native reads and the actual Zotero reader established storage and display separately.
+
+The private plugin completed normal **Uninstall** and **Install plugin** on the same owned backend and release, retaining USER/PRIVATE scope, the connected Mac Safe Files dependency, and its private bridge root. Zotero completed remove, normal restart, installation from the pinned XPI, and another normal restart. Fresh session `c846fc1e865a2513d1f1e832e2a1af85` reported enabled 0.3.0 and all 15 operations. Before new checks, the 215-record journal was byte-identical to the pre-reinstall copy.
+
+Fresh native listings retained the complete tested comments at 7,287, 8,224, and 1,854 characters, including manual edits. Exact replay of historical create `s2-save-261023-e1` returned its byte-identical recorded result; operation count remained 218 across replay and one annotation retained its current manually edited body. Shared transport and unrelated plugins were not removed. These observations establish ordinary lifecycle retention, not forced-crash recovery or public installation.
+
+A separate initial read-only request stalled in the serialized scanner. Recovery retained its uncertain outcome. A later diagnostic session required one Activity Monitor Force Quit; the subsequent evaluated cold-reader probe completed in 683 ms without reproducing the cause. That diagnostic recovery is distinct from the ordinary lifecycle sequence above.
 
 ## Historical installation evidence
 

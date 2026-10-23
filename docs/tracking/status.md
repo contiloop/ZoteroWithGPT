@@ -10,7 +10,7 @@ The profile-installed 0.3.0 XPI matches the release artifact hash above. The own
 
 Direct-local checks against the installed adapter separately proved exact append preservation and stale manual-edit conflict protection. Ordinary private-plugin Uninstall/Install and Zotero remove/restart/install/restart retained the operation journal and all tested annotations. Fresh session `c846fc1e865a2513d1f1e832e2a1af85` reported enabled 0.3.0, Zotero 10.0.6, and all 15 operations. The 215-record store was byte-identical before new checks. Exact replay of historical create `s2-save-261023-e1` returned the byte-identical recorded result without adding an operation or native annotation.
 
-R12 actual acceptance is complete for the explicitly selected local-study workflow. Automatic invocation remains an optional convenience rather than a completion gate. Direct-local evidence is labeled separately from Web evidence, and public distribution, a public Mac connection installer, and ChatGPT Work parity remain outside the accepted surface.
+Actual acceptance is complete for the explicitly selected local-study workflow. Automatic invocation remains an optional convenience rather than a completion gate. Direct-local evidence is labeled separately from Web evidence, and public distribution, a public Mac connection installer, and ChatGPT Work parity remain outside the accepted surface.
 
 ## Historical 0.2.2 evidence
 

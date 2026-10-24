@@ -254,17 +254,10 @@ function makeProtocolResponseDefinition(operation) {
       error: clone(protocolResponseSchema.properties.error),
       verification: clone(protocolResponseSchema.properties.verification),
     },
+    allOf: clone(protocolResponseSchema.allOf),
   };
   const roots = ["identifier", ...referencedDefinitionNames(response)];
   const definitions = selectDefinitions(protocolResponseSchema.$defs, roots);
-  // The shared protocol schema retains historical result readability. The MCP
-  // surface narrows advertised connection capabilities to executable v1 names.
-  const connectionStatus = definitions.connectionStatusResult;
-  if (connectionStatus !== undefined) {
-    connectionStatus.properties.capabilities.properties.operations.items.enum = [
-      ...ACTIVE_PROTOCOL_OPERATIONS,
-    ];
-  }
   return { response, definitions };
 }
 
@@ -516,31 +509,18 @@ function validateWrapperError(value) {
   return error;
 }
 
-function validateActiveCapabilities(response) {
-  if (response.state !== "succeeded") return;
-  const operations = response.data.capabilities.operations;
-  if (
-    operations.length !== ACTIVE_PROTOCOL_OPERATIONS.length ||
-    operations.some((operation) => !ACTIVE_OPERATION_SET.has(operation))
-  ) {
-    fail("connection_status must advertise exactly the active MCP protocol operations");
-  }
-}
-
-function requestForResultContext(context, prepared) {
+function requestForResultContext(context, prepared, nativeResult) {
   if (prepared.kind === "operation") {
     if (Object.prototype.hasOwnProperty.call(context, "recordedRequest")) {
       fail("Current invocations do not accept a recordedRequest");
     }
-    if (context.publication === "unknown") {
-      fail("Current invocations cannot claim unknown publication history");
-    }
-    return prepared.request;
+    return nativeResult ? prepared.request : null;
   }
 
   if (context.publication === "observed_not_published") {
     fail("Historical lookup cannot claim not_published for a prior invocation");
   }
+  if (!nativeResult && context.publication === "unknown") return null;
   if (!Object.prototype.hasOwnProperty.call(context, "recordedRequest")) {
     return fail("Historical lookup requires its recorded protocol request");
   }
@@ -609,7 +589,6 @@ export function validateZoteroMcpResult(contextValue, value) {
     fail("$context.publication is not supported");
   }
   const prepared = prepareZoteroMcpToolCall(context.toolName, context.input);
-  const request = requestForResultContext(context, prepared);
 
   const result = expectRecord(value, "$result");
   expectExactKeys(
@@ -627,6 +606,7 @@ export function validateZoteroMcpResult(contextValue, value) {
   }
 
   const nativeResult = result.result !== null;
+  const request = requestForResultContext(context, prepared, nativeResult);
   const connection = validateResultConnection(result.connection, prepared, nativeResult);
   if (nativeResult) {
     if (result.error !== null) fail("A native result requires null wrapper error");
@@ -644,7 +624,6 @@ export function validateZoteroMcpResult(contextValue, value) {
       fail("Native result operationId does not match its recorded request");
     }
     if (request.operation === "connection_status") {
-      validateActiveCapabilities(response);
       if (
         response.state === "succeeded" &&
         response.data.profile.id !== connection.profileId

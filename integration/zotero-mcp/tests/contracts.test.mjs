@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import Ajv2020 from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
 
 import {
   ACTIVE_PROTOCOL_OPERATIONS,
@@ -22,15 +23,25 @@ const REQUEST_SCHEMA_FILE = path.join(
   PROJECT_ROOT,
   "scripts/package/assets/protocol/v1-request.schema.json",
 );
+const RESPONSE_SCHEMA_FILE = path.join(
+  PROJECT_ROOT,
+  "scripts/package/assets/protocol/v1-response.schema.json",
+);
 
 async function json(filename) {
   return JSON.parse(await readFile(filename, "utf8"));
 }
 
-const [callsFixture, resultsFixture, protocolRequestSchema] = await Promise.all([
+const [
+  callsFixture,
+  resultsFixture,
+  protocolRequestSchema,
+  protocolResponseSchema,
+] = await Promise.all([
   json(path.join(FIXTURE_ROOT, "tool-calls.json")),
   json(path.join(FIXTURE_ROOT, "tool-results.json")),
   json(REQUEST_SCHEMA_FILE),
+  json(RESPONSE_SCHEMA_FILE),
 ]);
 
 const callsByTool = new Map(callsFixture.calls.map((entry) => [entry.tool, entry]));
@@ -93,6 +104,7 @@ function schemaValidator(schema) {
     strictTypes: false,
     strictRequired: false,
   });
+  addFormats(ajv);
   ajv.addKeyword({
     keyword: "x-maxUtf8Bytes",
     type: "string",
@@ -155,9 +167,22 @@ test("inventory exposes only the thirteen active protocol operations and lookup"
   assert.deepEqual(Object.keys(ZOTERO_MCP_TOOL_BY_NAME), EXPECTED_TOOLS);
   assert.equal(new Set(EXPECTED_TOOLS).size, EXPECTED_TOOLS.length);
 
+  assert.equal(Object.hasOwn(ZOTERO_MCP_TOOL_BY_NAME, "zotero_inspect_arxiv"), false);
+  assert.equal(Object.hasOwn(ZOTERO_MCP_TOOL_BY_NAME, "zotero_ensure_arxiv_pdf"), false);
+
   const publishedContract = JSON.stringify(ZOTERO_MCP_TOOLS);
-  assert.doesNotMatch(publishedContract, /inspect_arxiv|ensure_arxiv_pdf/u);
   assert.doesNotMatch(publishedContract, /(?:\/Users\/|\.dryforge(?:\/|\\)|bridgeRoot|sk-(?:proj-)?[A-Za-z0-9_-]{16,})/u);
+});
+
+test("native capability schema remains the shared v1 envelope without exposing retired tools", () => {
+  const projected = ZOTERO_MCP_TOOL_BY_NAME.zotero_connection_status
+    .outputSchema.$defs.connectionStatusResult;
+  assert.deepEqual(projected, protocolResponseSchema.$defs.connectionStatusResult);
+  assert.ok(
+    projected.properties.capabilities.properties.operations.items.enum
+      .includes("inspect_arxiv"),
+  );
+  assert.equal(Object.hasOwn(ZOTERO_MCP_TOOL_BY_NAME, "zotero_inspect_arxiv"), false);
 });
 
 test("MCP annotations identify reads, writes, replacement risk, replay, and local scope", () => {
@@ -356,8 +381,30 @@ test("wrapper failures distinguish unpublished, published-timeout, and unavailab
   const unavailable = resultsFixture.unavailableHistory;
   assert.equal(validatorsFor(unavailable.tool).output(unavailable.result), true);
   assert.equal(
-    validateZoteroMcpResult(lookupContext("unknown"), unavailable.result),
+    validateZoteroMcpResult({
+      toolName: callsFixture.lookup.tool,
+      input: callsFixture.lookup.input,
+      publication: "unknown",
+    }, unavailable.result),
     unavailable.result,
+  );
+  assert.equal(
+    validateZoteroMcpResult({
+      toolName: callsFixture.lookup.tool,
+      input: callsFixture.lookup.input,
+      publication: "unknown",
+      recordedRequest: { invalid: "history" },
+    }, unavailable.result),
+    unavailable.result,
+  );
+
+  const currentUnknown = structuredClone(unavailable.result);
+  assert.equal(
+    validateZoteroMcpResult(
+      currentContext("zotero_read_note", "unknown"),
+      currentUnknown,
+    ),
+    currentUnknown,
   );
 
   assert.deepEqual(WRAPPER_ERROR_CODES, [
@@ -392,6 +439,23 @@ test("result contracts reject unknown fields, empty outcomes, and conflicting na
   }
 });
 
+test("projected output schemas retain shared response lifecycle constraints", () => {
+  const successful = resultsByTool.get("zotero_read_note");
+  const validateOutput = validatorsFor("zotero_read_note").output;
+  const runningWithData = structuredClone(successful);
+  runningWithData.result.state = "running";
+  const succeededWithoutData = structuredClone(successful);
+  succeededWithoutData.result.data = null;
+
+  for (const invalid of [runningWithData, succeededWithoutData]) {
+    assert.equal(validateOutput(invalid), false, JSON.stringify(validateOutput.errors));
+    assert.throws(() => validateZoteroMcpResult(
+      currentContext("zotero_read_note"),
+      invalid,
+    ));
+  }
+});
+
 test("delivery evidence cannot be rewritten across current calls and historical lookup", () => {
   const unpublished = resultsFixture.unpublishedFailure;
   const falselyPublished = { ...unpublished.result, delivery: "published" };
@@ -407,10 +471,6 @@ test("delivery evidence cannot be rewritten across current calls and historical 
   ));
   assert.throws(() => validateZoteroMcpResult(
     lookupContext("observed_not_published"),
-    resultsFixture.unavailableHistory.result,
-  ));
-  assert.throws(() => validateZoteroMcpResult(
-    currentContext("zotero_read_note", "unknown"),
     resultsFixture.unavailableHistory.result,
   ));
 });
@@ -463,6 +523,24 @@ test("lookup validates against the recorded active operation and never creates a
 
   assert.throws(() => validateZoteroMcpResult(
     {
+      toolName: callsFixture.lookup.tool,
+      input: callsFixture.lookup.input,
+      publication: "observed_published",
+    },
+    resultsByTool.get("zotero_read_note"),
+  ));
+  assert.throws(() => validateZoteroMcpResult(
+    {
+      toolName: callsFixture.lookup.tool,
+      input: callsFixture.lookup.input,
+      publication: "observed_published",
+      recordedRequest: { invalid: "history" },
+    },
+    resultsByTool.get("zotero_read_note"),
+  ));
+
+  assert.throws(() => validateZoteroMcpResult(
+    {
       ...lookupContext("observed_published"),
       recordedRequest: {
         protocolVersion: 1,
@@ -489,11 +567,13 @@ test("validation returns complete native bodies without truncation or rewriting"
   assert.ok(Buffer.byteLength(body, "utf8") > 500_000);
 });
 
-test("connection status cannot advertise retired acquisition capabilities", () => {
+test("connection status accepts a valid native capability subset", () => {
   const value = structuredClone(resultsByTool.get("zotero_connection_status"));
-  value.result.data.capabilities.operations.push("inspect_arxiv");
-  assert.throws(() => validateZoteroMcpResult(
-    currentContext("zotero_connection_status"),
+  value.result.data.capabilities.operations = ["connection_status", "read_pdf"];
+  const validateOutput = validatorsFor("zotero_connection_status").output;
+  assert.equal(validateOutput(value), true, JSON.stringify(validateOutput.errors));
+  assert.equal(
+    validateZoteroMcpResult(currentContext("zotero_connection_status"), value),
     value,
-  ));
+  );
 });

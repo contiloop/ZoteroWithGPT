@@ -27,6 +27,28 @@ function writeAuthorization(scope = "Save the exact requested content.") {
   return { kind: "explicit_request", scope };
 }
 
+function nonSucceeded(request, state) {
+  const errorCodes = {
+    rejected: "conflict",
+    failed: "storage_error",
+    indeterminate: "unknown_outcome",
+  };
+  return {
+    protocolVersion: 1,
+    operationId: request.operationId,
+    state,
+    data: null,
+    error: state === "queued" || state === "running"
+      ? null
+      : {
+          code: errorCodes[state],
+          message: `Controlled ${state} fixture`,
+          retryable: state !== "rejected",
+        },
+    verification: { storage: "not_checked", viewer: "not_checked" },
+  };
+}
+
 function annotationAnchor() {
   return {
     libraryId: "1",
@@ -120,7 +142,7 @@ test("input is snapshotted before awaits and a post-publication timeout keeps kn
   });
   const service = createZoteroMcpService({
     bridgeRoot: fixture.root,
-    waitTimeoutMs: 35,
+    waitTimeoutMs: 200,
     pollIntervalMs: 5,
   });
   const input = searchInput(fixture, "snapshot-1", "original");
@@ -231,6 +253,52 @@ test("semantic response mismatches return invalid_result without exposing the mi
   assert.equal(result.delivery, "published");
   assert.equal(result.error.code, "invalid_result");
   assert.doesNotMatch(JSON.stringify(result), /SECRET|private mismatched/u);
+});
+
+test("write success requires storage confirmation but preserves viewer failure", async (t) => {
+  const fixture = await createControlledBridgeFixture(t);
+  await startControlledNativeResponder(t, fixture, async (request) => {
+    if (request.operation === "connection_status") return defaultNativeResponse(fixture, request);
+    if (request.operation !== "create_note") return undefined;
+    return succeeded(request, {
+      noteKey: request.operationId === "storage-unconfirmed" ? "NOTE-BAD" : "NOTE-GOOD",
+      revision: "rev:1",
+      content: request.payload.content,
+      deepLink: "zotero://select/library/items/NOTE1",
+    }, request.operationId === "storage-unconfirmed"
+      ? { storage: "failed", viewer: "confirmed" }
+      : { storage: "confirmed", viewer: "failed" });
+  });
+  const service = createZoteroMcpService({
+    bridgeRoot: fixture.root,
+    waitTimeoutMs: 1_000,
+    pollIntervalMs: 5,
+  });
+  t.after(() => service.close());
+  const common = {
+    connection: connectionFor(fixture),
+    authorization: writeAuthorization(),
+    payload: { libraryId: "1", itemKey: "ITEM1", content: "complete body" },
+  };
+
+  const unconfirmed = await service.callTool("zotero_create_note", {
+    ...common,
+    operationId: "storage-unconfirmed",
+  });
+  assert.equal(unconfirmed.delivery, "published");
+  assert.equal(unconfirmed.result, null);
+  assert.equal(unconfirmed.error.code, "invalid_result");
+
+  const viewerFailed = await service.callTool("zotero_create_note", {
+    ...common,
+    operationId: "viewer-failed-after-storage-confirmed",
+  });
+  assert.equal(viewerFailed.delivery, "published");
+  assert.equal(viewerFailed.result.state, "succeeded");
+  assert.deepEqual(viewerFailed.result.verification, {
+    storage: "confirmed",
+    viewer: "failed",
+  });
 });
 
 test("annotation append retains preflight evidence and validates complete Unicode readback", async (t) => {
@@ -551,6 +619,287 @@ test("disabled historical lookup is observation-only and missing append evidence
   ]);
 });
 
+test("write lifecycle results before success do not require MCP complete-body evidence", async (t) => {
+  const fixture = await createControlledBridgeFixture(t);
+  const states = ["queued", "running", "rejected", "failed", "indeterminate"];
+  const appendRequests = new Map();
+
+  for (const state of states) {
+    const operationId = `legacy-append-${state}`;
+    const request = {
+      protocolVersion: 1,
+      operationId,
+      operation: "update_note",
+      profileId: fixture.profileId,
+      authorization: writeAuthorization(),
+      payload: {
+        libraryId: "1",
+        itemKey: "ITEM1",
+        noteKey: "NOTE1",
+        expectedRevision: "rev:9",
+        mode: "append",
+        content: "approved addition",
+      },
+    };
+    appendRequests.set(state, request);
+    await writeFile(
+      path.join(fixture.requestDirectory, `${operationId}.request.json`),
+      JSON.stringify(request),
+    );
+    await writeFile(
+      path.join(fixture.resultDirectory, `${operationId}.result.json`),
+      JSON.stringify(nonSucceeded(request, state)),
+    );
+  }
+
+  const succeededAppendRequest = {
+    ...structuredClone(appendRequests.get("rejected")),
+    operationId: "legacy-append-succeeded-without-evidence",
+  };
+  await writeFile(
+    path.join(fixture.requestDirectory, `${succeededAppendRequest.operationId}.request.json`),
+    JSON.stringify(succeededAppendRequest),
+  );
+  await writeFile(
+    path.join(fixture.resultDirectory, `${succeededAppendRequest.operationId}.result.json`),
+    JSON.stringify(succeeded(succeededAppendRequest, {
+      noteKey: "NOTE1",
+      revision: "rev:10",
+      content: "Existing body\n\napproved addition",
+      deepLink: "zotero://select/library/items/NOTE1",
+    })),
+  );
+
+  const invalidAnnotationRequest = {
+    protocolVersion: 1,
+    operationId: "legacy-invalid-annotation-rejected",
+    operation: "create_annotation",
+    profileId: fixture.profileId,
+    authorization: writeAuthorization(),
+    payload: {
+      anchor: annotationAnchor(),
+      type: "highlight",
+      comment: " trailing body ",
+      color: "#ffd400",
+    },
+  };
+  await writeFile(
+    path.join(fixture.requestDirectory, `${invalidAnnotationRequest.operationId}.request.json`),
+    JSON.stringify(invalidAnnotationRequest),
+  );
+  await writeFile(
+    path.join(fixture.resultDirectory, `${invalidAnnotationRequest.operationId}.result.json`),
+    JSON.stringify(nonSucceeded(invalidAnnotationRequest, "rejected")),
+  );
+
+  const service = createZoteroMcpService({
+    bridgeRoot: fixture.root,
+    waitTimeoutMs: 1_000,
+    pollIntervalMs: 5,
+  });
+  t.after(() => service.close());
+
+  for (const [state, request] of appendRequests) {
+    const observed = await service.callTool("zotero_get_operation_result", {
+      operationId: request.operationId,
+      connection: connectionFor(fixture),
+    });
+    assert.equal(observed.delivery, "published");
+    assert.equal(observed.result.state, state);
+    assert.equal(observed.error, null);
+  }
+
+  const responder = await startControlledNativeResponder(t, fixture, async (request) => {
+    if (request.operation === "connection_status") return defaultNativeResponse(fixture, request);
+    return undefined;
+  });
+  const rejectedAppendRequest = appendRequests.get("rejected");
+  const directAppend = await service.callTool("zotero_update_note", {
+    operationId: rejectedAppendRequest.operationId,
+    connection: connectionFor(fixture),
+    authorization: rejectedAppendRequest.authorization,
+    payload: rejectedAppendRequest.payload,
+  });
+  assert.equal(directAppend.delivery, "published");
+  assert.equal(directAppend.result.state, "rejected");
+
+  const unresolvedDirectSuccess = await service.callTool("zotero_update_note", {
+    operationId: succeededAppendRequest.operationId,
+    connection: connectionFor(fixture),
+    authorization: succeededAppendRequest.authorization,
+    payload: succeededAppendRequest.payload,
+  });
+  assert.equal(unresolvedDirectSuccess.delivery, "published");
+  assert.equal(unresolvedDirectSuccess.result, null);
+  assert.equal(unresolvedDirectSuccess.error.code, "invalid_result");
+
+  const unresolvedHistoricalSuccess = await service.callTool("zotero_get_operation_result", {
+    operationId: succeededAppendRequest.operationId,
+    connection: connectionFor(fixture),
+  });
+  assert.equal(unresolvedHistoricalSuccess.delivery, "published");
+  assert.equal(unresolvedHistoricalSuccess.result, null);
+  assert.equal(unresolvedHistoricalSuccess.error.code, "invalid_result");
+
+  const directInvalid = await service.callTool("zotero_create_annotation", {
+    operationId: invalidAnnotationRequest.operationId,
+    connection: connectionFor(fixture),
+    authorization: invalidAnnotationRequest.authorization,
+    payload: invalidAnnotationRequest.payload,
+  });
+  assert.equal(directInvalid.delivery, "published");
+  assert.equal(directInvalid.result.state, "rejected");
+
+  const historicalInvalid = await service.callTool("zotero_get_operation_result", {
+    operationId: invalidAnnotationRequest.operationId,
+    connection: connectionFor(fixture),
+  });
+  assert.equal(historicalInvalid.result.state, "rejected");
+  assert.equal(
+    responder.observed.some((request) => request.operationId.startsWith("mcp.preflight.")),
+    false,
+  );
+});
+
+test("the absolute invocation deadline fences final publication and late result reads", async (t) => {
+  const publicationFixture = await createControlledBridgeFixture(t);
+  const publicationStatusRequest = {
+    protocolVersion: 1,
+    operationId: "deadline-publication-status",
+    operation: "connection_status",
+    payload: {},
+  };
+  await writeFile(
+    path.join(publicationFixture.requestDirectory, `${publicationStatusRequest.operationId}.request.json`),
+    JSON.stringify(publicationStatusRequest),
+  );
+  await writeFile(
+    path.join(publicationFixture.resultDirectory, `${publicationStatusRequest.operationId}.result.json`),
+    JSON.stringify(succeeded(
+      publicationStatusRequest,
+      connectionStatusData(publicationFixture),
+    )),
+  );
+
+  let armPublicationDelay = false;
+  let delayedPublicationFence = false;
+  const descriptorPath = path.join(publicationFixture.root, "bridge-v1.json");
+  const lateRequestName = "deadline-late-publication.request.json";
+  const publicationFileSystem = new NodeSecureFileSystem({
+    afterRead: async (filename) => {
+      if (!armPublicationDelay || delayedPublicationFence || filename !== descriptorPath) return;
+      const names = await readdir(publicationFixture.requestDirectory);
+      if (!names.some((name) => name.startsWith(`${lateRequestName}.partial.`))) return;
+      delayedPublicationFence = true;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    },
+  });
+  const publicationService = createZoteroMcpService({
+    bridgeRoot: publicationFixture.root,
+    adapter: new NodeFileBridgeAdapter({
+      root: publicationFixture.root,
+      fileSystem: publicationFileSystem,
+      pollIntervalMs: 5,
+    }),
+    waitTimeoutMs: 40,
+  });
+  t.after(() => publicationService.close());
+  const warmedPublication = await publicationService.callTool("zotero_connection_status", {
+    operationId: publicationStatusRequest.operationId,
+  });
+  assert.equal(warmedPublication.result.state, "succeeded");
+
+  armPublicationDelay = true;
+  const latePublication = await publicationService.callTool(
+    "zotero_search_papers",
+    searchInput(publicationFixture, "deadline-late-publication"),
+  );
+  assert.equal(delayedPublicationFence, true);
+  assert.equal(latePublication.delivery, "not_published");
+  assert.equal(latePublication.error.code, "wait_expired");
+  await new Promise((resolve) => setTimeout(resolve, 175));
+  assert.equal((await readdir(publicationFixture.requestDirectory)).includes(lateRequestName), false);
+
+  const resultFixture = await createControlledBridgeFixture(t, {
+    sessionId: "abcdef0123456789abcdef0123456789",
+  });
+  const resultStatusRequest = {
+    protocolVersion: 1,
+    operationId: "deadline-result-status",
+    operation: "connection_status",
+    payload: {},
+  };
+  const resultRequest = {
+    protocolVersion: 1,
+    operationId: "deadline-late-result",
+    operation: "search_papers",
+    profileId: resultFixture.profileId,
+    payload: { query: "Bayesian", limit: 25 },
+  };
+  for (const [request, result] of [
+    [resultStatusRequest, succeeded(resultStatusRequest, connectionStatusData(resultFixture))],
+    [resultRequest, succeeded(resultRequest, { matches: [] })],
+  ]) {
+    await writeFile(
+      path.join(resultFixture.requestDirectory, `${request.operationId}.request.json`),
+      JSON.stringify(request),
+    );
+    await writeFile(
+      path.join(resultFixture.resultDirectory, `${request.operationId}.result.json`),
+      JSON.stringify(result),
+    );
+  }
+  let armResultDelay = false;
+  let delayedResultRead = false;
+  const lateResultPath = path.join(
+    resultFixture.resultDirectory,
+    `${resultRequest.operationId}.result.json`,
+  );
+  const resultFileSystem = new NodeSecureFileSystem({
+    afterRead: async (filename) => {
+      if (!armResultDelay || delayedResultRead || filename !== lateResultPath) return;
+      delayedResultRead = true;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    },
+  });
+  const resultService = createZoteroMcpService({
+    bridgeRoot: resultFixture.root,
+    adapter: new NodeFileBridgeAdapter({
+      root: resultFixture.root,
+      fileSystem: resultFileSystem,
+      pollIntervalMs: 5,
+    }),
+    waitTimeoutMs: 40,
+  });
+  t.after(() => resultService.close());
+  const warmedResult = await resultService.callTool("zotero_connection_status", {
+    operationId: resultStatusRequest.operationId,
+  });
+  assert.equal(warmedResult.result.state, "succeeded");
+
+  armResultDelay = true;
+  const lateResult = await resultService.callTool(
+    "zotero_search_papers",
+    searchInput(resultFixture, resultRequest.operationId),
+  );
+  assert.equal(delayedResultRead, true);
+  assert.equal(lateResult.delivery, "published");
+  assert.equal(lateResult.result, null);
+  assert.equal(lateResult.error.code, "wait_expired");
+
+  delayedResultRead = false;
+  const beforeLookup = (await readdir(resultFixture.requestDirectory)).sort();
+  const lateLookup = await resultService.callTool("zotero_get_operation_result", {
+    operationId: resultRequest.operationId,
+    connection: connectionFor(resultFixture),
+  });
+  assert.equal(delayedResultRead, true);
+  assert.equal(lateLookup.delivery, "published");
+  assert.equal(lateLookup.result, null);
+  assert.equal(lateLookup.error.code, "wait_expired");
+  assert.deepEqual((await readdir(resultFixture.requestDirectory)).sort(), beforeLookup);
+});
+
 test("one invocation deadline is shared by capability bootstrap and the requested operation", async (t) => {
   const fixture = {
     profileId: "profile-A",
@@ -606,7 +955,7 @@ test("internal bootstrap and append preflight publication never grants published
   );
   const bootstrapService = createZoteroMcpService({
     bridgeRoot: bootstrapFixture.root,
-    waitTimeoutMs: 30,
+    waitTimeoutMs: 150,
     pollIntervalMs: 5,
   });
   const bootstrapFailure = await bootstrapService.callTool(
@@ -627,7 +976,7 @@ test("internal bootstrap and append preflight publication never grants published
   });
   const appendService = createZoteroMcpService({
     bridgeRoot: appendFixture.root,
-    waitTimeoutMs: 40,
+    waitTimeoutMs: 150,
     pollIntervalMs: 5,
   });
   const appendFailure = await appendService.callTool("zotero_update_annotation", {

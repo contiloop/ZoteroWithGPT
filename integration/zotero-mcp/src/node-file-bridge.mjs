@@ -68,6 +68,23 @@ function withPublication(error, publication) {
   return bridgeError("io_error", "The dedicated Zotero bridge could not be accessed safely.", publication, error);
 }
 
+function validateDeadline(deadline) {
+  if (deadline !== undefined && (typeof deadline !== "number" || !Number.isFinite(deadline))) {
+    throw new TypeError("deadline must be a finite monotonic timestamp");
+  }
+  return deadline;
+}
+
+function assertDeadline(deadline, publication) {
+  if (deadline !== undefined && performance.now() >= deadline) {
+    throw bridgeError(
+      "wait_expired",
+      "No complete Zotero result arrived before the invocation deadline.",
+      publication,
+    );
+  }
+}
+
 function exactObject(value, keys, label) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw bridgeError("connection_unavailable", `The ${label} is invalid.`);
@@ -269,16 +286,22 @@ export class NodeFileBridgeAdapter {
     }
   }
 
-  async openCurrent(expectedConnection = undefined) {
+  async openCurrent(expectedConnection = undefined, options = {}) {
     try {
-      return await this.#openConfiguredSession(false, expectedConnection);
+      const deadline = validateDeadline(options.deadline);
+      assertDeadline(deadline, "not_published");
+      const session = await this.#openConfiguredSession(false, expectedConnection);
+      assertDeadline(deadline, "not_published");
+      return session;
     } catch (error) {
       throw withPublication(error, "not_published");
     }
   }
 
-  async openHistorical(connection) {
+  async openHistorical(connection, options = {}) {
     try {
+      const deadline = validateDeadline(options.deadline);
+      assertDeadline(deadline, "unknown");
       if (
         connection === null ||
         typeof connection !== "object" ||
@@ -315,6 +338,7 @@ export class NodeFileBridgeAdapter {
       };
       const status = validateStatus(json(statusRead.bytes, "session status"), statusDescriptor, true);
       await this.#assertHistoricalProfile(connection.profileId);
+      assertDeadline(deadline, "unknown");
       return Object.freeze({
         kind: "historical",
         root: this.root,
@@ -347,7 +371,9 @@ export class NodeFileBridgeAdapter {
     }
   }
 
-  async inspectRequest(session, request) {
+  async inspectRequest(session, request, options = {}) {
+    const deadline = validateDeadline(options.deadline);
+    assertDeadline(deadline, "not_published");
     const validatedRequest = this.#validatedRequestForSession(session, request);
     const filename = this.#requestPath(session, validatedRequest.operationId);
     let read;
@@ -361,7 +387,10 @@ export class NodeFileBridgeAdapter {
     } catch (error) {
       throw withPublication(error, "unknown");
     }
-    if (read === undefined) return { state: "absent" };
+    if (read === undefined) {
+      assertDeadline(deadline, "not_published");
+      return { state: "absent" };
+    }
     let recorded;
     try {
       recorded = parseProtocolRequest(read.bytes);
@@ -371,20 +400,28 @@ export class NodeFileBridgeAdapter {
     if (recorded.operationId !== validatedRequest.operationId) {
       throw bridgeError("identity_conflict", "The operation ID already has mismatched request evidence.", "not_published");
     }
-    return bytesEqual(canonicalRequestBytes(recorded), canonicalRequestBytes(validatedRequest))
+    const result = bytesEqual(canonicalRequestBytes(recorded), canonicalRequestBytes(validatedRequest))
       ? { state: "matching", request: recorded }
       : { state: "conflict", request: recorded };
+    assertDeadline(deadline, result.state === "matching" ? "published" : "not_published");
+    return result;
   }
 
-  async publishRequest(session, request) {
+  async publishRequest(session, request, options = {}) {
+    const deadline = validateDeadline(options.deadline);
+    assertDeadline(deadline, "not_published");
     const validatedRequest = this.#validatedRequestForSession(session, request);
     const encoded = encoder.encode(JSON.stringify(validatedRequest));
     if (encoded.byteLength > session.maxRequestBytes) {
       throw bridgeError("invalid_input", "The request exceeds the connected bridge byte limit.", "not_published");
     }
     await this.assertCurrent(session, "not_published");
-    const prior = await this.inspectRequest(session, validatedRequest);
-    if (prior.state === "matching") return "published";
+    assertDeadline(deadline, "not_published");
+    const prior = await this.inspectRequest(session, validatedRequest, { deadline });
+    if (prior.state === "matching") {
+      assertDeadline(deadline, "published");
+      return "published";
+    }
     if (prior.state === "conflict") {
       throw bridgeError("identity_conflict", "The operation ID already identifies different content.", "not_published");
     }
@@ -407,14 +444,20 @@ export class NodeFileBridgeAdapter {
         await handle.close();
       }
       await this.assertCurrent(session, "not_published");
+      assertDeadline(deadline, "not_published");
       try {
         finalLinkAttempted = true;
         await link(staging, target);
+        assertDeadline(deadline, "published");
       } catch (cause) {
+        if (cause instanceof BridgeAdapterError) throw cause;
         if (cause?.code !== "EEXIST") {
           try {
-            const observed = await this.inspectRequest(session, validatedRequest);
-            if (observed.state === "matching") return "published";
+            const observed = await this.inspectRequest(session, validatedRequest, { deadline });
+            if (observed.state === "matching") {
+              assertDeadline(deadline, "published");
+              return "published";
+            }
             if (observed.state === "conflict") {
               throw bridgeError("identity_conflict", "The operation ID already identifies different content.", "not_published");
             }
@@ -433,8 +476,11 @@ export class NodeFileBridgeAdapter {
             throw bridgeError("io_error", "Request publication could not be confirmed.", "unknown", cause);
           }
         }
-        const observed = await this.inspectRequest(session, validatedRequest);
-        if (observed.state === "matching") return "published";
+        const observed = await this.inspectRequest(session, validatedRequest, { deadline });
+        if (observed.state === "matching") {
+          assertDeadline(deadline, "published");
+          return "published";
+        }
         throw bridgeError("identity_conflict", "The operation ID already identifies different content.", "not_published");
       }
       let stored;
@@ -443,6 +489,7 @@ export class NodeFileBridgeAdapter {
       } catch (cause) {
         throw bridgeError("io_error", "Published request readback could not be confirmed.", "published", cause);
       }
+      assertDeadline(deadline, "published");
       if (!bytesEqual(stored.bytes, encoded)) {
         throw bridgeError("io_error", "Published request bytes did not match the complete request.", "published");
       }
@@ -465,15 +512,21 @@ export class NodeFileBridgeAdapter {
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_WAIT_TIMEOUT_MS) {
       throw new TypeError(`timeoutMs must be an integer from 1 to ${MAX_WAIT_TIMEOUT_MS}`);
     }
-    const deadline = performance.now() + timeoutMs;
+    const deadline = validateDeadline(options.deadline) ?? performance.now() + timeoutMs;
     let delay = this.pollIntervalMs;
     while (true) {
+      assertDeadline(deadline, "published");
       await this.assertCurrent(session, "published");
-      const requestEvidence = await this.inspectRequest(session, request);
+      assertDeadline(deadline, "published");
+      const requestEvidence = await this.inspectRequest(session, request, { deadline });
       if (requestEvidence.state !== "matching") {
         throw bridgeError("identity_conflict", "Published request evidence no longer matches.", "published");
       }
-      const result = await this.#readResult(session, request.operationId, true);
+      assertDeadline(deadline, "published");
+      const result = await this.#readResult(session, request.operationId, {
+        deadline,
+        publication: "published",
+      });
       if (result !== undefined) return result;
       const remaining = deadline - performance.now();
       if (remaining <= 0) {
@@ -484,7 +537,10 @@ export class NodeFileBridgeAdapter {
     }
   }
 
-  async readRecordedRequest(session, operationId) {
+  async readRecordedRequest(session, operationId, options = {}) {
+    const deadline = validateDeadline(options.deadline);
+    let publication = options.publication ?? "unknown";
+    assertDeadline(deadline, publication);
     const target = this.#requestPath(session, operationId);
     let read;
     try {
@@ -495,6 +551,7 @@ export class NodeFileBridgeAdapter {
       });
       if (read === undefined) {
         await this.#assertReadableSession(session, true);
+        assertDeadline(deadline, options.publication ?? "unknown");
         return undefined;
       }
       const request = parseProtocolRequest(read.bytes);
@@ -508,34 +565,42 @@ export class NodeFileBridgeAdapter {
         throw bridgeError("invalid_result", "Recorded request profile does not match its session.");
       }
       await this.#assertReadableSession(session, true);
+      publication = "published";
+      assertDeadline(deadline, publication);
       return request;
     } catch (error) {
-      throw withPublication(error, "unknown");
+      throw withPublication(error, publication);
     }
   }
 
-  async readRecordedResult(session, operationId) {
-    return this.#readResult(session, operationId, false);
+  async readRecordedResult(session, operationId, options = {}) {
+    return this.#readResult(session, operationId, {
+      deadline: validateDeadline(options.deadline),
+      publication: options.publication ?? "unknown",
+    });
   }
 
-  async #readResult(session, operationId, published) {
+  async #readResult(session, operationId, options) {
+    const { deadline, publication } = options;
+    assertDeadline(deadline, publication);
     const target = this.#resultPath(session, operationId);
     let read;
     try {
-      await this.#assertReadableSession(session, !published);
+      await this.#assertReadableSession(session, publication !== "published");
       read = await this.fileSystem.readRegularFile(target, session.maxResultBytes, {
         optional: true,
         tooLargeCode: "result_too_large",
       });
       if (read === undefined) {
-        await this.#assertReadableSession(session, !published);
+        await this.#assertReadableSession(session, publication !== "published");
+        assertDeadline(deadline, publication);
         return undefined;
       }
-      const result = json(read.bytes, "Zotero result", "invalid_result");
-      await this.#assertReadableSession(session, !published);
-      return result;
+      await this.#assertReadableSession(session, publication !== "published");
+      assertDeadline(deadline, publication);
+      return json(read.bytes, "Zotero result", "invalid_result");
     } catch (error) {
-      throw withPublication(error, published ? "published" : "unknown");
+      throw withPublication(error, publication);
     }
   }
 

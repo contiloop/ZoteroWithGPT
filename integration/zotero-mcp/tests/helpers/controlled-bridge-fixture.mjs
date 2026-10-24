@@ -1,4 +1,14 @@
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  link,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -193,11 +203,18 @@ export async function startControlledNativeResponder(t, fixture, handler) {
         const response = await handler(request, observed);
         if (response === undefined) continue;
         const resultName = `${request.operationId}.result.json`;
+        const target = path.join(fixture.resultDirectory, resultName);
+        const staging = `${target}.controlled.${process.pid}.${handled.size}.partial`;
         await writeFile(
-          path.join(fixture.resultDirectory, resultName),
+          staging,
           typeof response === "string" ? response : JSON.stringify(response),
           { flag: "wx" },
         );
+        try {
+          await link(staging, target);
+        } finally {
+          await unlink(staging).catch(() => {});
+        }
       }
       await new Promise((resolve) => setTimeout(resolve, 5));
     }

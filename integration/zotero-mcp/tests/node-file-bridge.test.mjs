@@ -143,6 +143,35 @@ test("canonical identical existing requests are observed without replacement", a
   assert.equal(await readFile(target, "utf8"), formatted);
 });
 
+test("deadline expiry after an atomic link preserves known publication", async (t) => {
+  const fixture = await createControlledBridgeFixture(t);
+  const request = searchRequest(fixture, "linked-before-deadline");
+  const target = path.join(
+    fixture.requestDirectory,
+    `${request.operationId}.request.json`,
+  );
+  let delayedReadback = false;
+  const fileSystem = new NodeSecureFileSystem({
+    afterRead: async (filename) => {
+      if (filename !== target || delayedReadback) return;
+      delayedReadback = true;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    },
+  });
+  const adapter = new NodeFileBridgeAdapter({ root: fixture.root, fileSystem });
+  const session = await adapter.openCurrent(connectionFor(fixture));
+
+  await assert.rejects(
+    adapter.publishRequest(session, request, { deadline: performance.now() + 100 }),
+    (error) =>
+      error instanceof BridgeAdapterError &&
+      error.code === "wait_expired" &&
+      error.publication === "published",
+  );
+  assert.equal(delayedReadback, true);
+  assert.deepEqual(JSON.parse(await readFile(target, "utf8")), request);
+});
+
 test("result reads ignore partial siblings and reject malformed, mismatched, and oversized finals", async (t) => {
   const fixture = await createControlledBridgeFixture(t, { maxResultBytes: 1024 });
   const adapter = new NodeFileBridgeAdapter({ root: fixture.root, pollIntervalMs: 5 });

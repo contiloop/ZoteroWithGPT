@@ -113,12 +113,20 @@ function assertBodyLimit(body, maxTextBytes = MAX_TEXT_BYTES) {
   if (encoder.encode(body).byteLength > maxTextBytes) throw new PreflightError("invalid_input");
 }
 
-function validateNativeResponse(request, response, evidence) {
+function validateNativeResponseEnvelope(request, response) {
   const validated = validateProtocolResponse(request.operation, response);
   if (validated.operationId !== request.operationId) {
     throw new SemanticResultError("Native result operation identity does not match");
   }
-  return validateSemanticResult(request, validated, evidence);
+  return validated;
+}
+
+function validateNativeResponse(request, response, evidence) {
+  return validateSemanticResult(
+    request,
+    validateNativeResponseEnvelope(request, response),
+    evidence,
+  );
 }
 
 function activeCapabilities(status, session) {
@@ -205,7 +213,7 @@ export class ZoteroMcpService {
     }
 
     if (prepared.kind === "lookup") {
-      return this.#lookup(toolName, input, prepared);
+      return this.#lookup(toolName, input, prepared, deadline);
     }
     return this.#invoke(toolName, input, prepared, deadline);
   }
@@ -214,16 +222,21 @@ export class ZoteroMcpService {
     let session;
     let publication = "not_published";
     try {
-      session = await this.#adapter.openCurrent(prepared.connection ?? undefined);
+      session = await this.#adapter.openCurrent(prepared.connection ?? undefined, { deadline });
+      this.#remainingTimeout(deadline, publication);
       let evidence;
 
       if (prepared.operation === "connection_status") {
         const response = await this.#execute(
           session,
           prepared.request,
-          undefined,
           deadline,
           () => { publication = "published"; },
+        );
+        validateSemanticResult(
+          prepared.request,
+          response,
+          { connection: session.connection },
         );
         if (response.state === "succeeded") this.#cacheCapabilities(session, response.data);
         const wrapper = ensureEnvelopeBudget(wrapperSuccess(session.connection, response));
@@ -231,10 +244,12 @@ export class ZoteroMcpService {
           responseContext(toolName, input, "published"),
           wrapper,
         );
+        this.#remainingTimeout(deadline, "published");
         return wrapper;
       }
 
       const capabilities = await this.#capabilitiesFor(session, deadline);
+      this.#remainingTimeout(deadline, publication);
       if (!capabilities.operations.includes(prepared.operation)) {
         return wrapperError(session.connection, "not_published", "connection_unavailable");
       }
@@ -242,30 +257,43 @@ export class ZoteroMcpService {
         return wrapperError(session.connection, "not_published", "invalid_input");
       }
 
-      const prior = await this.#adapter.inspectRequest(session, prepared.request);
+      const prior = await this.#adapter.inspectRequest(session, prepared.request, { deadline });
+      if (prior.state === "matching") publication = "published";
+      this.#remainingTimeout(deadline, publication);
       if (prior.state === "conflict") {
         return wrapperError(session.connection, "not_published", "identity_conflict");
       }
-      if (prior.state === "matching") publication = "published";
 
-      if (this.#isWrite(prepared.operation)) {
-        evidence = prior.state === "matching"
-          ? await this.#retainedWriteEvidence(session, prepared.request)
-          : await this.#newWriteEvidence(session, prepared.request, capabilities, deadline);
+      if (this.#isWrite(prepared.operation) && prior.state === "absent") {
+        evidence = await this.#newWriteEvidence(
+          session,
+          prepared.request,
+          capabilities,
+          deadline,
+        );
       }
 
       const response = await this.#execute(
         session,
         prepared.request,
-        evidence,
         deadline,
         () => { publication = "published"; },
       );
+      if (
+        this.#isWrite(prepared.operation) &&
+        response.state === "succeeded" &&
+        evidence === undefined
+      ) {
+        evidence = await this.#retainedWriteEvidence(session, prepared.request, deadline);
+        this.#remainingTimeout(deadline, "published");
+      }
+      validateSemanticResult(prepared.request, response, evidence);
       const wrapper = ensureEnvelopeBudget(wrapperSuccess(session.connection, response));
       validateZoteroMcpResult(
         responseContext(toolName, input, publication),
         wrapper,
       );
+      this.#remainingTimeout(deadline, publication);
       return wrapper;
     } catch (error) {
       if (error instanceof BridgeAdapterError) {
@@ -285,12 +313,18 @@ export class ZoteroMcpService {
     }
   }
 
-  async #lookup(toolName, input, prepared) {
+  async #lookup(toolName, input, prepared, deadline) {
     let session;
     let request;
     try {
-      session = await this.#adapter.openHistorical(prepared.connection);
-      request = await this.#adapter.readRecordedRequest(session, prepared.operationId);
+      session = await this.#adapter.openHistorical(prepared.connection, { deadline });
+      this.#remainingTimeout(deadline, "unknown");
+      request = await this.#adapter.readRecordedRequest(
+        session,
+        prepared.operationId,
+        { deadline },
+      );
+      this.#remainingTimeout(deadline, request === undefined ? "unknown" : "published");
       if (request === undefined) {
         return wrapperError(session.connection, "unknown", "invalid_result");
       }
@@ -303,7 +337,12 @@ export class ZoteroMcpService {
       ) {
         return wrapperError(session.connection, "unknown", "invalid_result");
       }
-      const result = await this.#adapter.readRecordedResult(session, prepared.operationId);
+      const result = await this.#adapter.readRecordedResult(
+        session,
+        prepared.operationId,
+        { deadline, publication: "published" },
+      );
+      this.#remainingTimeout(deadline, "published");
       if (result === undefined) {
         const wrapper = wrapperError(session.connection, "published", "wait_expired");
         validateZoteroMcpResult(
@@ -312,12 +351,14 @@ export class ZoteroMcpService {
         );
         return wrapper;
       }
-      const evidence = this.#isWrite(request.operation)
-        ? await this.#retainedWriteEvidence(session, request)
+      const response = validateNativeResponseEnvelope(request, result);
+      const evidence = this.#isWrite(request.operation) && response.state === "succeeded"
+        ? await this.#retainedWriteEvidence(session, request, deadline)
         : undefined;
-      const response = validateNativeResponse(
+      this.#remainingTimeout(deadline, "published");
+      validateSemanticResult(
         request,
-        result,
+        response,
         request.operation === "connection_status"
           ? { connection: session.connection }
           : evidence,
@@ -327,8 +368,18 @@ export class ZoteroMcpService {
         responseContext(toolName, input, "published", request),
         wrapper,
       );
+      this.#remainingTimeout(deadline, "published");
       return wrapper;
     } catch (error) {
+      if (error instanceof BridgeAdapterError && error.code === "wait_expired") {
+        return wrapperError(
+          session?.connection ?? prepared.connection,
+          request === undefined
+            ? error.publication
+            : mergePublication("published", error.publication),
+          "wait_expired",
+        );
+      }
       if (
         error instanceof BridgeAdapterError &&
         (error.code === "connection_changed" ||
@@ -376,12 +427,12 @@ export class ZoteroMcpService {
       response = await this.#execute(
         session,
         request,
-        { connection: session.connection },
         deadline,
       );
     } catch (error) {
       throw this.#internalPreflightError(error, "connection_unavailable");
     }
+    validateSemanticResult(request, response, { connection: session.connection });
     if (response.state !== "succeeded") throw new PreflightError("connection_unavailable");
     return this.#cacheCapabilities(session, response.data);
   }
@@ -405,10 +456,10 @@ export class ZoteroMcpService {
     return next;
   }
 
-  async #execute(session, request, evidence, deadline, onPublished = undefined) {
+  async #execute(session, request, deadline, onPublished = undefined) {
     this.#remainingTimeout(deadline, "not_published");
     try {
-      const publication = await this.#adapter.publishRequest(session, request);
+      const publication = await this.#adapter.publishRequest(session, request, { deadline });
       if (publication !== "published") {
         throw new BridgeAdapterError(
           "io_error",
@@ -428,15 +479,13 @@ export class ZoteroMcpService {
     onPublished?.();
     const timeoutMs = this.#remainingTimeout(deadline, "published");
     const result = await this.#adapter.waitForResult(session, request, {
+      deadline,
       timeoutMs,
     });
-    return validateNativeResponse(
-      request,
-      result,
-      request.operation === "connection_status"
-        ? { connection: session.connection }
-        : evidence,
-    );
+    this.#remainingTimeout(deadline, "published");
+    const response = validateNativeResponseEnvelope(request, result);
+    this.#remainingTimeout(deadline, "published");
+    return response;
   }
 
   async #newWriteEvidence(session, request, capabilities, deadline) {
@@ -467,23 +516,33 @@ export class ZoteroMcpService {
     }
     let response;
     try {
-      response = await this.#execute(session, preflight, undefined, deadline);
+      response = await this.#execute(session, preflight, deadline);
     } catch (error) {
       throw this.#internalPreflightError(error);
     }
+    validateSemanticResult(preflight, response);
     if (response.state !== "succeeded") throw new PreflightError();
     return this.#appendEvidence(request, preflight, response, capabilities.maxTextBytes);
   }
 
-  async #retainedWriteEvidence(session, request) {
+  async #retainedWriteEvidence(session, request, deadline) {
     if (
       (request.operation !== "update_annotation" && request.operation !== "update_note") ||
       request.payload.mode !== "append"
     ) {
-      return this.#newWriteEvidenceWithoutRead(request);
+      try {
+        return this.#newWriteEvidenceWithoutRead(request);
+      } catch {
+        throw new SemanticResultError("Retained complete-body evidence is invalid");
+      }
     }
     const preflight = await deriveAppendPreflightRequest(request);
-    const recordedRequest = await this.#adapter.readRecordedRequest(session, preflight.operationId);
+    const recordedRequest = await this.#adapter.readRecordedRequest(
+      session,
+      preflight.operationId,
+      { deadline, publication: "published" },
+    );
+    this.#remainingTimeout(deadline, "published");
     if (recordedRequest === undefined) throw new SemanticResultError("Append comparison request is missing");
     if (
       !this.#sameBytes(
@@ -493,7 +552,12 @@ export class ZoteroMcpService {
     ) {
       throw new SemanticResultError("Append comparison request does not match");
     }
-    const recordedResult = await this.#adapter.readRecordedResult(session, preflight.operationId);
+    const recordedResult = await this.#adapter.readRecordedResult(
+      session,
+      preflight.operationId,
+      { deadline, publication: "published" },
+    );
+    this.#remainingTimeout(deadline, "published");
     if (recordedResult === undefined) throw new SemanticResultError("Append comparison result is missing");
     const response = validateNativeResponse(preflight, recordedResult, undefined);
     if (response.state !== "succeeded") throw new SemanticResultError("Append comparison did not succeed");

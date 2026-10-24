@@ -5,6 +5,12 @@ import {
 } from "../../../dist/protocol/index.js";
 
 const encoder = new TextEncoder();
+const NATIVE_WRITE_OPERATIONS = new Set([
+  "create_annotation",
+  "update_annotation",
+  "create_note",
+  "update_note",
+]);
 
 export class SemanticResultError extends Error {
   constructor(message) {
@@ -57,6 +63,12 @@ function requireResultLimit(entries, requestedLimit, description) {
 export function validateSemanticResult(request, response, evidence = undefined) {
   const data = succeededData(response);
   if (data === undefined) return response;
+  if (
+    NATIVE_WRITE_OPERATIONS.has(request.operation) &&
+    response.verification.storage !== "confirmed"
+  ) {
+    fail("Successful native write storage is not confirmed");
+  }
 
   switch (request.operation) {
     case "connection_status": {

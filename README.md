@@ -1,7 +1,7 @@
 <a id="readme-top"></a>
 
 <div align="center">
-  <h1>Zotero</h1>
+  <h1>ZoteroWithGPT</h1>
   <p>Study together in ChatGPT. Keep what matters beside the paper.</p>
   <p>
     <a href="docs/install.md"><strong>Explore the installation guide »</strong></a>

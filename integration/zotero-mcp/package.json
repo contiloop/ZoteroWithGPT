@@ -1,0 +1,21 @@
+{
+  "name": "@zoterowithgpt/zotero-mcp",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "zotero-mcp": "server.mjs"
+  },
+  "engines": {
+    "node": ">=24 <27"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "typecheck": "node --check server.mjs && node --check src/bridge-port.mjs && node --check src/core.mjs && node --check src/node-file-bridge.mjs && node --check src/node-service.mjs && node --check src/service.mjs && node --check src/mcp-server.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "dompurify": "3.4.17",
+    "jsdom": "29.1.1"
+  }
+}

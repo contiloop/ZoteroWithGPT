@@ -7,18 +7,9 @@ Ask questions, work through equations, and discuss the paper first. When you
 say “highlight this and save your explanation,” Zotero receives the requested
 passage-linked annotation. Studying alone never triggers a save.
 
-## Project status
-
-This is a self-hosted project validated on the maintainer's private macOS and
-ChatGPT setup. The repository is public; it is not a hosted service or a
-one-click ChatGPT integration. Setup requires your own compatible ChatGPT MCP
-access, dedicated OpenAI Secure MCP tunnel, runtime credential, and local
-Zotero installation. Account access must be checked before installing.
-
-The basic study-to-highlight/comment workflow has been exercised in ChatGPT
-and checked in Zotero. Some exceptional recovery/update scenarios remain
-unverified on the dedicated route; see [validation status](docs/tracking/status.md).
-Windows, Linux, and ChatGPT Work are not validated deployment targets.
+This self-hosted project has been validated on the maintainer's macOS and
+ChatGPT setup. Account setup is manual; see [validation status](docs/tracking/status.md)
+for tested behavior and remaining limitations.
 
 ## What you can do
 
@@ -28,30 +19,70 @@ Windows, Linux, and ChatGPT Work are not validated deployment targets.
 - Keep long explanations attached to their passage instead of moving them to
   an unrelated note. Separate notes require an explicit request.
 
-The integration does not acquire papers, edit PDF bytes, or write Zotero's
-SQLite database directly. The Zotero extension creates native annotations.
+## Requirements
 
-## How it works
+| Component | Required environment or access |
+| --- | --- |
+| Operating system | macOS; Windows and Linux are not validated |
+| Zotero | 10.0.6–10.0.x |
+| Node.js | 24–26 |
+| npm | 11.4.2 |
+| ChatGPT account | Access to custom MCP apps and the plugin setup used by this project |
+| Secure MCP Tunnel | Access to create/use a dedicated tunnel and its runtime credential |
+| Tunnel client | The pinned 0.0.14 build in the [installation guide](docs/install.md) |
 
-```text
-ChatGPT: Zotero plugin (study and save instructions)
-    ↓ typed tool calls
-Zotero Local (your connected MCP app)
-    ↓ dedicated Secure MCP tunnel
-Local Node.js MCP server
-    ↓ local request/result files
-Zotero extension → native highlights and comments
+Confirm account eligibility before installing. ChatGPT Work is not a validated
+host for this setup.
+
+## Installation and setup
+
+### 1. Build the packages
+
+
+```sh
+git clone https://github.com/contiloop/ZoteroWithGPT.git
+cd ZoteroWithGPT
+npm ci
+npm ci --prefix integration/zotero-mcp --ignore-scripts
+npm run verify
 ```
 
-The plugin has one skill, `skills/zotero/`. Its `SKILL.md` loads
-`resources/workflow.md`, which describes paper selection, requested saves,
-color selection, and result checking. ChatGPT interprets these instructions;
-the MCP server handles transport and validation. The native Zotero extension
-owns persistence and operation history.
+`npm run verify` builds, tests, packages, and validates the artifacts.
+`npm run package` rebuilds packages when dependencies are already installed.
+Generated files are placed in `artifacts/`:
 
-## Study workflow
+| Artifact | Purpose |
+| --- | --- |
+| `zotero-ai-research-companion-<version>.xpi` | Install in Zotero |
+| `zotero-mcp-server-<version>.zip` | Install the local MCP server and lifecycle tools |
+| `zotero-study-save-<version>.zip` | Portable ChatGPT plugin, initially unconfigured |
+| `zotero-ai-research-companion-<version>-client/` | Optional generic-file client fallback |
 
-1. Save the paper and its PDF in Zotero yourself, and keep Zotero running.
+The historical `zotero-study-save` package identifier is retained; its display
+name is **Zotero**. Account plugin releases can have a different version from
+the server/extension packages.
+
+### 2. Connect Zotero and ChatGPT
+
+Follow [Install on macOS](docs/install.md) to:
+
+1. Install the XPI in Zotero and enable its dedicated bridge directory.
+2. Install the local MCP server and configure the dedicated tunnel.
+3. Register your MCP app as **Zotero Local** in ChatGPT.
+4. Configure and install the **Zotero** plugin with that app binding.
+
+ The current private configuration
+helper expects an existing owned plugin's exported manifests; first-time
+account onboarding is not yet automated. The portable ZIP contains no working
+account binding or credentials. Never distribute a configured private ZIP,
+credential file, bridge history, or operation journal.
+
+[Remove or reinstall](docs/uninstall.md) ·
+[Troubleshooting](docs/troubleshooting.md)
+
+## Usage
+
+1. Save the paper and its PDF in Zotero. Keep your Mac and Zotero running while using the connection.
 2. After completing setup, select **Zotero** in ChatGPT.
 3. Provide the paper's arXiv link and ask to study a section.
 4. Ask follow-up questions in the same conversation.
@@ -81,48 +112,25 @@ are not automatically recolored.
 | Orange | `#F19837` | Key experiments and supporting evidence |
 | Gray | `#AAAAAA` | Supporting explanations and references |
 
-## Build and install
+## How it works
 
-The currently supported setup uses macOS, Zotero **10.0.6–10.0.x**,
-Node.js **24–26**, npm **11.4.2**, and the pinned tunnel-client build documented
-in the [installation guide](docs/install.md).
-
-Build from source:
-
-```sh
-git clone https://github.com/contiloop/ZoteroWithGPT.git
-cd ZoteroWithGPT
-npm ci
-npm ci --prefix integration/zotero-mcp --ignore-scripts
-npm run verify
+```text
+ChatGPT: Zotero plugin (study and save instructions)
+    ↓ typed tool calls
+Zotero Local (your connected MCP app)
+    ↓ dedicated Secure MCP tunnel
+Local Node.js MCP server
+    ↓ local request/result files
+Zotero extension → native highlights and comments
 ```
 
-`npm run verify` builds, tests, packages, and validates the artifacts.
-`npm run package` rebuilds packages when dependencies are already installed.
-Generated files are placed in `artifacts/`:
+The plugin has one skill, `skills/zotero/`. Its `SKILL.md` loads
+`resources/workflow.md`, which describes paper selection, requested saves,
+color selection, and result checking. ChatGPT interprets these instructions;
+the MCP server handles transport and validation. The native Zotero extension
+owns persistence and operation history.
 
-| Artifact | Purpose |
-| --- | --- |
-| `zotero-ai-research-companion-<version>.xpi` | Install in Zotero |
-| `zotero-mcp-server-<version>.zip` | Install the local MCP server and lifecycle tools |
-| `zotero-study-save-<version>.zip` | Portable ChatGPT plugin, initially unconfigured |
-| `zotero-ai-research-companion-<version>-client/` | Optional generic-file client fallback |
-
-The historical `zotero-study-save` package identifier is retained; its display
-name is **Zotero**. Account plugin releases can have a different version from
-the server/extension packages.
-
-Follow [Install on macOS](docs/install.md) to configure the extension, server,
-tunnel, and your own ChatGPT app binding. The current private configuration
-helper expects an existing owned plugin's exported manifests; first-time
-account onboarding is not yet automated. The portable ZIP contains no working
-account binding or credentials. Never distribute a configured private ZIP,
-credential file, bridge history, or operation journal.
-
-[Remove or reinstall](docs/uninstall.md) ·
-[Troubleshooting](docs/troubleshooting.md)
-
-## Repository and tests
+## Development and tests
 
 ```text
 addon/                    Zotero extension manifest and assets

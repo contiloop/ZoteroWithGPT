@@ -20,9 +20,9 @@ const ARCHIVE_TIMESTAMP = new Date("2000-01-01T00:00:00.000Z");
 const PORTABLE_MEMBERS = Object.freeze([
   "README.md",
   "plugin.json",
-  "skills/zotero-study-save/SKILL.md",
-  "skills/zotero-study-save/agents/openai.yaml",
-  "skills/zotero-study-save/resources/workflow.md",
+  "skills/zotero/SKILL.md",
+  "skills/zotero/agents/openai.yaml",
+  "skills/zotero/resources/workflow.md",
 ]);
 const CONFIGURED_MEMBERS = Object.freeze([
   ".app.json",
@@ -30,8 +30,7 @@ const CONFIGURED_MEMBERS = Object.freeze([
   ...PORTABLE_MEMBERS,
 ].sort());
 
-const OBSOLETE_CLIENT_DIRECTORY = "skills/zotero-study-save/resources/client-v1";
-const OBSOLETE_PERSONAL_CONFIG = "skills/zotero-study-save/resources/personal-config.json";
+const OBSOLETE_SKILL_DIRECTORY = "skills/zotero-study-save";
 
 function requireAbsolutePath(value, label) {
   if (typeof value !== "string" || !path.isAbsolute(value) || path.normalize(value) !== value) {
@@ -300,8 +299,7 @@ export async function configurePrivatePlugin({
     await chmod(privateArchive, 0o600);
     await rename(privateArchive, output);
     const deletePaths = [
-      ...await existingFiles(accountSource, OBSOLETE_CLIENT_DIRECTORY),
-      ...await existingFiles(accountSource, OBSOLETE_PERSONAL_CONFIG),
+      ...await existingFiles(accountSource, OBSOLETE_SKILL_DIRECTORY),
     ].sort();
     return {
       outputPath: output,

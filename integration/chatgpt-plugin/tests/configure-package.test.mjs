@@ -17,9 +17,9 @@ async function zipDirectory(directory, archive) {
   const files = [
     "README.md",
     "plugin.json",
-    "skills/zotero-study-save/SKILL.md",
-    "skills/zotero-study-save/agents/openai.yaml",
-    "skills/zotero-study-save/resources/workflow.md",
+    "skills/zotero/SKILL.md",
+    "skills/zotero/agents/openai.yaml",
+    "skills/zotero/resources/workflow.md",
   ];
   const result = spawnSync("/usr/bin/zip", ["-X", "-q", archive, "-@"], {
     cwd: directory,
@@ -55,9 +55,9 @@ test("private configuration adds only a verified binding and preserves account p
   };
   await write(portable, "plugin.json", `${JSON.stringify(sourceManifest, null, 2)}\n`);
   await write(portable, "README.md", "UNCONFIGURED portable package.\n");
-  await write(portable, "skills/zotero-study-save/SKILL.md", "---\nname: zotero-study-save\ndescription: fixture\n---\n");
-  await write(portable, "skills/zotero-study-save/agents/openai.yaml", "interface:\n  display_name: Zotero Study Save\n");
-  await write(portable, "skills/zotero-study-save/resources/workflow.md", "# Workflow\n");
+  await write(portable, "skills/zotero/SKILL.md", "---\nname: zotero\ndescription: fixture\n---\n");
+  await write(portable, "skills/zotero/agents/openai.yaml", "interface:\n  display_name: Zotero Study Save\n");
+  await write(portable, "skills/zotero/resources/workflow.md", "# Workflow\n");
   await zipDirectory(portable, portableArchive);
 
   const existingManifest = structuredClone(sourceManifest);
@@ -86,6 +86,7 @@ test("private configuration adds only a verified binding and preserves account p
   await write(account, "skills/zotero-study-save/resources/personal-config.json", "{\"bridgeRoot\":\"/private\"}\n");
   await write(account, "skills/zotero-study-save/resources/client-v1/README.md", "obsolete\n");
 
+  await write(account, "skills/zotero-study-save/SKILL.md", "old skill\n");
   const result = await configurePrivatePlugin({
     portableArchive,
     accountSourceDirectory: account,
@@ -93,6 +94,7 @@ test("private configuration adds only a verified binding and preserves account p
     outputPath: output,
   });
   assert.deepEqual(result.deletePaths, [
+    "skills/zotero-study-save/SKILL.md",
     "skills/zotero-study-save/resources/client-v1/README.md",
     "skills/zotero-study-save/resources/personal-config.json",
   ]);

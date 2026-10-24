@@ -60,9 +60,9 @@ async function fixture() {
   const pluginFiles = [
     "README.md",
     "plugin.json",
-    "skills/zotero-study-save/SKILL.md",
-    "skills/zotero-study-save/agents/openai.yaml",
-    "skills/zotero-study-save/resources/workflow.md",
+    "skills/zotero/SKILL.md",
+    "skills/zotero/agents/openai.yaml",
+    "skills/zotero/resources/workflow.md",
   ];
   for (const member of pluginFiles) {
     const source = await readFile(path.join(PROJECT_ROOT, "integration", "chatgpt-plugin", member), "utf8");
@@ -186,7 +186,7 @@ test("build produces a deterministic versioned XPI with a validated release surf
   assert.ok(report.pluginMembers.includes("plugin.json"));
   assert.equal(report.pluginMembers.includes(".app.json"), false);
   assert.equal(report.pluginMembers.includes(
-    "skills/zotero-study-save/resources/personal-config.json",
+    "skills/zotero/resources/personal-config.json",
   ), false);
   assert.equal(report.pluginMembers.some(member => member.includes("client-v1")), false);
   assert.ok(report.serverMembers.includes("integration/zotero-mcp/server.mjs"));
@@ -216,9 +216,9 @@ test("current release builds the exact 0.5.0 portable inventories", async (t) =>
   assert.deepEqual(report.pluginMembers, [
     "README.md",
     "plugin.json",
-    "skills/zotero-study-save/SKILL.md",
-    "skills/zotero-study-save/agents/openai.yaml",
-    "skills/zotero-study-save/resources/workflow.md",
+    "skills/zotero/SKILL.md",
+    "skills/zotero/agents/openai.yaml",
+    "skills/zotero/resources/workflow.md",
   ]);
   assert.ok(report.serverMembers.includes("scripts/package/assets/protocol/v1-request.schema.json"));
   assert.ok(report.serverMembers.includes("scripts/package/assets/protocol/v1-response.schema.json"));

@@ -99,9 +99,9 @@ const ACCOUNT_APP_ID_PATTERN =
 const PORTABLE_PLUGIN_MEMBERS = Object.freeze([
   "README.md",
   "plugin.json",
-  "skills/zotero-study-save/SKILL.md",
-  "skills/zotero-study-save/agents/openai.yaml",
-  "skills/zotero-study-save/resources/workflow.md",
+  "skills/zotero/SKILL.md",
+  "skills/zotero/agents/openai.yaml",
+  "skills/zotero/resources/workflow.md",
 ]);
 const EXPECTED_SERVER_DEPENDENCIES = Object.freeze({
   "@modelcontextprotocol/sdk": "1.32.2",

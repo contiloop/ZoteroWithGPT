@@ -24,10 +24,10 @@ const [
 ] = await Promise.all([
   json("plugin.json"),
   readFile(new URL("../../../package.json", import.meta.url), "utf8").then(JSON.parse),
-  read("skills/zotero-study-save/SKILL.md"),
-  read("skills/zotero-study-save/resources/workflow.md"),
+  read("skills/zotero/SKILL.md"),
+  read("skills/zotero/resources/workflow.md"),
   read("fallback/generic-file-workflow.md"),
-  read("skills/zotero-study-save/agents/openai.yaml"),
+  read("skills/zotero/agents/openai.yaml"),
   json("tests/scenarios.json"),
 ]);
 
@@ -65,7 +65,7 @@ assert.equal(extension.interface.displayName, "Zotero");
 assert.ok(extension.interface.shortDescription.length <= 30);
 assert.deepEqual(extension.interface.capabilities, []);
 
-assert.match(skill, /^---\nname: zotero-study-save\ndescription: [^\n]+\n---\n/u);
+assert.match(skill, /^---\nname: zotero\ndescription: [^\n]+\n---\n/u);
 assert.match(agent, /allow_implicit_invocation: true/u);
 assert.equal(scenarios.schemaVersion, 2);
 assert.equal(scenarios.contract, "dedicated-zotero-mcp-v1");
@@ -191,7 +191,7 @@ assert.equal(
   "generic fallback must remain the exact pre-migration source workflow",
 );
 const resourceFiles = await readdir(
-  path.join(root, "skills/zotero-study-save/resources"),
+  path.join(root, "skills/zotero/resources"),
 );
 assert.deepEqual(resourceFiles, ["workflow.md"]);
 

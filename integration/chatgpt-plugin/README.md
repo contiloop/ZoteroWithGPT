@@ -24,7 +24,7 @@ new ChatGPT conversation, select Zotero Study Save and give its arXiv link.
 Later save requests reuse that conversation's paper without requiring another
 selection or URL.
 
-Instructions live in `skills/zotero-study-save/resources/workflow.md`. The
+Instructions live in `skills/zotero/resources/workflow.md`. The
 selected workflow calls the dedicated 14-tool MCP contract. Shared protocol
 schemas ship with the server; the source-only generic file workflow remains in
 `fallback/` and is excluded from the selected package. Private configuration

@@ -1,5 +1,5 @@
 ---
-name: zotero-study-save
+name: zotero
 description: Study a paper already saved in Zotero and save requested discussion as passage-linked highlights or comments. Use after the user selects Zotero; retain the paper within the accessible conversation for later save requests.
 ---
 

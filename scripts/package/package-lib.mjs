@@ -56,9 +56,9 @@ const ASSET_FILES = Object.freeze([
 const PORTABLE_PLUGIN_FILES = Object.freeze([
   ["integration/chatgpt-plugin/plugin.json", "plugin.json"],
   ["integration/chatgpt-plugin/README.md", "README.md"],
-  ["integration/chatgpt-plugin/skills/zotero-study-save/SKILL.md", "skills/zotero-study-save/SKILL.md"],
-  ["integration/chatgpt-plugin/skills/zotero-study-save/agents/openai.yaml", "skills/zotero-study-save/agents/openai.yaml"],
-  ["integration/chatgpt-plugin/skills/zotero-study-save/resources/workflow.md", "skills/zotero-study-save/resources/workflow.md"],
+  ["integration/chatgpt-plugin/skills/zotero/SKILL.md", "skills/zotero/SKILL.md"],
+  ["integration/chatgpt-plugin/skills/zotero/agents/openai.yaml", "skills/zotero/agents/openai.yaml"],
+  ["integration/chatgpt-plugin/skills/zotero/resources/workflow.md", "skills/zotero/resources/workflow.md"],
 ]);
 const SERVER_SCHEMA_FILES = Object.freeze([
   "scripts/package/assets/protocol/v1-request.schema.json",

@@ -8,6 +8,6 @@ deliberately unconfigured: it contains no app ID, bridge root, account export,
 or generic file client. Private configuration adds only a verified dedicated
 MCP app binding while preserving account presentation.
 
-`skills/zotero-study-save/resources/workflow.md` owns behavior. Schemas and
+`skills/zotero/resources/workflow.md` owns behavior. Schemas and
 examples are bundled from the shared contract, not rewritten here. Static
 scenario validation cannot establish actual model or reader behavior.

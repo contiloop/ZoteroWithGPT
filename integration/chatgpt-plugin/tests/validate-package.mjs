@@ -152,6 +152,8 @@ for (const id of [
   "manual-edit-conflict",
   "published-timeout-result-only-recovery",
   "missing-tool-response-result-only-recovery",
+  "native-queued-bounded-result-lookup",
+  "native-running-bounded-result-lookup",
   "ordinary-storage-success-finishes",
   "requested-viewer-check-failure-does-not-repeat-write",
 ]) {
@@ -190,6 +192,14 @@ assert.match(
 assert.match(
   selectedInstructions,
   /exact storage later cannot\nprove semantic completeness/u,
+);
+assert.match(
+  selectedInstructions,
+  /When a native result is `queued` or `running`, make bounded/u,
+);
+assert.match(
+  selectedInstructions,
+  /Do not invent `queued` or\n`running` from a timeout/u,
 );
 
 assert.equal(

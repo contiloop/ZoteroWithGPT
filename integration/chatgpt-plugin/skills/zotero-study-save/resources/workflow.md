@@ -26,8 +26,8 @@ Every tool returns a wrapper with `connection`, `delivery`, `result`, and
 `error`. Interpret it before interpreting the native result:
 
 - A non-null `result` is a published native response and has a null wrapper
-  error. Its native state can still be `rejected`, `failed`, or
-  `indeterminate`; only native success is success.
+  error. `queued` and `running` are nonterminal. `succeeded`, `rejected`,
+  `failed`, and `indeterminate` are terminal; only `succeeded` is success.
 - `not_published` describes only that invocation. It is not evidence about any
   earlier invocation of the same identity.
 - `published` with no native result means the request was delivered but its
@@ -39,10 +39,16 @@ and byte-equivalent complete payload unchanged. After a timeout, missing tool
 response, or wrapper without a native result, call
 `zotero_get_operation_result` with exactly the original `operationId` and
 `connection`. This lookup only observes the original request and result. It
-does not publish, reconcile, or authorize a write. If lookup cannot return a
-native result, report the outcome as unresolved; do not resave through another
-tool, session, or ID. Keep the approved payload under its original identity for
-later recovery.
+does not publish, reconcile, or authorize a write. Do not invent `queued` or
+`running` from a timeout, missing response, or null native result.
+
+When a native result is `queued` or `running`, make bounded
+`zotero_get_operation_result` checks with that same original operation ID and
+connection until a terminal native result arrives. If the bounded checks end
+while it remains nonterminal, report that the original operation is still
+pending. If lookup cannot return any native result, report the outcome as
+unresolved. Never republish the write or use another tool, session, or ID. Keep
+the approved payload under its original identity for later recovery.
 
 ## Establish the paper
 

@@ -544,6 +544,7 @@
         "writes": [],
         "originalWrite": "zotero_create_annotation",
         "lookupUsesOriginalOperationIdAndConnection": true,
+        "inventQueuedOrRunning": false,
         "republishWrite": false,
         "newOperationId": false,
         "fallbackRoute": false
@@ -563,8 +564,63 @@
         "writes": [],
         "originalWrite": "zotero_create_annotation",
         "preserveExactPayloadAuthorizationConnectionAndId": true,
+        "inventQueuedOrRunning": false,
         "lookupReconcilesByWriting": false,
         "resaveWhenLookupMissing": false
+      }
+    },
+    {
+      "id": "native-queued-bounded-result-lookup",
+      "input": {
+        "operation": "zotero_create_annotation",
+        "wrapper": {
+          "delivery": "published",
+          "result": {
+            "state": "queued"
+          },
+          "error": null
+        }
+      },
+      "expected": {
+        "activation": "bounded_lookup_until_terminal_or_pending",
+        "reads": [
+          "zotero_get_operation_result"
+        ],
+        "writes": [],
+        "originalWrite": "zotero_create_annotation",
+        "nativeResultNonNull": true,
+        "lookupUsesOriginalOperationIdAndConnection": true,
+        "lookupStrategy": "bounded",
+        "reportIfStillNonterminal": "pending",
+        "republishWrite": false,
+        "newOperationId": false
+      }
+    },
+    {
+      "id": "native-running-bounded-result-lookup",
+      "input": {
+        "operation": "zotero_create_annotation",
+        "wrapper": {
+          "delivery": "published",
+          "result": {
+            "state": "running"
+          },
+          "error": null
+        }
+      },
+      "expected": {
+        "activation": "bounded_lookup_until_terminal_or_pending",
+        "reads": [
+          "zotero_get_operation_result"
+        ],
+        "writes": [],
+        "originalWrite": "zotero_create_annotation",
+        "nativeResultNonNull": true,
+        "lookupUsesOriginalOperationIdAndConnection": true,
+        "lookupStrategy": "bounded",
+        "reportIfStillNonterminal": "pending",
+        "republishWrite": false,
+        "newOperationId": false
       }
     },
     {

@@ -1,29 +1,81 @@
-# Native integration knowledge
+# Zotero host knowledge
 
-## Reader objects can outlive their windows
+## Dead readers
 
-After an extension update, a formatted comment remained visibly correct while verification reported an inspection error. Zotero's error console showed “can't access dead object”; a normal quit/reopen restored strict verification on the same package and comment. An independent probe reproduced the failure by removing an unrelated reader and making its old iframe getter throw. The old synchronization order read that getter before checking membership. Synchronization now checks removed-reader membership first and isolates inaccessible entries, with best-effort cleanup. A retained inaccessible reader is retried and may report again on later scans so a revived reader can reattach; repeated diagnostic messages alone are not a new write failure. Verify a healthy target alongside an unrelated destroyed reader, not only a single-reader fixture.
+Reader wrappers can survive destroyed windows and throw “can't access dead
+object” when an iframe getter is read. Check membership before touching it and
+isolate inaccessible entries; otherwise one unrelated dead reader aborts all
+healthy synchronization. A normal restart once restored viewer checks without
+changing the saved content.
 
-## Native source and preview are different surfaces
+## Source, preview, and active owner
 
-Formatted mode hides Zotero's source editor. A source-editor check can therefore fail while the rendered comment is visible. Conversely, an open background tab is insufficient viewer evidence. Inspect exact current markup and owner visibility; then switch between native edit and formatted preview and verify again. A failed viewer response is not grounds to repeat the saved write.
+Formatted mode hides Zotero's source editor, so editor visibility is not preview
+visibility. A background tab is also insufficient. Inspect fresh current markup
+and the active owning reader; a failed display check never repeats a save.
 
-## Plugin globals are not browser globals
+## Sandbox and owner realms
 
-The Zotero plugin sandbox lacks some Window APIs. PDF worker calls also reject caller-realm objects with DataCloneError. Supply the validated JSON snapshot primitive at bootstrap and clone worker arguments into the owning realm. Verify in Zotero after changes; Node-only test globals conceal these failures.
+Zotero's plugin sandbox lacks some Window globals. PDF worker arguments need
+cloning into the owning realm or throw DataCloneError. Main chrome documents
+may be XUL: note sanitization uses a live main window and detached inert HTML
+document, not an assumed HTML main document.
 
-## Main documents may be XUL
+## Native comment normalization
 
-Creating HTML parsing containers against the main chrome document can produce the wrong namespace or MIME assumptions. Child-note safety processing uses a trusted live main window and a detached inert HTML document. New unsafe source remains readable as escaped text. Existing native note HTML is checked without rewriting it; otherwise a harmless append can destroy a user's table or reference.
+Zotero 10.0.6's `annotationComment` setter applies `trim().normalize()`. Prepare
+NFC text without boundary whitespace before approval/identity assignment; reject
+an already approved unrepresentable body before setters. A historical trailing
+newline mismatch remains an unknown outcome, not permission to retry.
 
-## Sanitizers and math need separate semantic checks
+Zotero's native editor can also change interior whitespace. Its newly saved
+body/revision is authoritative; do not restore an earlier extension snapshot.
 
-A broad MathML tag allowlist can still erase cancellation or alignment if semantic attributes are removed. Restrict attributes by element and namespace while preserving the meaning of validated math. Inspect actual cancellation/aligned output, numbered steps, paragraph spacing, and a clicked safe reference. Preserve raw native notation for removal or renderer failure.
+## Legacy attachment paths
 
-## Request results are historical
+Zotero 10.0.6 file-path getters can repair raw macOS `AAAA...` attachment paths
+with a database update. Offline discovery checks the raw descriptor first to
+avoid this hidden mutation. A candidate without current byte evidence stays
+unverified and requires manual restoration plus fresh discovery before reading.
+Parent or sibling provenance cannot prove that attachment's PDF version.
 
-Reusing an observation ID returns old data even after the target changed. Use fresh IDs for new reads and verification. A missing result is not evidence of nonexecution: inspect the active session and recover a potentially running mutation using its original identity. Only an explicit queued-interruption non-write allows a newly approved mutation under a fresh identity.
+## Installation boundaries
 
-## Extension metadata has host-specific requirements
+Zotero requires a truthy update URL even for manual distribution. The reserved
+`.invalid` URL meets that requirement without providing an updater.
 
-Zotero 10.0.6 rejected an otherwise built XPI without a truthy update URL. The package uses a reserved .invalid URL to meet that host requirement without inventing an updater. Check installation and manual-update behavior in the actual Plugins Manager; archive inspection alone does not prove installability.
+Removal needs a restart before reinstall, followed by another restart. Installing
+before removal completed once appeared enabled but vanished after restart.
+ChatGPT **Uninstall** preserves the owned backend; **Delete plugin** destroys it.
+Neither a plugin update nor a skill toggle proves an uninstall/reinstall cycle.
+
+The dedicated MCP runtime uses `tunnel-client runtimes connect`, not a detached
+shell process. Its existing-tunnel path performs read-only tunnel lookup and the
+managed health listener binds an ephemeral loopback port. Status is acceptable
+only when `process_running`, `healthy`, and `ready` are all true. Runtime removal
+owns one fixed alias/profile and its fenced local root; the bridge sessions,
+native journal, credential file, and remote tunnel are separate persistence
+domains.
+
+The reviewed 0.0.14 client writes exactly one `<profile>.yaml` below the supplied
+private `--profile-dir`. Alias, process, health, and log state use its separately
+resolved global control root. The lifecycle stores that resolved root and passes
+it through `TUNNEL_CLIENT_STATE_DIR` for every child command so validation and
+execution cannot select different stores. The global root and other aliases are
+not part of recursive lifecycle removal.
+
+## Stalled reader acquisition
+
+A read-only `list_annotations` once held the scanner while acquiring a reader.
+A later cold-reader probe completed, leaving the cause unresolved. Reconnect
+persisted disabled state before waiting for the stuck handler, explaining that
+state after restart. Preserve operation identity, re-enable explicitly, and
+check a fresh session. Recovery's historical-write warning was misleading for
+this read; do not claim forced-quit recovery from ordinary reinstall evidence.
+
+## Preparation versus persistence
+
+Exact native readback proves the submitted body was stored, not that the model
+included the requested details. A historical run omitted empirical comparison
+outcomes before submission. Check requested scope and math meaning; compare
+verbatim wording only when copying was requested.

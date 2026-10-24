@@ -1,5 +1,6 @@
 import type { PayloadDigestPort } from "../../ports/digest.js";
 import type { OperationIdentity } from "../../ports/execution.js";
+import type { ArticleIdentity } from "../../protocol/types.js";
 import { canonicalizeJson } from "../../protocol/canonical.js";
 import type {
   NativeAnnotationRecord,
@@ -8,6 +9,8 @@ import type {
 } from "./native-api.js";
 
 export const OPERATION_RELATION_PREDICATE = "zotero:researchCompanionOperation";
+export const ARXIV_PROVENANCE_RELATION_PREDICATE =
+  "zotero:researchCompanionArxivProvenance";
 
 const encoder = new TextEncoder();
 const SAFE_NOTE_CONTAINER_OPEN = '<div class="research-companion-note">';
@@ -18,6 +21,24 @@ export function operationIdentityMarker(identity: OperationIdentity): string {
   return (
     "urn:zotero-ai-research-companion:operation:" +
     `${encodeURIComponent(identity.operationId)}:${encodeURIComponent(identity.requestDigest)}`
+  );
+}
+
+export function arxivParentProvenance(source: ArticleIdentity): string {
+  return (
+    "urn:zotero-ai-research-companion:arxiv-parent:" +
+    `${encodeURIComponent(source.arxivId)}:v${String(source.version)}`
+  );
+}
+
+export function arxivAttachmentProvenance(
+  source: ArticleIdentity,
+  fingerprint: string,
+): string {
+  return (
+    "urn:zotero-ai-research-companion:arxiv-pdf:" +
+    `${encodeURIComponent(source.arxivId)}:v${String(source.version)}:` +
+    encodeURIComponent(fingerprint)
   );
 }
 

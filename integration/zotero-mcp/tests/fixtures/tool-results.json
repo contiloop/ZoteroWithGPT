@@ -1,0 +1,582 @@
+{
+  "schemaVersion": 1,
+  "successful": [
+    {
+      "tool": "zotero_connection_status",
+      "result": {
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "delivery": "published",
+        "result": {
+          "protocolVersion": 1,
+          "operationId": "mcp.connection-status-1",
+          "state": "succeeded",
+          "data": {
+            "protocolVersion": 1,
+            "pluginVersion": "0.5.0",
+            "zoteroVersion": "10.0.6",
+            "profile": {
+              "id": "profile-A",
+              "name": "Fixture profile"
+            },
+            "enabled": true,
+            "capabilities": {
+              "operations": [
+                "connection_status",
+                "find_local_arxiv",
+                "search_papers",
+                "read_pdf",
+                "list_annotations",
+                "list_notes",
+                "read_note",
+                "resolve_anchor",
+                "create_annotation",
+                "update_annotation",
+                "create_note",
+                "update_note",
+                "verify_annotation"
+              ],
+              "annotationTypes": [
+                "highlight",
+                "note"
+              ],
+              "annotationColors": [
+                "#ffd400",
+                "#2ea8e5"
+              ],
+              "maxRequestBytes": 1048576,
+              "maxTextBytes": 524288
+            },
+            "transport": {
+              "kind": "custom",
+              "description": "Versioned local request/result files"
+            }
+          },
+          "error": null,
+          "verification": {
+            "storage": "not_applicable",
+            "viewer": "not_applicable"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "tool": "zotero_find_local_arxiv",
+      "result": {
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "delivery": "published",
+        "result": {
+          "protocolVersion": 1,
+          "operationId": "mcp.find-local-arxiv-1",
+          "state": "succeeded",
+          "data": {
+            "source": {
+              "arxivId": "2401.01234",
+              "version": 2
+            },
+            "matches": [],
+            "truncated": false
+          },
+          "error": null,
+          "verification": {
+            "storage": "not_applicable",
+            "viewer": "not_applicable"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "tool": "zotero_search_papers",
+      "result": {
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "delivery": "published",
+        "result": {
+          "protocolVersion": 1,
+          "operationId": "mcp.search-papers-1",
+          "state": "succeeded",
+          "data": {
+            "matches": []
+          },
+          "error": null,
+          "verification": {
+            "storage": "not_applicable",
+            "viewer": "not_applicable"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "tool": "zotero_read_pdf",
+      "result": {
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "delivery": "published",
+        "result": {
+          "protocolVersion": 1,
+          "operationId": "mcp.read-pdf-1",
+          "state": "succeeded",
+          "data": {
+            "attachmentFingerprint": "sha256:pdf-revision-a",
+            "attachmentRevision": "rev:pdf-1",
+            "pages": []
+          },
+          "error": null,
+          "verification": {
+            "storage": "not_applicable",
+            "viewer": "not_applicable"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "tool": "zotero_list_annotations",
+      "result": {
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "delivery": "published",
+        "result": {
+          "protocolVersion": 1,
+          "operationId": "mcp.list-annotations-1",
+          "state": "succeeded",
+          "data": {
+            "annotations": []
+          },
+          "error": null,
+          "verification": {
+            "storage": "not_applicable",
+            "viewer": "not_applicable"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "tool": "zotero_list_notes",
+      "result": {
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "delivery": "published",
+        "result": {
+          "protocolVersion": 1,
+          "operationId": "mcp.list-notes-1",
+          "state": "succeeded",
+          "data": {
+            "notes": []
+          },
+          "error": null,
+          "verification": {
+            "storage": "not_applicable",
+            "viewer": "not_applicable"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "tool": "zotero_read_note",
+      "result": {
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "delivery": "published",
+        "result": {
+          "protocolVersion": 1,
+          "operationId": "mcp.read-note-1",
+          "state": "succeeded",
+          "data": {
+            "parentItemKey": "ITEM1234",
+            "noteKey": "NOTE1234",
+            "revision": "rev:note-1",
+            "content": "First paragraph.\n\nSecond paragraph with the complete study text.",
+            "deepLink": "zotero://select/library/items/NOTE1234"
+          },
+          "error": null,
+          "verification": {
+            "storage": "not_applicable",
+            "viewer": "not_applicable"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "tool": "zotero_resolve_anchor",
+      "result": {
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "delivery": "published",
+        "result": {
+          "protocolVersion": 1,
+          "operationId": "mcp.resolve-anchor-1",
+          "state": "succeeded",
+          "data": {
+            "status": "resolved",
+            "anchor": {
+              "libraryId": "1",
+              "itemKey": "ITEM1234",
+              "attachmentKey": "ATTACH01",
+              "attachmentFingerprint": "sha256:pdf-revision-a",
+              "pageIndex": 2,
+              "pageLabel": "3",
+              "rectangles": [
+                {
+                  "x1": 12,
+                  "y1": 30,
+                  "x2": 140,
+                  "y2": 45
+                }
+              ],
+              "selectedText": "posterior concentration",
+              "matchEvidence": {
+                "method": "exact_quote",
+                "matchedText": "posterior concentration",
+                "exact": true
+              }
+            }
+          },
+          "error": null,
+          "verification": {
+            "storage": "not_applicable",
+            "viewer": "not_applicable"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "tool": "zotero_create_annotation",
+      "result": {
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "delivery": "published",
+        "result": {
+          "protocolVersion": 1,
+          "operationId": "mcp.create-annotation-1",
+          "state": "succeeded",
+          "data": {
+            "annotationKey": "ANN00001",
+            "revision": "rev:annotation-1",
+            "deepLink": "zotero://open-pdf/library/items/ATTACH01?page=3&annotation=ANN00001",
+            "saved": {
+              "pageIndex": 2,
+              "pageLabel": "3",
+              "rectangles": [
+                {
+                  "x1": 12,
+                  "y1": 30,
+                  "x2": 140,
+                  "y2": 45
+                }
+              ],
+              "selectedText": "posterior concentration",
+              "comment": "A complete user-approved explanation."
+            }
+          },
+          "error": null,
+          "verification": {
+            "storage": "confirmed",
+            "viewer": "not_checked"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "tool": "zotero_update_annotation",
+      "result": {
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "delivery": "published",
+        "result": {
+          "protocolVersion": 1,
+          "operationId": "mcp.update-annotation-1",
+          "state": "succeeded",
+          "data": {
+            "annotationKey": "ANN00001",
+            "revision": "rev:annotation-2",
+            "comment": "Existing comment.\n\nAdditional denominator detail.",
+            "deepLink": "zotero://open-pdf/library/items/ATTACH01?page=3&annotation=ANN00001"
+          },
+          "error": null,
+          "verification": {
+            "storage": "confirmed",
+            "viewer": "not_checked"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "tool": "zotero_create_note",
+      "result": {
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "delivery": "published",
+        "result": {
+          "protocolVersion": 1,
+          "operationId": "mcp.create-note-1",
+          "state": "succeeded",
+          "data": {
+            "noteKey": "NOTE5678",
+            "revision": "rev:note-1",
+            "content": "A separate synthesis note.",
+            "deepLink": "zotero://select/library/items/NOTE5678"
+          },
+          "error": null,
+          "verification": {
+            "storage": "confirmed",
+            "viewer": "not_checked"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "tool": "zotero_update_note",
+      "result": {
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "delivery": "published",
+        "result": {
+          "protocolVersion": 1,
+          "operationId": "mcp.update-note-1",
+          "state": "succeeded",
+          "data": {
+            "noteKey": "NOTE1234",
+            "revision": "rev:note-2",
+            "content": "Existing note.\n\nA new study question.",
+            "deepLink": "zotero://select/library/items/NOTE1234"
+          },
+          "error": null,
+          "verification": {
+            "storage": "confirmed",
+            "viewer": "not_checked"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "tool": "zotero_verify_annotation",
+      "result": {
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "delivery": "published",
+        "result": {
+          "protocolVersion": 1,
+          "operationId": "mcp.verify-annotation-1",
+          "state": "succeeded",
+          "data": {
+            "annotationKey": "ANN00001",
+            "storageEvidence": {
+              "confirmed": true,
+              "description": "Native annotation comment matched."
+            },
+            "viewerEvidence": {
+              "confirmed": true,
+              "description": "The active Zotero reader displayed the annotation."
+            }
+          },
+          "error": null,
+          "verification": {
+            "storage": "confirmed",
+            "viewer": "confirmed"
+          }
+        },
+        "error": null
+      }
+    }
+  ],
+  "nativeRejection": {
+    "tool": "zotero_create_annotation",
+    "result": {
+      "connection": {
+        "profileId": "profile-A",
+        "sessionId": "0123456789abcdef0123456789abcdef"
+      },
+      "delivery": "published",
+      "result": {
+        "protocolVersion": 1,
+        "operationId": "mcp.create-annotation-1",
+        "state": "rejected",
+        "data": null,
+        "error": {
+          "code": "stale_attachment",
+          "message": "The attachment fingerprint changed before the write.",
+          "retryable": false
+        },
+        "verification": {
+          "storage": "not_checked",
+          "viewer": "not_checked"
+        }
+      },
+      "error": null
+    }
+  },
+  "unpublishedFailure": {
+    "tool": "zotero_search_papers",
+    "result": {
+      "connection": {
+        "profileId": "profile-A",
+        "sessionId": "0123456789abcdef0123456789abcdef"
+      },
+      "delivery": "not_published",
+      "result": null,
+      "error": {
+        "code": "connection_unavailable",
+        "message": "The selected bridge session is unavailable."
+      }
+    }
+  },
+  "publishedTimeout": {
+    "tool": "zotero_create_note",
+    "result": {
+      "connection": {
+        "profileId": "profile-A",
+        "sessionId": "0123456789abcdef0123456789abcdef"
+      },
+      "delivery": "published",
+      "result": null,
+      "error": {
+        "code": "wait_expired",
+        "message": "The request was published but no result arrived before the wait expired."
+      }
+    }
+  },
+  "unavailableHistory": {
+    "tool": "zotero_get_operation_result",
+    "recordedTool": "zotero_read_note",
+    "result": {
+      "connection": {
+        "profileId": "profile-A",
+        "sessionId": "0123456789abcdef0123456789abcdef"
+      },
+      "delivery": "unconfirmed",
+      "result": null,
+      "error": {
+        "code": "io_error",
+        "message": "Publication history for this operation is unavailable."
+      }
+    }
+  },
+  "badJoins": [
+    {
+      "id": "response-operation-id",
+      "tool": "zotero_read_note",
+      "result": {
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "delivery": "published",
+        "result": {
+          "protocolVersion": 1,
+          "operationId": "mcp.some-other-operation",
+          "state": "succeeded",
+          "data": {
+            "parentItemKey": "ITEM1234",
+            "noteKey": "NOTE1234",
+            "revision": "rev:note-1",
+            "content": "Wrong operation identity.",
+            "deepLink": "zotero://select/library/items/NOTE1234"
+          },
+          "error": null,
+          "verification": {
+            "storage": "not_applicable",
+            "viewer": "not_applicable"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "id": "connection-profile",
+      "tool": "zotero_read_note",
+      "result": {
+        "connection": {
+          "profileId": "profile-B",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "delivery": "published",
+        "result": {
+          "protocolVersion": 1,
+          "operationId": "mcp.read-note-1",
+          "state": "succeeded",
+          "data": {
+            "parentItemKey": "ITEM1234",
+            "noteKey": "NOTE1234",
+            "revision": "rev:note-1",
+            "content": "Wrong profile join.",
+            "deepLink": "zotero://select/library/items/NOTE1234"
+          },
+          "error": null,
+          "verification": {
+            "storage": "not_applicable",
+            "viewer": "not_applicable"
+          }
+        },
+        "error": null
+      }
+    },
+    {
+      "id": "operation-result-shape",
+      "tool": "zotero_list_annotations",
+      "result": {
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "delivery": "published",
+        "result": {
+          "protocolVersion": 1,
+          "operationId": "mcp.list-annotations-1",
+          "state": "succeeded",
+          "data": {
+            "parentItemKey": "ITEM1234",
+            "noteKey": "NOTE1234",
+            "revision": "rev:note-1",
+            "content": "A read-note result cannot satisfy list_annotations.",
+            "deepLink": "zotero://select/library/items/NOTE1234"
+          },
+          "error": null,
+          "verification": {
+            "storage": "not_applicable",
+            "viewer": "not_applicable"
+          }
+        },
+        "error": null
+      }
+    }
+  ]
+}

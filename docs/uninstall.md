@@ -1,86 +1,124 @@
-# Disable, uninstall, and reinstall
+# Remove and reinstall
 
-## Disable processing
-
-Choose **Tools → Research Companion Settings…**, then choose **Disable**. The
-runtime closes its native access gate before asynchronous bridge cleanup, and
-the active session status changes to `"enabled": false`. New requests in that
-session are not dispatched after disable.
-
-An operation that already passed the final ownership check may finish. Do not
-assume that a missing result means a mutation did not commit. Recover an
-uncertain operation only with its exact prior operation ID and payload after
-renewed user authorization.
-
-## Remove the plugin
-
-1. Disable the connection and confirm the displayed status.
-2. Open **Tools → Plugins**.
-3. Find **Zotero AI Research Companion**, open its menu, and choose **Remove**.
-4. Confirm that **Research Companion Settings…** no longer appears in the Tools
-   menu.
-
-Removing the plugin stops its processing. Native Zotero annotations and notes
-remain in the library. The plugin does not delete or rewrite those records.
-
-The profile-local operation identity journal is intentionally retained at:
+Ordinary reinstall preserves both private histories:
 
 ```text
+<BRIDGE_ROOT>/sessions/
 <ZOTERO_PROFILE>/zotero-ai-research-companion/operations-v1.json
 ```
 
-Keep this file across ordinary uninstall and reinstall. It records historical
-operation identities and prevents the same authorized native mutation from
-being executed again. It is safety metadata, not a cache.
+Requests/results can contain study text, and the journal contains historical
+outcomes and duplicate-prevention identities. Neither is a cache. Never delete
+or migrate them as part of routine reinstall, and never replay pending files.
 
-## Optional cleanup of owned connection files
+## Stop or remove the owned MCP runtime
 
-After the plugin is disabled and removed, the selected dedicated bridge
-directory can contain companion transport data and the copied client kit:
+Use the stable controller. `stop` affects only the fixed
+`zotero-study-save-mcp` process and retains the installed runtime:
 
-```text
-bridge-v1.json
-sessions/<session-id>/status-v1.json
-sessions/<session-id>/requests/
-sessions/<session-id>/results/
-client-v1/README.md
-client-v1/docs/
-client-v1/protocol/
+```sh
+node "<OWNED_RUNTIME_ROOT>/bin/zotero-mcp-lifecycle.mjs" stop \
+  --install-root "<OWNED_RUNTIME_ROOT>"
 ```
 
-If the directory was dedicated to this plugin, move exactly `bridge-v1.json`,
-the `sessions` directory, and the copied `client-v1` directory to Trash. Inspect
-the directory first and leave any unrecognized file in place. Do not delete the
-selected directory itself unless you created it only for the companion and have
-confirmed it is empty. The release-bundle client folder outside the bridge is a
-separate copy and is not changed by the plugin.
+For complete runtime removal, use `remove` directly; it stops the process, asks
+`tunnel-client runtimes rm` to remove the same local alias metadata, then removes
+only the fenced owned runtime tree:
 
-The two owned preferences are:
+```sh
+node "<OWNED_RUNTIME_ROOT>/bin/zotero-mcp-lifecycle.mjs" remove \
+  --install-root "<OWNED_RUNTIME_ROOT>"
+```
+
+Removal fails closed if the root marker/config was copied, is a symlink, points
+to another root, or the tree contains an unknown entry. The check includes the
+exact installed dependency inventory and the one managed profile YAML. It does
+not recursively manage or delete the tunnel client's global control root, the
+remote tunnel, credential file, bridge root or sessions, Zotero profile/journal,
+native records, shared runtimes, or another plugin.
+
+## Zotero extension
+
+Disable the bridge in **Tools → Research Companion Settings…**, then remove
+**Zotero AI Research Companion** in **Tools → Plugins**. Quit and reopen Zotero
+to complete removal. Native papers, annotations, and notes remain. To reset only
+extension setup, clear these two owned preferences:
 
 ```text
 extensions.zotero-ai-research-companion.enabled
 extensions.zotero-ai-research-companion.bridgeDirectory
 ```
 
-They may be reset through Zotero's Config Editor after removal if a completely
-clean local setup is required. Reset only those exact keys. Do not delete the
-operation identity journal, Zotero profile, Zotero library data, native
-annotations or notes, MCP configuration, tunnel profiles or keys, or files
-owned by another plugin.
+In ChatGPT, **Uninstall** removes the personal plugin from active use;
+**Delete plugin** destroys its owned backend and is not routine reinstall.
+Neither removes the dedicated tunnel/runtime nor native Zotero records.
+Configured account archives contain a private app binding and must not be
+redistributed.
 
-Removing a Mac Safe Files connection or secure tunnel is a separate product
-operation. Follow its owner's runbook. Uninstalling this XPI does not authorize
-changes to a shared MCP server, organization connection, or tunnel.
+## Move a checkout-local bridge before deleting source
+
+Stable installations keep the bridge outside a source checkout. One existing
+pre-0.5 installation is an explicit exception at
+`<SOURCE_CHECKOUT>/.local/bridge`. Deleting that checkout without migration
+would destroy its private session history.
+
+Before moving or deleting any checkout that contains the active bridge:
+
+1. Stop the owned MCP runtime, disable the bridge in Zotero, and confirm the
+   settings show **Disabled** so no request can be accepted during the copy.
+2. Create an empty user-only bridge directory and a separate user-only backup,
+   both outside the checkout, owned runtime, Zotero profile, and tunnel-client
+   control root. Copy the complete bridge tree to both locations without
+   changing names, bytes, permissions, or timestamps.
+3. Compare the source, migrated tree, and backup with a local path/type/size and
+   SHA-256 inventory. Keep that comparison private because session names and
+   files can contain sensitive history.
+4. Select the migrated root in Zotero, enable it, and require **Ready**. Reinstall
+   the owned MCP route with that same canonical root, then start it and require
+   `processRunning`, `healthy`, and `ready`.
+5. Enabling the migrated root creates a new connection descriptor and session,
+   so whole-tree equality is no longer expected. Recheck only the copied
+   historical status, request, and result files against the pre-enable hashes.
+   Then use the original profile, session, and completed operation ID for a
+   read-only historical lookup and require the same stored response. Do not
+   publish a pending request, create a replacement ID, or replay a write.
+
+Only after those checks succeed may the source checkout be removed. Retain the
+separate backup until live acceptance is complete. If the copy or historical
+lookup is unresolved, leave the original checkout and bridge intact; never
+reconstruct missing history from a new model response.
 
 ## Reinstall
 
-Install the versioned XPI through the Plugins Manager, open **Research
-Companion Settings…**, select a dedicated existing directory, and choose
-**Enable**. Reinstall creates a fresh session and publishes a new descriptor.
-Never copy pending request files from an older session into the new one
-automatically.
+After the removal-completing restart, install the matching XPI, normally restart
+again, and explicitly enable the same dedicated root. Installing before the
+first restart once appeared enabled but did not persist. Install the clean
+locked MCP package into the same owned runtime root; same-version install
+replaces the owned release from its hash inventory and preserves bridge/native
+history. Start it and require ready status before updating the account plugin.
 
-The retained journal preserves the Zotero profile identity and prior operation
-results. A client recovering an earlier authorized operation uses the same ID
-and identical payload in the current session. A changed target or changed
-content requires a new ID and new user authorization.
+Update the existing private ChatGPT plugin with a guarded semantic version,
+preserving its identity and presentation. Apply every exact `deletePaths` entry
+reported by the configuration helper so overlay updates cannot revive the old
+generic client or personal config. Select it in a new chat after updating. Keep
+the protected configured archive, configuration result, and pre-update account
+source before deleting a checkout. Portable artifacts cannot recreate private
+account presentation, route resources, bridge sessions, or native history. Keep
+terminal unknown outcomes historical and recover nonterminal writes only with
+their original identity.
+
+## Rollback
+
+Runtime rollback stops the owned alias and restores the previous installed
+route/config without starting it or replaying work:
+
+```sh
+node "<OWNED_RUNTIME_ROOT>/bin/zotero-mcp-lifecycle.mjs" rollback \
+  --install-root "<OWNED_RUNTIME_ROOT>"
+```
+
+Inspect the restored config, then start explicitly. Account-route rollback is
+separate. The account service rejects a lower plugin version, so do not upload
+the original 0.4 archive over 0.5. If live acceptance needs the old route, build
+from the preserved private old-route content under a newer guarded version and
+apply it deliberately. Do not distribute that backup.

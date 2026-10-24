@@ -1,4 +1,13 @@
-import type { ResolvedAnchor, TransportDescription } from "../../protocol/types.js";
+import type {
+  ArxivSource,
+  ArxivUrlReference,
+  LocalArxivEvidence,
+  ResolvedAnchor,
+  TransportDescription,
+} from "../../protocol/types.js";
+import type {
+  ArxivNativeInspection,
+} from "../../ports/arxiv.js";
 import type { NativePageChar, NativeRectTuple } from "../anchors/text-layer.js";
 
 export interface NativeRuntimeStatus {
@@ -20,6 +29,16 @@ export interface NativePaperRecord {
   creators: string[];
   year?: number;
   attachments: NativeAttachmentSummary[];
+}
+
+export interface NativeLocalArxivMatch {
+  paper: NativePaperRecord;
+  evidence: LocalArxivEvidence[];
+}
+
+export interface NativeLocalArxivDiscovery {
+  matches: NativeLocalArxivMatch[];
+  truncated: boolean;
 }
 
 export interface NativePdfAttachment {
@@ -104,10 +123,41 @@ export interface NativeNoteUpdate {
   operationMarker: string;
 }
 
-/**
- * Sanitizes newly authorized note content and validates an exact native body
- * before a write. Validation never rewrites existing human-authored bytes.
- */
+export interface NativeArxivParentRecord {
+  libraryId: string;
+  itemKey: string;
+  itemRevision: string;
+  /** Parent metadata/collections/identity only; child attachment changes do not alter it. */
+  metadataRevision: string;
+  title: string;
+  canonicalVersions: number[];
+  metadataMatchesSource: boolean;
+  operationMarkers: string[];
+  provenanceMarkers: string[];
+  deepLink: string;
+}
+
+export interface NativeArxivAttachmentRecord {
+  libraryId: string;
+  itemKey: string;
+  attachmentKey: string;
+  fingerprint: string | null;
+  readable: boolean;
+  pageCount: number | null;
+  version: number | null;
+  identity: "verified" | "unverified";
+  /** Canonical source/version evidence is present and has no conflicting native identity. */
+  canonicalSourceEvidence: boolean;
+  operationMarkers: string[];
+  provenanceMarkers: string[];
+  deepLink: string;
+}
+
+export type NativeArxivOperationObject =
+  | { kind: "parent"; itemKey: string }
+  | { kind: "attachment"; itemKey: string; attachmentKey: string };
+
+/** Validate existing native note bytes without sanitizing them in place. */
 export interface NativeNoteContentPolicy {
   sanitize(content: string): string;
   accepts(content: string): boolean;
@@ -119,6 +169,15 @@ export interface NativeNoteContentPolicy {
  */
 export interface ZoteroNativeApi {
   runtimeStatus(): Promise<NativeRuntimeStatus>;
+  /**
+   * Searches current-profile eligible libraries without network access. An
+   * implementation rejects with `too_large` rather than returning a partial
+   * evidence set when one candidate has more than 100 evidence records.
+   */
+  findLocalArxiv(
+    reference: ArxivUrlReference,
+    limit: number,
+  ): Promise<NativeLocalArxivDiscovery>;
   searchPapers(query: string, limit: number): Promise<NativePaperRecord[]>;
   getPdfAttachment(
     libraryId: string,
@@ -159,6 +218,17 @@ export interface ZoteroNativeApi {
     annotationKey: string,
   ): Promise<boolean>;
   findByOperationMarker(marker: string): Promise<NativeMutationRecord[]>;
+  inspectArxiv(source: ArxivSource): Promise<ArxivNativeInspection>;
+  getArxivParent(
+    source: ArxivSource,
+    itemKey: string,
+  ): Promise<NativeArxivParentRecord | undefined>;
+  getArxivAttachment(
+    source: ArxivSource,
+    itemKey: string,
+    attachmentKey: string,
+  ): Promise<NativeArxivAttachmentRecord | undefined>;
+  findArxivByOperationMarker(marker: string): Promise<NativeArxivOperationObject[]>;
 }
 
 export interface ZoteroLibraryAdapterOptions {
@@ -170,16 +240,23 @@ export interface ZoteroLibraryAdapterOptions {
   enabled: boolean;
   accessGate?: ZoteroAccessGate;
   transport: TransportDescription;
+  /** Exact operations backed by the current production composition. */
+  operations?: readonly import("../../protocol/types.js").OperationName[];
 }
 
 /** A single live gate can be shared by the protocol and privileged adapters. */
 export interface ZoteroAccessGate {
   isEnabled(): boolean;
+  /** Opaque generation captured before awaited mutation preparation. */
+  capture(): string;
+  /** True only while the same enabled authority generation remains live. */
+  isCurrent(fence: string): boolean;
   setEnabled?(enabled: boolean): void;
 }
 
 export class MutableZoteroAccessGate implements ZoteroAccessGate {
   #enabled: boolean;
+  #generation = 0;
 
   constructor(enabled: boolean) {
     this.#enabled = enabled;
@@ -189,7 +266,16 @@ export class MutableZoteroAccessGate implements ZoteroAccessGate {
     return this.#enabled;
   }
 
+  capture(): string {
+    return String(this.#generation);
+  }
+
+  isCurrent(fence: string): boolean {
+    return this.#enabled && fence === String(this.#generation);
+  }
+
   setEnabled(enabled: boolean): void {
+    this.#generation += 1;
     this.#enabled = enabled;
   }
 }

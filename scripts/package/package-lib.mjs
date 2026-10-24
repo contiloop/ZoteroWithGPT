@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { once } from "node:events";
 import {
   chmod,
@@ -22,6 +23,8 @@ const ARCHIVE_TIMESTAMP = new Date("2000-01-01T00:00:00.000Z");
 const ZIP_PATH = "/usr/bin/zip";
 const REQUIRED_COMPATIBILITY = Object.freeze({ minimum: "10.0.6", maximum: "10.0.*" });
 const ARCHIVE_PREFIX = "zotero-ai-research-companion";
+const PLUGIN_ARCHIVE_PREFIX = "zotero-study-save";
+const SERVER_ARCHIVE_PREFIX = "zotero-mcp-server";
 const MANUAL_UPDATE_SENTINEL =
   "https://updates.invalid/zotero-ai-research-companion/updates.json";
 const ASSET_DIRECTORY = fileURLToPath(new URL("./assets", import.meta.url));
@@ -42,10 +45,24 @@ const ASSET_FILES = Object.freeze([
   ["protocol/v1-response.schema.json", "protocol/v1-response.schema.json"],
   ["protocol/examples/connection-status.request.json", "protocol/examples/connection-status.request.json"],
   ["protocol/examples/connection-status.response.json", "protocol/examples/connection-status.response.json"],
+  ["protocol/examples/find-local-arxiv.request.json", "protocol/examples/find-local-arxiv.request.json"],
+  ["protocol/examples/find-local-arxiv.response.json", "protocol/examples/find-local-arxiv.response.json"],
   ["protocol/examples/read-pdf.request.json", "protocol/examples/read-pdf.request.json"],
   ["protocol/examples/create-annotation.request.json", "protocol/examples/create-annotation.request.json"],
   ["protocol/examples/create-annotation.response.json", "protocol/examples/create-annotation.response.json"],
   ["protocol/examples/create-note.request.json", "protocol/examples/create-note.request.json"],
+]);
+
+const PORTABLE_PLUGIN_FILES = Object.freeze([
+  ["integration/chatgpt-plugin/plugin.json", "plugin.json"],
+  ["integration/chatgpt-plugin/README.md", "README.md"],
+  ["integration/chatgpt-plugin/skills/zotero-study-save/SKILL.md", "skills/zotero-study-save/SKILL.md"],
+  ["integration/chatgpt-plugin/skills/zotero-study-save/agents/openai.yaml", "skills/zotero-study-save/agents/openai.yaml"],
+  ["integration/chatgpt-plugin/skills/zotero-study-save/resources/workflow.md", "skills/zotero-study-save/resources/workflow.md"],
+]);
+const SERVER_SCHEMA_FILES = Object.freeze([
+  "scripts/package/assets/protocol/v1-request.schema.json",
+  "scripts/package/assets/protocol/v1-response.schema.json",
 ]);
 
 const CLIENT_PROJECT_FILES = Object.freeze([
@@ -109,6 +126,18 @@ function validateReleaseText(content, label) {
 
 async function copyText(source, destination, label) {
   const content = await readFile(source, "utf8");
+  validateReleaseText(content, label);
+  await mkdir(path.dirname(destination), { recursive: true });
+  await writeFile(destination, content, "utf8");
+}
+
+async function copyAsset(source, destination, label, version) {
+  let content = await readFile(path.join(ASSET_DIRECTORY, ...source.split("/")), "utf8");
+  if (source === "protocol/examples/connection-status.response.json") {
+    const example = JSON.parse(content);
+    example.data.pluginVersion = version;
+    content = `${JSON.stringify(example, null, 2)}\n`;
+  }
   validateReleaseText(content, label);
   await mkdir(path.dirname(destination), { recursive: true });
   await writeFile(destination, content, "utf8");
@@ -219,15 +248,236 @@ async function stageClientKit(projectRoot, directory, version) {
     );
   }
   for (const [source, destination] of ASSET_FILES) {
-    await copyText(
-      path.join(ASSET_DIRECTORY, ...source.split("/")),
+    await copyAsset(
+      source,
       path.join(directory, ...destination.split("/")),
       `client kit ${source}`,
+      version,
     );
   }
   const members = (await allFiles(directory)).sort();
   await normalizeArchiveMetadata(directory, members);
   return { members, readme };
+}
+
+async function stagePortablePlugin(projectRoot, directory, version) {
+  const manifest = await readJson(path.join(projectRoot, "integration", "chatgpt-plugin", "plugin.json"));
+  if (manifest.version !== version) {
+    throw new Error(
+      `portable plugin version ${String(manifest.version)} does not match package version ${version}`,
+    );
+  }
+  if (
+    Object.keys(manifest.extensions?.["com.openai"] ?? {}).sort().join(",") !== "interface" ||
+    Object.hasOwn(manifest.extensions?.["com.openai"] ?? {}, "apps")
+  ) {
+    throw new Error("portable plugin must be explicitly unconfigured and omit apps");
+  }
+  await mkdir(directory, { recursive: true });
+  for (const [source, destination] of PORTABLE_PLUGIN_FILES) {
+    await copyText(
+      path.join(projectRoot, ...source.split("/")),
+      path.join(directory, ...destination.split("/")),
+      `portable plugin ${source}`,
+    );
+  }
+  const members = (await allFiles(directory)).sort();
+  await normalizeArchiveMetadata(directory, members);
+  return { members };
+}
+
+function packageNameFromLockPath(lockPath) {
+  const normalized = lockPath.replaceAll("\\", "/");
+  return normalized.match(/(?:^|\/)node_modules\/((?:@[^/]+\/)?[^/]+)$/u)?.[1];
+}
+
+function serverNotices(lock) {
+  const entries = [];
+  for (const [lockPath, metadata] of Object.entries(lock.packages ?? {})) {
+    if (lockPath === "") continue;
+    const name = packageNameFromLockPath(lockPath);
+    if (
+      name === undefined ||
+      typeof metadata.version !== "string" ||
+      typeof metadata.license !== "string" ||
+      metadata.license.trim().length === 0
+    ) {
+      throw new Error(`server lock entry ${lockPath} lacks reviewable name, version, or license`);
+    }
+    entries.push({
+      lockPath,
+      name,
+      version: metadata.version,
+      license: metadata.license,
+      source: typeof metadata.resolved === "string" ? metadata.resolved : "npm lockfile",
+    });
+  }
+  entries.sort((left, right) => left.lockPath.localeCompare(right.lockPath, "en"));
+  const lines = [
+    "ZOTERO MCP SERVER THIRD-PARTY SOFTWARE NOTICES",
+    "",
+    "The project does not declare a public distribution license. The locked",
+    "production dependencies below retain their own licenses. `npm ci --omit=dev`",
+    "installs their package license files beside the runtime.",
+    "",
+  ];
+  const documented = new Set();
+  for (const entry of entries) {
+    const identity = `${entry.name}@${entry.version}`;
+    if (documented.has(identity)) continue;
+    documented.add(identity);
+    lines.push(
+      `Package: ${identity}`,
+      `License: ${entry.license}`,
+      `Source: ${entry.source}`,
+      "",
+    );
+  }
+  return { content: `${lines.join("\n")}\n`, entries };
+}
+
+async function serverSourceMembers(projectRoot) {
+  const graph = await build({
+    absWorkingDir: projectRoot,
+    entryPoints: [
+      path.join(projectRoot, "integration", "zotero-mcp", "server.mjs"),
+      path.join(projectRoot, "integration", "zotero-mcp", "lifecycle.mjs"),
+      path.join(projectRoot, "scripts", "package", "configure-plugin.mjs"),
+    ],
+    bundle: true,
+    format: "esm",
+    metafile: true,
+    minify: false,
+    outdir: path.join(projectRoot, ".cache", "server-package-graph"),
+    packages: "external",
+    platform: "node",
+    sourcemap: false,
+    target: "node24",
+    treeShaking: true,
+    write: false,
+  });
+  const members = [];
+  for (const input of Object.keys(graph.metafile.inputs)) {
+    const absolute = path.resolve(projectRoot, input);
+    const relative = path.relative(projectRoot, absolute).replaceAll(path.sep, "/");
+    if (
+      relative.startsWith("../") ||
+      relative === ".." ||
+      relative.split("/").includes("node_modules")
+    ) {
+      throw new Error(`server dependency graph escaped the project allowlist: ${input}`);
+    }
+    members.push(relative);
+  }
+  return [...new Set(members)].sort();
+}
+
+async function stageServerPackage(projectRoot, directory, version) {
+  const nestedRoot = path.join(projectRoot, "integration", "zotero-mcp");
+  const nestedPackage = await readJson(path.join(nestedRoot, "package.json"));
+  const nestedLock = await readJson(path.join(nestedRoot, "package-lock.json"));
+  if (
+    nestedPackage.version !== version ||
+    nestedLock.version !== version ||
+    nestedLock.packages?.[""]?.version !== version
+  ) {
+    throw new Error("MCP package and lock versions must match the release version");
+  }
+  const expectedDependencies = {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    dompurify: "3.4.17",
+    jsdom: "29.1.1",
+  };
+  if (JSON.stringify(nestedPackage.dependencies) !== JSON.stringify(expectedDependencies)) {
+    throw new Error("MCP runtime dependencies must remain exactly pinned and ordered");
+  }
+  const distributionPackage = {
+    name: nestedPackage.name,
+    version,
+    private: true,
+    type: "module",
+    packageManager: "npm@11.4.2",
+    engines: nestedPackage.engines,
+    bin: {
+      "zotero-mcp": "integration/zotero-mcp/server.mjs",
+      "zotero-mcp-lifecycle": "integration/zotero-mcp/lifecycle.mjs",
+    },
+    dependencies: nestedPackage.dependencies,
+  };
+  const distributionLock = structuredClone(nestedLock);
+  distributionLock.packages[""].bin = distributionPackage.bin;
+  distributionLock.packages[""].packageManager = distributionPackage.packageManager;
+  const graphMembers = await serverSourceMembers(projectRoot);
+  const sourceMembers = [...new Set([
+    ...graphMembers,
+    ...SERVER_SCHEMA_FILES,
+    "integration/zotero-mcp/package.json",
+  ])].sort();
+  await mkdir(directory, { recursive: true });
+  for (const member of sourceMembers) {
+    await copyText(
+      path.join(projectRoot, ...member.split("/")),
+      path.join(directory, ...member.split("/")),
+      `server package ${member}`,
+    );
+  }
+  const packageContent = `${JSON.stringify(distributionPackage, null, 2)}\n`;
+  const lockContent = `${JSON.stringify(distributionLock, null, 2)}\n`;
+  validateReleaseText(packageContent, "server package.json");
+  validateReleaseText(lockContent, "server package-lock.json");
+  await writeFile(path.join(directory, "package.json"), packageContent, "utf8");
+  await writeFile(path.join(directory, "package-lock.json"), lockContent, "utf8");
+  const notices = serverNotices(distributionLock);
+  await writeFile(path.join(directory, "THIRD_PARTY_NOTICES"), notices.content, "utf8");
+  const memberNames = [
+    ...sourceMembers,
+    "package.json",
+    "package-lock.json",
+    "THIRD_PARTY_NOTICES",
+    "SERVER_BUILD_METADATA.json",
+  ].sort();
+  const memberSha256 = {};
+  for (const member of memberNames.filter(name => name !== "SERVER_BUILD_METADATA.json")) {
+    memberSha256[member] = createHash("sha256")
+      .update(await readFile(path.join(directory, ...member.split("/"))))
+      .digest("hex");
+  }
+  const metadata = {
+    schemaVersion: 1,
+    owner: "zotero-study-save-mcp-runtime",
+    artifact: `${SERVER_ARCHIVE_PREFIX}-${version}.zip`,
+    version,
+    projectLicense: null,
+    runtime: {
+      node: ">=24 <27",
+      npm: "11.4.2",
+      install: "npm ci --omit=dev --ignore-scripts",
+    },
+    directDependencies: expectedDependencies,
+    lockedPackages: notices.entries.map(({ name, version: packageVersion, license }) => ({
+      name,
+      version: packageVersion,
+      license,
+    })),
+    lockSha256: createHash("sha256").update(lockContent).digest("hex"),
+    members: memberNames,
+    memberSha256,
+    recipe: {
+      source: "explicit server, lifecycle, and private-config import graph plus shared schemas and locked manifests",
+      archive: "/usr/bin/zip -X with sorted members and fixed UTC timestamps",
+    },
+  };
+  await writeFile(
+    path.join(directory, "SERVER_BUILD_METADATA.json"),
+    `${JSON.stringify(metadata, null, 2)}\n`,
+    "utf8",
+  );
+  const actualMembers = (await allFiles(directory)).sort();
+  if (JSON.stringify(actualMembers) !== JSON.stringify(memberNames)) {
+    throw new Error("server staging inventory differs from its fixed metadata allowlist");
+  }
+  await normalizeArchiveMetadata(directory, actualMembers);
+  return { members: actualMembers, metadata };
 }
 
 async function runZip(stagingDirectory, outputPath, members) {
@@ -263,6 +513,8 @@ export async function buildXpi({
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "research-companion-xpi-"));
   const stagingDirectory = path.join(temporaryDirectory, "package");
   const clientStagingDirectory = path.join(temporaryDirectory, "client");
+  const pluginStagingDirectory = path.join(temporaryDirectory, "plugin");
+  const serverStagingDirectory = path.join(temporaryDirectory, "server");
   const outputPath = path.resolve(
     outputDirectory,
     `${ARCHIVE_PREFIX}-${version}.xpi`,
@@ -271,10 +523,20 @@ export async function buildXpi({
     outputDirectory,
     `${ARCHIVE_PREFIX}-${version}-client`,
   );
+  const pluginPath = path.resolve(
+    outputDirectory,
+    `${PLUGIN_ARCHIVE_PREFIX}-${version}.zip`,
+  );
+  const serverPath = path.resolve(
+    outputDirectory,
+    `${SERVER_ARCHIVE_PREFIX}-${version}.zip`,
+  );
   let published = false;
 
   try {
     await rm(outputPath, { force: true });
+    await rm(pluginPath, { force: true });
+    await rm(serverPath, { force: true });
     await rm(clientDirectory, { recursive: true, force: true });
     await mkdir(stagingDirectory, { recursive: true });
     for (const [source, destination] of STATIC_FILES) {
@@ -285,14 +547,25 @@ export async function buildXpi({
       );
     }
     for (const [source, destination] of ASSET_FILES) {
-      await copyText(
-        path.join(ASSET_DIRECTORY, ...source.split("/")),
+      await copyAsset(
+        source,
         path.join(stagingDirectory, ...destination.split("/")),
         `packaging asset ${source}`,
+        version,
       );
     }
     await writeFile(path.join(stagingDirectory, "prefs.js"), DEFAULT_PREFERENCES, "utf8");
     const clientKit = await stageClientKit(projectRoot, clientStagingDirectory, version);
+    const portablePlugin = await stagePortablePlugin(
+      projectRoot,
+      pluginStagingDirectory,
+      version,
+    );
+    const serverPackage = await stageServerPackage(
+      projectRoot,
+      serverStagingDirectory,
+      version,
+    );
     await mkdir(path.join(stagingDirectory, "client"), { recursive: true });
     await writeFile(
       path.join(stagingDirectory, "client", "README.md"),
@@ -313,6 +586,7 @@ export async function buildXpi({
       metafile: true,
       minify: false,
       platform: "browser",
+      preserveSymlinks: true,
       sourcemap: false,
       target: "firefox140",
       treeShaking: true,
@@ -330,6 +604,8 @@ export async function buildXpi({
     const buildMetadata = {
       artifact: `${ARCHIVE_PREFIX}-${version}.xpi`,
       clientKit: `${ARCHIVE_PREFIX}-${version}-client`,
+      portablePlugin: `${PLUGIN_ARCHIVE_PREFIX}-${version}.zip`,
+      mcpServer: `${SERVER_ARCHIVE_PREFIX}-${version}.zip`,
       version,
       projectLicense: null,
       distribution: "manual",
@@ -348,9 +624,12 @@ export async function buildXpi({
         format: "iife",
         globalName: "ResearchCompanion",
         platform: "browser",
+        preserveSymlinks: true,
         target: "firefox140",
         archive: "/usr/bin/zip -X with sorted members and fixed UTC timestamps",
         clientKit: "plain UTF-8 files with the same fixed timestamps",
+        portablePlugin: "explicit unconfigured source allowlist",
+        mcpServer: "locked production manifest plus explicit local import graph",
       },
     };
     await writeFile(
@@ -363,6 +642,8 @@ export async function buildXpi({
     await normalizeArchiveMetadata(stagingDirectory, members);
     await mkdir(path.dirname(outputPath), { recursive: true });
     await runZip(stagingDirectory, outputPath, members);
+    await runZip(pluginStagingDirectory, pluginPath, portablePlugin.members);
+    await runZip(serverStagingDirectory, serverPath, serverPackage.members);
     await cp(clientStagingDirectory, clientDirectory, {
       recursive: true,
       preserveTimestamps: true,
@@ -372,14 +653,20 @@ export async function buildXpi({
     return {
       outputPath,
       clientDirectory,
+      pluginPath,
+      serverPath,
       version,
       members,
       clientMembers: clientKit.members,
+      pluginMembers: portablePlugin.members,
+      serverMembers: serverPackage.members,
       runtimePackages: buildMetadata.runtimePackages,
     };
   } finally {
     if (!published) {
       await rm(outputPath, { force: true });
+      await rm(pluginPath, { force: true });
+      await rm(serverPath, { force: true });
       await rm(clientDirectory, { recursive: true, force: true });
     }
     await rm(temporaryDirectory, { recursive: true, force: true });

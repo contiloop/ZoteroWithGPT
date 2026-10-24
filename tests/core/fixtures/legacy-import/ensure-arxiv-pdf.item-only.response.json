@@ -1,0 +1,25 @@
+{
+  "protocolVersion": 1,
+  "operationId": "example-ensure-arxiv-item-only-1",
+  "state": "failed",
+  "data": {
+    "source": { "arxivId": "2401.01234", "version": 2 },
+    "libraryId": "1",
+    "completion": "item_only",
+    "itemKey": "ITEM1234",
+    "itemAction": "created",
+    "attachmentKey": null,
+    "attachmentFingerprint": null,
+    "pdfAction": "none",
+    "deepLink": "zotero://select/library/items/ITEM1234"
+  },
+  "error": {
+    "code": "storage_error",
+    "message": "The parent item was confirmed, but PDF acquisition failed.",
+    "retryable": false
+  },
+  "verification": {
+    "storage": "confirmed",
+    "viewer": "not_checked"
+  }
+}

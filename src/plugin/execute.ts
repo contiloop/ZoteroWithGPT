@@ -1,10 +1,22 @@
-import { CoreOperationError, revalidateAnnotationAnchor } from "../core/index.js";
+import {
+  CoreOperationError,
+  revalidateAnnotationAnchor,
+} from "../core/index.js";
 import type {
-  AnchorResolutionPort, AnchorRevalidationPort, OperationExecutionOutcome,
+  AnchorResolutionPort, AnchorRevalidationPort,
+  OperationExecutionOutcome,
   OperationExecutorPort, OperationIdentity, ZoteroReadPort, ZoteroWritePort,
   ZoteroStorageReadbackPort, ZoteroViewerVerificationPort,
 } from "../ports/index.js";
-import type { ProtocolRequest, VerificationSummary, VerificationDetail, VerificationState } from "../protocol/index.js";
+import {
+  BASE_OPERATION_NAMES,
+  LOCAL_STUDY_OPERATION_NAMES,
+  type OperationName,
+  type ProtocolRequest,
+  type VerificationSummary,
+  type VerificationDetail,
+  type VerificationState,
+} from "../protocol/index.js";
 
 export interface NativeExecutionDependencies {
   reads: ZoteroReadPort;
@@ -34,7 +46,16 @@ async function readbackStatus(read: () => Promise<VerificationDetail>): Promise<
 
 /** Routes validated requests; the coordinator owns authorization and identity. */
 export class NativeOperationExecutor implements OperationExecutorPort {
-  constructor(private readonly ports: NativeExecutionDependencies) {}
+  readonly operations: readonly OperationName[];
+
+  constructor(
+    private readonly ports: NativeExecutionDependencies,
+  ) {
+    this.operations = [
+      ...BASE_OPERATION_NAMES,
+      ...LOCAL_STUDY_OPERATION_NAMES,
+    ];
+  }
 
   async execute(request: ProtocolRequest, identity: OperationIdentity): Promise<OperationExecutionOutcome> {
     try {
@@ -56,6 +77,7 @@ export class NativeOperationExecutor implements OperationExecutorPort {
     const { reads, writes, anchors, storage, viewer } = this.ports;
     switch (request.operation) {
       case "connection_status": return completed(await reads.connectionStatus(request));
+      case "find_local_arxiv": return completed(await reads.findLocalArxiv(request));
       case "search_papers": return completed(await reads.searchPapers(request));
       case "read_pdf": return completed(await reads.readPdf(request));
       case "list_annotations": return completed(await reads.listAnnotations(request));
@@ -122,6 +144,21 @@ export class NativeOperationExecutor implements OperationExecutorPort {
           viewer: viewerEvidence.confirmed ? "confirmed" : "failed",
         });
       }
+      case "inspect_arxiv":
+      case "ensure_arxiv_pdf": return this.#unsupported(request.operation);
     }
+  }
+
+  #unsupported(
+    operation: "inspect_arxiv" | "ensure_arxiv_pdf",
+  ): OperationExecutionOutcome {
+    return {
+      kind: "rejected",
+      error: new CoreOperationError(
+        "unsupported_capability",
+        `${operation} is defined by protocol v1 but is not active in this build`,
+      ).toProtocolError(),
+      verification: { storage: "not_checked", viewer: "not_checked" },
+    };
   }
 }

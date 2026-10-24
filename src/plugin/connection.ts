@@ -4,6 +4,7 @@ import {
   createZoteroNativeApi, DomPurifyNativeNoteContentPolicy,
   ZoteroLibraryAdapter, ZoteroOperationRecovery,
   MutableZoteroAccessGate, type ZoteroNativeEnvironment,
+  LegacyArxivRecovery,
   type DomPurifyNativeNoteContentPolicyOptions,
 } from "../adapters/zotero/index.js";
 import { ZoteroAnchorResolver } from "../adapters/anchors/index.js";
@@ -21,10 +22,14 @@ import type {
   VisiblePreviewFailureReason,
   ZoteroViewerVerificationPort,
 } from "../ports/zotero.js";
+import { BASE_OPERATION_NAMES, LOCAL_STUDY_OPERATION_NAMES } from "../protocol/index.js";
 
 export interface ProductionConnectionEnvironment extends GeckoFileBridgeGlobals {
-  Zotero: ZoteroNativeEnvironment["Zotero"] & { Profile: { dir: string } };
-  IOUtils: GeckoFileBridgeGlobals["IOUtils"] & IOUtilsTextApi & ZoteroNativeEnvironment["IOUtils"];
+  Zotero: ZoteroNativeEnvironment["Zotero"] & {
+    Profile: { dir: string };
+  };
+  IOUtils: GeckoFileBridgeGlobals["IOUtils"] & IOUtilsTextApi &
+    ZoteroNativeEnvironment["IOUtils"];
   PathUtils: GeckoFileBridgeGlobals["PathUtils"] & PathUtilsApi;
   crypto: ZoteroNativeEnvironment["crypto"] & { randomUUID(): string };
   cloneInto: ZoteroNativeEnvironment["cloneInto"];
@@ -101,8 +106,12 @@ export async function openProductionConnection(
 ): Promise<{ profileId: string; subscription: FileBridgeSubscription; close(): Promise<void> }> {
   const gate = new MutableZoteroAccessGate(true);
   const noteContent = new DomPurifyNativeNoteContentPolicy({ window: environment.noteWindow });
-  const native = createZoteroNativeApi({ ...environment, noteContent, accessGate: gate });
   const digest = new WebCryptoPayloadDigest(environment.crypto);
+  const native = createZoteroNativeApi({
+    ...environment,
+    noteContent,
+    accessGate: gate,
+  });
   const store = new DurableOperationStore(
     new IOUtilsAtomicTextFile(environment.IOUtils, environment.PathUtils,
       recommendedOperationStorePath(environment.Zotero.Profile.dir, environment.PathUtils)),
@@ -113,9 +122,10 @@ export async function openProductionConnection(
     fileSystem: new GeckoFileBridgeFileSystem(environment), directory,
     connectedProfileId: profileId, onError: environment.reportError,
   });
+  const activeOperations = [...BASE_OPERATION_NAMES, ...LOCAL_STUDY_OPERATION_NAMES];
   const library = new ZoteroLibraryAdapter({
     native, noteContent, digest, profileId, pluginVersion: version, enabled: true,
-    accessGate: gate, transport: bridge.describe(),
+    accessGate: gate, transport: bridge.describe(), operations: activeOperations,
   });
   const viewer = createViewerVerificationPort({
     findAttachment: (libraryId, attachmentKey) =>
@@ -133,7 +143,7 @@ export async function openProductionConnection(
   const coordinator = new OperationCoordinator({
     store, digest, serializer: new KeyedMutationSerializer(),
   });
-  const recovery = new ZoteroOperationRecovery(native, digest);
+  const recovery = new ZoteroOperationRecovery(native, digest, new LegacyArxivRecovery(native, store));
   try {
     await coordinator.recoverPending(profileId, recovery);
     const subscription = await bridge.listen(async (request, connectedProfile) => {

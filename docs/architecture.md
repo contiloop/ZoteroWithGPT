@@ -1,26 +1,50 @@
-# System architecture
+# Architecture
 
-ChatGPT Web supplies the conversation and study analysis. An already authenticated Mac file client carries bounded JSON into a user-selected directory. The Zotero extension consumes those files locally; it does not expose a network listener. A direct Codex local-file client uses the same entry point. Independent ChatGPT Work execution has not been established.
+ChatGPT Web supplies analysis and the user's save intent. A dedicated private
+Secure MCP tunnel supervises one stdio MCP process. That process translates 14
+fixed tools to protocol-v1 files in one configured bridge root. The Zotero
+extension remains the only native executor: it reads the chosen PDF and commits
+native annotations without exposing a network listener.
 
-## Components and dependency direction
+The core depends on ports; plugin composition binds Zotero, Gecko filesystem,
+geometry, persistence, and rendering adapters. Transport replacement must not
+change save authority, target identity, or retry semantics.
 
-| Component | Responsibility and direction |
-| --- | --- |
-| Conversation client | Selects paper, requests reading, obtains save authority, publishes requests and reads results; never receives Zotero runtime objects |
-| File bridge | Converts complete versioned files into operation submissions and publishes responses; depends on transport and execution interfaces |
-| Operation coordinator | Validates and snapshots requests, claims immutable identity, serializes mutations, and records outcomes; depends on ports rather than Gecko or Zotero globals |
-| Native library and anchor adapters | Translate typed requests into Zotero application access and PDF-reader geometry; return native keys and snapshots |
-| Operation journal and recovery | Persist operation identities, results, and native reconciliation evidence within one Zotero profile |
-| Reader and rendering adapters | Derive a sanitized Markdown/MathML preview from canonical native comments; inspect actual visible reader state |
-| Settings and plugin composition | Bind native implementations, selected directory, connection lifecycle, and reader lifecycle |
-| Package tooling | Bundles the extension and matching plain-text client kit; does not bundle a user's transport or profile |
+The MCP bridge port is replaceable and owns no native writer, operation journal,
+generic filesystem tool, or paper acquisition path. It publishes create-only
+requests with immutable operation IDs and returns the exact native result. MCP
+text is a concise companion to structured content; it never replaces full-body
+native readback. The generic local-file client kit remains a separate fallback
+artifact and is not bundled into the selected ChatGPT plugin.
 
-The TypeScript core imports protocol definitions and abstract ports. Concrete Zotero, Gecko filesystem, DOM rendering, hashing, and persistence adapters implement those ports. Plugin composition owns concrete wiring. Replacing a transport therefore does not change the meaning of a study save.
+## Pipeline
 
-## Representative save
+1. Discover the manually saved paper by arXiv identity and read its local PDF.
+2. Keep the chosen attachment in accessible conversation context.
+3. On a save request, prepare only the requested content and resolve its passage.
+4. Recheck authority, PDF fingerprint, and revision; commit native Zotero data.
+5. Read back the saved body and return its deep link. Reader visibility is
+   independent evidence and never a reason to repeat the write.
 
-The conversation client searches and reads a selected PDF, obtains a fingerprint and passage evidence, then resolves an anchor. After the user's save instruction or proposal approval, the client checks the active descriptor and enabled session, publishes one complete request, and polls its matching result.
+The journal survives reinstall to prevent duplicate execution. Old arXiv import
+schemas and read-only reconciliation remain solely to interpret pre-cut history;
+new acquisition operations are unsupported. PDF bytes and SQLite are never
+modified by annotation saves. Native comments are canonical; sanitized formatted
+previews are disposable and preserve editable Markdown/LaTeX source.
 
-The bridge validates file identity and scope before submission. The coordinator claims the operation and serializes its mutation. The native adapter revalidates the current PDF, anchor, and target state, commits ordinary Zotero data, and reads it back. The journal records the result before transport publication. A later verification request inspects storage and the active reader independently.
+## Runtime ownership
 
-Only metadata, bounded extracted text, geometry candidates, and JSON results cross the file boundary. PDF binaries, credentials, executable code, and arbitrary filesystem commands do not. Native annotations and optional notes remain in Zotero; preview nodes are disposable. Zotero remains responsible for ordinary library sync.
+The server package installs under one owned stable root with versioned releases,
+a stable lifecycle launcher, and one private managed-profile YAML. The fixed
+alias and profile are `zotero-study-save-mcp`. `tunnel-client runtimes connect`
+supervises the process and uses an existing tunnel ID read-only; its loopback
+health port is ephemeral. The client's global control root is pinned and passed
+to every invocation but stays outside lifecycle ownership. Removal stops and
+removes only that alias and the exact-inventory owned local tree. Bridge sessions
+and the Zotero `operations-v1.json` journal live outside the runtime root and
+survive ordinary reinstall.
+
+Rollback selects the prior installed route and leaves it stopped. It never
+replays a request. Account-plugin routing rollback is a separate operation: the
+account service rejects semantic-version downgrades, so restoring an older route
+requires the preserved private content under a newer guarded release version.

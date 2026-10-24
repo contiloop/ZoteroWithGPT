@@ -1,20 +1,26 @@
 {
   "name": "zotero-ai-research-companion",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
+  "packageManager": "npm@11.4.2",
   "engines": {
     "node": ">=24 <27"
   },
   "scripts": {
     "build": "tsc --build",
     "typecheck": "tsc --noEmit --incremental --tsBuildInfoFile .cache/typecheck.tsbuildinfo",
-    "test": "npm run build && node --test",
-    "package": "node scripts/package/build-xpi.mjs",
+    "test": "npm run build && node --test --test-concurrency=1",
+    "package": "npm run build && node scripts/package/build-xpi.mjs",
+    "configure:plugin": "node scripts/package/configure-plugin.mjs",
     "verify:package": "node scripts/verify/package.mjs",
-    "verify": "npm run typecheck && npm test && npm run build && npm run package && npm run verify:package"
+    "verify:plugin": "node integration/chatgpt-plugin/tests/validate-package.mjs",
+    "verify:mcp": "npm run typecheck --prefix integration/zotero-mcp",
+    "verify": "npm run typecheck && npm test && npm run verify:mcp && npm run package && npm run verify:package && npm run verify:plugin"
   },
   "devDependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
     "esbuild": "0.28.2",
     "jsdom": "29.1.1",
     "typescript": "7.0.2"

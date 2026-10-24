@@ -393,3 +393,89 @@ test("mutation serializer orders work per profile while allowing other profiles 
   await Promise.all([first, second]);
   assert.deepEqual(events, ["a1-start", "b1", "a1-end", "a2"]);
 });
+
+test("a running arXiv import checkpoints immutable native recovery evidence atomically", async () => {
+  const file = new MemoryAtomicFile();
+  const store = new DurableOperationStore(file, { generateProfileId: () => "profile-A" });
+  const queued = {
+    ...record("op-arxiv-stage"),
+    operation: "ensure_arxiv_pdf",
+  };
+  await store.claim(queued);
+  await store.transition("op-arxiv-stage", "queued", {
+    ...queued,
+    state: "running",
+    response: { ...queued.response, state: "running" },
+  });
+  const evidence = {
+    kind: "arxiv_import",
+    stage: "prepared",
+    source: {
+      arxivId: "2401.01234",
+      version: 2,
+      abstractUrl: "https://arxiv.org/abs/2401.01234v2",
+      pdfUrl: "https://arxiv.org/pdf/2401.01234v2",
+      metadata: {
+        title: "Fixture article",
+        authors: ["Ada Example"],
+        published: "2024-01-03T00:00:00Z",
+        updated: "2024-01-04T00:00:00Z",
+        abstract: "Fixture abstract",
+      },
+    },
+    libraryId: "1",
+    inspectionToken: "token-a",
+    selection: { kind: "create" },
+    initialCandidates: [],
+    expectedPdf: {
+      fingerprint: "sha256:pdf-a",
+      byteLength: 20,
+      pageCount: 2,
+      stagingId: "stage-owned-a",
+    },
+    itemKey: "ITEMPLAN1",
+    itemAction: "created",
+    pdfAction: "downloaded",
+    attachmentKey: "ATTPLAN1",
+    operationMarker: "urn:operation:a",
+    parentProvenance: "urn:arxiv:parent:a",
+    attachmentProvenance: "urn:arxiv:pdf:a",
+  };
+
+  const checkpointed = await store.checkpointNativeEvidence("op-arxiv-stage", evidence);
+  assert.deepEqual(checkpointed.nativeEvidence, evidence);
+  assert.deepEqual((await store.load("op-arxiv-stage")).nativeEvidence, evidence);
+
+  await assert.rejects(
+    () => store.checkpointNativeEvidence("op-arxiv-stage", {
+      ...evidence,
+      source: {
+        ...evidence.source,
+        version: 3,
+        abstractUrl: "https://arxiv.org/abs/2401.01234v3",
+        pdfUrl: "https://arxiv.org/pdf/2401.01234v3",
+      },
+      stage: "parent_committed",
+    }),
+    /immutable/i,
+  );
+  assert.deepEqual((await store.load("op-arxiv-stage")).nativeEvidence, evidence);
+});
+
+test("a 0.1.0 journal without native recovery evidence remains readable", async () => {
+  const legacy = record("op-legacy-0.1.0");
+  const file = new MemoryAtomicFile();
+  file.text = `${JSON.stringify({
+    schemaVersion: 1,
+    profileId: "profile-A",
+    operations: { [legacy.operationId]: legacy },
+  })}\n`;
+
+  const store = new DurableOperationStore(file, {
+    generateProfileId: () => "must-not-replace-profile",
+  });
+  const loaded = await store.load(legacy.operationId);
+
+  assert.deepEqual(loaded, legacy);
+  assert.equal("nativeEvidence" in loaded, false);
+});

@@ -1,0 +1,9 @@
+{
+  "protocolVersion": 1,
+  "operationId": "example-inspect-arxiv-1",
+  "operation": "inspect_arxiv",
+  "profileId": "profile-A",
+  "payload": {
+    "url": "https://arxiv.org/abs/2401.01234v2"
+  }
+}

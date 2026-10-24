@@ -1,0 +1,6 @@
+interface:
+  display_name: Zotero Study Save
+  short_description: Study and save Zotero papers
+  default_prompt: 이 arXiv 논문을 Zotero에 저장된 PDF로 읽고 함께 공부해 주세요.
+policy:
+  allow_implicit_invocation: true

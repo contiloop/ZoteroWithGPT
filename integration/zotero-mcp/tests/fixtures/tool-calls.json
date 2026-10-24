@@ -1,0 +1,270 @@
+{
+  "schemaVersion": 1,
+  "connection": {
+    "profileId": "profile-A",
+    "sessionId": "0123456789abcdef0123456789abcdef"
+  },
+  "calls": [
+    {
+      "tool": "zotero_connection_status",
+      "operation": "connection_status",
+      "input": {
+        "operationId": "mcp.connection-status-1"
+      }
+    },
+    {
+      "tool": "zotero_find_local_arxiv",
+      "operation": "find_local_arxiv",
+      "input": {
+        "operationId": "mcp.find-local-arxiv-1",
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "payload": {
+          "url": "https://arxiv.org/abs/2401.01234v2",
+          "limit": 25
+        }
+      }
+    },
+    {
+      "tool": "zotero_search_papers",
+      "operation": "search_papers",
+      "input": {
+        "operationId": "mcp.search-papers-1",
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "payload": {
+          "query": "Bayesian inference",
+          "limit": 25
+        }
+      }
+    },
+    {
+      "tool": "zotero_read_pdf",
+      "operation": "read_pdf",
+      "input": {
+        "operationId": "mcp.read-pdf-1",
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "payload": {
+          "libraryId": "1",
+          "itemKey": "ITEM1234",
+          "attachmentKey": "ATTACH01",
+          "pageRange": {
+            "startPageIndex": 0,
+            "endPageIndex": 2
+          }
+        }
+      }
+    },
+    {
+      "tool": "zotero_list_annotations",
+      "operation": "list_annotations",
+      "input": {
+        "operationId": "mcp.list-annotations-1",
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "payload": {
+          "libraryId": "1",
+          "attachmentKey": "ATTACH01"
+        }
+      }
+    },
+    {
+      "tool": "zotero_list_notes",
+      "operation": "list_notes",
+      "input": {
+        "operationId": "mcp.list-notes-1",
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "payload": {
+          "libraryId": "1",
+          "itemKey": "ITEM1234",
+          "limit": 25
+        }
+      }
+    },
+    {
+      "tool": "zotero_read_note",
+      "operation": "read_note",
+      "input": {
+        "operationId": "mcp.read-note-1",
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "payload": {
+          "libraryId": "1",
+          "itemKey": "ITEM1234",
+          "noteKey": "NOTE1234"
+        }
+      }
+    },
+    {
+      "tool": "zotero_resolve_anchor",
+      "operation": "resolve_anchor",
+      "input": {
+        "operationId": "mcp.resolve-anchor-1",
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "payload": {
+          "libraryId": "1",
+          "attachmentKey": "ATTACH01",
+          "fingerprint": "sha256:pdf-revision-a",
+          "pageIndex": 2,
+          "quote": {
+            "exact": "posterior concentration",
+            "prefix": "We next prove ",
+            "suffix": " under regularity assumptions."
+          }
+        }
+      }
+    },
+    {
+      "tool": "zotero_create_annotation",
+      "operation": "create_annotation",
+      "input": {
+        "operationId": "mcp.create-annotation-1",
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "authorization": {
+          "kind": "explicit_request",
+          "scope": "Save this explanation on the selected passage in ATTACH01."
+        },
+        "payload": {
+          "anchor": {
+            "libraryId": "1",
+            "itemKey": "ITEM1234",
+            "attachmentKey": "ATTACH01",
+            "attachmentFingerprint": "sha256:pdf-revision-a",
+            "pageIndex": 2,
+            "pageLabel": "3",
+            "rectangles": [
+              {
+                "x1": 12,
+                "y1": 30,
+                "x2": 140,
+                "y2": 45
+              }
+            ],
+            "selectedText": "posterior concentration",
+            "matchEvidence": {
+              "method": "exact_quote",
+              "matchedText": "posterior concentration",
+              "exact": true
+            }
+          },
+          "type": "highlight",
+          "comment": "A complete user-approved explanation.",
+          "color": "#ffd400"
+        }
+      }
+    },
+    {
+      "tool": "zotero_update_annotation",
+      "operation": "update_annotation",
+      "input": {
+        "operationId": "mcp.update-annotation-1",
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "authorization": {
+          "kind": "explicit_request",
+          "scope": "Append this detail to ANN00001 after reading revision rev:9."
+        },
+        "payload": {
+          "libraryId": "1",
+          "attachmentKey": "ATTACH01",
+          "annotationKey": "ANN00001",
+          "expectedRevision": "rev:9",
+          "mode": "append",
+          "comment": "Additional denominator detail."
+        }
+      }
+    },
+    {
+      "tool": "zotero_create_note",
+      "operation": "create_note",
+      "input": {
+        "operationId": "mcp.create-note-1",
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "authorization": {
+          "kind": "approved_proposal",
+          "scope": "Create this separate synthesis note under ITEM1234."
+        },
+        "payload": {
+          "libraryId": "1",
+          "itemKey": "ITEM1234",
+          "content": "A separate synthesis note."
+        }
+      }
+    },
+    {
+      "tool": "zotero_update_note",
+      "operation": "update_note",
+      "input": {
+        "operationId": "mcp.update-note-1",
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "authorization": {
+          "kind": "explicit_request",
+          "scope": "Append this question to NOTE1234 after reading revision rev:9."
+        },
+        "payload": {
+          "libraryId": "1",
+          "itemKey": "ITEM1234",
+          "noteKey": "NOTE1234",
+          "expectedRevision": "rev:9",
+          "mode": "append",
+          "content": "A new study question."
+        }
+      }
+    },
+    {
+      "tool": "zotero_verify_annotation",
+      "operation": "verify_annotation",
+      "input": {
+        "operationId": "mcp.verify-annotation-1",
+        "connection": {
+          "profileId": "profile-A",
+          "sessionId": "0123456789abcdef0123456789abcdef"
+        },
+        "payload": {
+          "libraryId": "1",
+          "attachmentKey": "ATTACH01",
+          "annotationKey": "ANN00001"
+        }
+      }
+    }
+  ],
+  "lookup": {
+    "tool": "zotero_get_operation_result",
+    "recordedTool": "zotero_read_note",
+    "input": {
+      "operationId": "mcp.read-note-1",
+      "connection": {
+        "profileId": "profile-A",
+        "sessionId": "0123456789abcdef0123456789abcdef"
+      }
+    }
+  }
+}

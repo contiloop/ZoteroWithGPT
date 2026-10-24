@@ -57,6 +57,53 @@ async function fixture() {
   await write(root, "docs/uninstall.md", "# Uninstall\n\nDisable before removal.\n");
   await write(root, "docs/troubleshooting.md", "# Troubleshooting\n\nRead the displayed status.\n");
   await write(root, "docs/protocol/v1.md", "# Protocol v1\n");
+  const pluginFiles = [
+    "README.md",
+    "plugin.json",
+    "skills/zotero-study-save/SKILL.md",
+    "skills/zotero-study-save/agents/openai.yaml",
+    "skills/zotero-study-save/resources/workflow.md",
+  ];
+  for (const member of pluginFiles) {
+    const source = await readFile(path.join(PROJECT_ROOT, "integration", "chatgpt-plugin", member), "utf8");
+    await write(root, `integration/chatgpt-plugin/${member}`, source);
+  }
+  const pluginManifestPath = path.join(root, "integration", "chatgpt-plugin", "plugin.json");
+  const pluginManifest = JSON.parse(await readFile(pluginManifestPath, "utf8"));
+  pluginManifest.version = "1.2.3";
+  await writeFile(pluginManifestPath, `${JSON.stringify(pluginManifest, null, 2)}\n`);
+  await cp(
+    path.join(PROJECT_ROOT, "integration", "zotero-mcp"),
+    path.join(root, "integration", "zotero-mcp"),
+    {
+      recursive: true,
+      filter: source =>
+        !source.includes(`${path.sep}node_modules`) &&
+        !source.includes(`${path.sep}tests`),
+    },
+  );
+  await cp(path.join(PROJECT_ROOT, "dist"), path.join(root, "dist"), { recursive: true });
+  for (const schema of ["v1-request.schema.json", "v1-response.schema.json"]) {
+    const source = path.join(PROJECT_ROOT, "scripts", "package", "assets", "protocol", schema);
+    const destination = path.join(root, "scripts", "package", "assets", "protocol", schema);
+    await mkdir(path.dirname(destination), { recursive: true });
+    await cp(source, destination);
+  }
+  for (const script of ["configure-plugin.mjs", "configure-plugin-lib.mjs"]) {
+    await cp(
+      path.join(PROJECT_ROOT, "scripts", "package", script),
+      path.join(root, "scripts", "package", script),
+    );
+  }
+  const nestedPackagePath = path.join(root, "integration", "zotero-mcp", "package.json");
+  const nestedPackage = JSON.parse(await readFile(nestedPackagePath, "utf8"));
+  nestedPackage.version = "1.2.3";
+  await writeFile(nestedPackagePath, `${JSON.stringify(nestedPackage, null, 2)}\n`);
+  const nestedLockPath = path.join(root, "integration", "zotero-mcp", "package-lock.json");
+  const nestedLock = JSON.parse(await readFile(nestedLockPath, "utf8"));
+  nestedLock.version = "1.2.3";
+  nestedLock.packages[""].version = "1.2.3";
+  await writeFile(nestedLockPath, `${JSON.stringify(nestedLock, null, 2)}\n`);
   return root;
 }
 
@@ -105,13 +152,22 @@ test("build produces a deterministic versioned XPI with a validated release surf
   assert.equal(path.basename(first.clientDirectory), "zotero-ai-research-companion-1.2.3-client");
   assert.equal(await sha256(first.outputPath), await sha256(second.outputPath));
   assert.equal(await sha256(first.outputPath), await sha256(inheritedEnvironment.outputPath));
+  assert.equal(await sha256(first.pluginPath), await sha256(second.pluginPath));
+  assert.equal(await sha256(first.pluginPath), await sha256(inheritedEnvironment.pluginPath));
+  assert.equal(await sha256(first.serverPath), await sha256(second.serverPath));
+  assert.equal(await sha256(first.serverPath), await sha256(inheritedEnvironment.serverPath));
   assert.equal(
     (await directorySha256(first.clientDirectory)).digest("hex"),
     (await directorySha256(second.clientDirectory)).digest("hex"),
   );
   assert.equal(report.version, "1.2.3");
+  assert.equal(report.members.length, 21);
+  assert.equal(report.clientMembers.length, 15);
+  assert.equal(report.pluginMembers.length, 5);
+  assert.ok(report.serverMembers.length > 10);
   assert.deepEqual(report.zoteroCompatibility, { minimum: "10.0.6", maximum: "10.0.*" });
   assert.equal(report.updateURL, MANUAL_UPDATE_SENTINEL);
+  assert.equal(path.basename(report.pluginPath), "zotero-study-save-1.2.3.zip");
   assert.ok(report.members.includes("bootstrap.js"));
   assert.ok(report.members.includes("companion.js"));
   assert.ok(report.members.includes("protocol/v1-request.schema.json"));
@@ -123,10 +179,49 @@ test("build produces a deterministic versioned XPI with a validated release surf
   assert.ok(report.clientMembers.includes("README.md"));
   assert.ok(report.clientMembers.includes("protocol/v1-request.schema.json"));
   assert.ok(report.clientMembers.includes("protocol/examples/create-annotation.request.json"));
+  assert.ok(report.clientMembers.includes("protocol/examples/find-local-arxiv.request.json"));
+  assert.ok(report.clientMembers.includes("protocol/examples/find-local-arxiv.response.json"));
+  assert.equal(report.clientMembers.includes("protocol/examples/inspect-arxiv.request.json"), false);
+  assert.equal(report.clientMembers.includes("protocol/examples/ensure-arxiv-pdf.item-only.response.json"), false);
+  assert.ok(report.pluginMembers.includes("plugin.json"));
+  assert.equal(report.pluginMembers.includes(".app.json"), false);
+  assert.equal(report.pluginMembers.includes(
+    "skills/zotero-study-save/resources/personal-config.json",
+  ), false);
+  assert.equal(report.pluginMembers.some(member => member.includes("client-v1")), false);
+  assert.ok(report.serverMembers.includes("integration/zotero-mcp/server.mjs"));
+  assert.ok(report.serverMembers.includes("scripts/package/configure-plugin.mjs"));
+  assert.ok(report.serverMembers.includes("scripts/package/configure-plugin-lib.mjs"));
+  assert.ok(report.serverMembers.includes("package-lock.json"));
+  assert.ok(report.serverMembers.includes("SERVER_BUILD_METADATA.json"));
   assert.match(
     await readFile(path.join(first.clientDirectory, "README.md"), "utf8"),
     /<BRIDGE_ROOT>\/client-v1\/README\.md/u,
   );
+});
+
+test("current release builds the exact 0.5.0 portable inventories", async (t) => {
+  const output = await mkdtemp(path.join(os.tmpdir(), "research-companion-release-package-"));
+  t.after(() => rm(output, { recursive: true, force: true }));
+
+  const result = await buildXpi({ projectRoot: PROJECT_ROOT, outputDirectory: output });
+  const report = await verifyXpi(result.outputPath, { expectedProjectRoot: PROJECT_ROOT });
+
+  assert.equal(report.version, "0.5.0");
+  assert.equal(report.members.length, 30);
+  assert.equal(report.clientMembers.length, 15);
+  assert.equal(report.pluginMembers.length, 5);
+  assert.ok(report.members.includes("protocol/examples/find-local-arxiv.request.json"));
+  assert.ok(report.members.includes("protocol/examples/find-local-arxiv.response.json"));
+  assert.deepEqual(report.pluginMembers, [
+    "README.md",
+    "plugin.json",
+    "skills/zotero-study-save/SKILL.md",
+    "skills/zotero-study-save/agents/openai.yaml",
+    "skills/zotero-study-save/resources/workflow.md",
+  ]);
+  assert.ok(report.serverMembers.includes("scripts/package/assets/protocol/v1-request.schema.json"));
+  assert.ok(report.serverMembers.includes("scripts/package/assets/protocol/v1-response.schema.json"));
 });
 
 test("packaging rejects release documents containing a private source path", async (t) => {
@@ -252,6 +347,7 @@ test("every packaged request example passes the runtime protocol-v1 parser", asy
     "read-pdf.request.json",
     "create-annotation.request.json",
     "create-note.request.json",
+    "find-local-arxiv.request.json",
   ];
   for (const example of examples) {
     const content = await readFile(new URL(

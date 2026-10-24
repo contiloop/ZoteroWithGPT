@@ -1,25 +1,102 @@
 # Product status
 
-## Built and verified
+## Verified baseline
 
-Research Companion 0.1.0 searches and reads local papers, resolves actual PDF passages, creates native highlights or anchored note annotations, updates identified comments with revision checks, and supports explicitly requested item notes. The default study destination remains the PDF reader, including long Korean explanations and mathematical proofs.
+Installed 0.3.1 demonstrated explicit ChatGPT Web plugin selection, offline
+local-paper discovery, actual PDF reading, and later requested native highlights
+with long Korean comments, equations, and reference links visible in Zotero.
+Independent targets and ambiguous choices were exercised. Earlier unchanged
+native behavior also passed manual-edit conflicts, append, ordinary reinstall,
+and historical replay without duplicate creation.
 
-Actual ChatGPT Web with the existing Mac Safe Files connection read Huginn, saved an approved study comment on an owned copy, rejected a stale edit after a native manual change, appended separately approved questions, and freshly read back all content. Strict formatted-reader verification passed after a normal Zotero restart. Direct Codex local files completed an independent native append and reader check without MCP.
+These observations prove the core study-to-annotation pipeline. They do not
+prove automatic plugin selection, ChatGPT Work, or public installation of Mac
+Safe Files. Those 0.3/0.4 observations used the existing private file route.
 
-Automated verification at source 97d75df passed 160 tests, strict type checking, build, and package validation. A fresh source extraction at 5675e2b with npm ci passed all 160 tests and reproduced the final installed XPI SHA-256 exactly. Actual optional-note creation preserved a reference, equation, and table; append preserved its existing body, and aggregate-size rejection left both notes and annotations unchanged.
+## Core cut
 
-Normal packaged disable/remove/reinstall retained study records, stopped new dispatch, did not execute old pending-session writes, and replayed a historical operation without duplication. Commit-boundary fault injection reconciled a real committed native note; this was not a forced application crash.
+Version 0.4.0 source/packages remove remote acquisition and whole-conversation verbatim-copy
+defaults. Old import schemas and read-only reconciliation remain for existing
+journals. Requested organization, summary, or verbatim copying determines the
+saved form; native persistence still preserves the prepared body.
 
-## Reader lifecycle validation
+At that cut, the private account plugin, Zotero extension, and configured client
+kit were 0.4.0. A fresh selected-plugin Web conversation read the owned
+LayerNorm PDF, then saved a requested yellow highlight and two-sentence Korean
+comment without repeating the paper link. Fresh native readback and the active
+Zotero reader confirmed the result; see
+[acceptance](../acceptance-results.md).
 
-A reproduced dead unrelated reader no longer aborts healthy reader synchronization. Independent tests confirmed removed and retained dead-reader isolation plus best-effort cleanup without weakening strict viewer checks. The installed final package passed native storage and formatted viewer confirmation immediately after update. Actual Web read-only requests independently confirmed the complete 1,906-character comment and strict formatted preview on that same final artifact.
+## Dedicated 0.5 route: partially live-accepted
 
-## Remaining scope
+Version 0.5.0 adds a dedicated 14-tool stdio MCP adapter, a separately owned
+managed tunnel lifecycle, a relocatable locked server package, and an
+unconfigured five-file portable plugin. Package verification passed 271 tests,
+reproduced the archives in two clean exports, initialized the relocated server
+with the official MCP SDK, and discovered the exact 14-tool inventory.
 
-1. Independently verify ChatGPT Work local-file access before claiming that route or its account availability. Codex is the approved verified no-MCP alternative.
-2. Establish an owner-supported public Mac Safe Files installation procedure or another approved transport before promising easy setup to users without that connection.
-3. Decide the project's distribution license and public release channel; no public publication has occurred.
-4. Extend approved cross-paper study workflows and optional whole-paper analysis with adjustable density. These are future capabilities, not background save authority.
-5. Evaluate additional transports and desktop platforms with their own actual access and native-reader validation.
+The private tunnel preflight created a separate Zotero tunnel in the same
+account and workspace and confirmed reuse of the existing protected `file:`
+credential without changing the shared Mac connection. Live acceptance then
+installed the 0.5 server in its private runtime root, installed the 0.5 Zotero
+extension, and connected a separately named ChatGPT custom MCP app. Three
+selected-plugin study/save pairs used visible dedicated `zotero_` tool cards.
+Each study made no write; each save created one requested passage-linked native
+annotation. Native readback, the active reader, content coverage, and unchanged
+PDF hashes were checked. Missing, ambiguous, and failed-switch behavior also
+stopped without a fallback write.
 
-No fixed annotation count or separate study notebook is a product goal.
+The dedicated server, Zotero extension, and account plugin each passed their
+ordinary remove/reinstall lifecycle. The original successful operation remained
+readable through its original connection afterward, and the existing journal
+history retained its canonical digests. One separate owned-fixture create has an
+unresolved outcome because its raw tool arguments and raw error were not
+available and no retained bridge request was found. It was not retried.
+Original-ID result recovery remains unresolved; the fixture-dependent append,
+manual-edit conflict, deletion, and historical replay tests remain unaccepted.
+
+The three-pair latency comparison was mixed and too small to establish a
+speedup. The selected account plugin was consequently restored to the prior
+shared Mac route as version 0.5.1 with its identity and presentation preserved.
+A fresh selected-plugin chat successfully used the shared Mac file tools. The
+dedicated Zotero connection, tunnel, healthy 0.5 runtime, and installed 0.5
+extension remain available separately.
+
+## Remaining limits
+
+Reader acquisition has stalled once with an unresolved cause. Stored-content
+success and actual reader visibility remain separate. Distribution is manual;
+public licensing, stable authenticated HTTPS/user-profile routing, end-user
+tunnel lifecycle, and Work validation remain open. The unresolved fixture write
+and the acceptance scenarios that depend on it must be resolved without
+reissuing an uncertain operation.
+
+## Private-use acceptance and color convention (2026-10-24)
+
+The researcher supplied a fresh ChatGPT conversation using the dedicated app
+and personally confirmed the requested Layer Normalization abstract highlight
+and linked explanation in Zotero. They accepted this study/save route for
+private use and explicitly authorized integration into the existing master branch despite the
+previously disclosed untested exceptional scenarios. Latency improvement is
+not a release requirement for this accepted private workflow. The earlier
+fixture outcome remains unresolved and must not be retried.
+
+A later diagnostic reply quoted an OpenAI safety-check block and an
+`invalid_result` lookup with unconfirmed delivery. This is an attributed
+ChatGPT report, not independently recovered original platform error evidence;
+it does not establish an authentication or native persistence defect.
+
+The selected study workflow now defines the researcher's eight-color convention
+for new requested highlights. Explicit colors override classification; comment
+updates do not recolor existing records. This is model guidance, not a native
+classifier. Source/package checks cannot establish model color selection in
+live use. Selecting the dedicated app alone does not load the plugin's study
+instructions; use the updated study plugin for this convention.
+
+The private account plugin was updated to 0.5.2 with the dedicated Zotero app
+binding and color guidance; source readback confirmed all eight colors, seven
+package files, and unchanged presentation/default prompt. The old Mac app and
+tunnel remain intact. The plugin-only release version is independent of the
+unchanged 0.5.0 server/extension package versions. The color policy has not yet
+been exercised in a fresh ChatGPT save; no test annotation was added for this
+instruction-only update.

@@ -1,96 +1,32 @@
-# Research Companion local client kit
+# Research Companion local client
 
 Package version: `{{PACKAGE_VERSION}}`
 
-This folder contains the plain UTF-8 guide, schemas, and examples for a local
-file client. It matches the XPI with the same version. It is reference material;
-Zotero does not execute files from this folder.
+Copy this kit into `<BRIDGE_ROOT>/client-v1` and select `<BRIDGE_ROOT>` in
+Zotero Research Companion Settings. The entry is
+`<BRIDGE_ROOT>/client-v1/README.md`. Enable the bridge and keep Zotero running.
+The kit is reference material, not an executable service.
 
-## Copy the kit into the dedicated bridge directory
+This kit is the generic local-file fallback. Configure it only for a client that
+deliberately implements the file contract. Zotero Study Save uses the separate
+dedicated MCP adapter and does not bundle this directory. `protocol/v1.md` and
+the adjacent schemas own request/result shapes.
 
-1. Create the dedicated bridge directory described in `docs/install.md`.
-2. In that directory, create a folder named `client-v1`.
-3. In Finder, open this versioned client folder and copy every item inside it
-   into `client-v1`.
-4. Confirm that this exact file exists:
+Other local-file clients use the same contract. Read descriptor/status/descriptor
+before every publication, require a stable enabled session, and use complete
+create-only requests. Fresh reads need fresh IDs; uncertain mutations retain
+their original identity. Only the user's specified save authorizes a write.
 
-   ```text
-   <BRIDGE_ROOT>/client-v1/README.md
-   ```
+The active pipeline is local discovery, PDF reading, passage resolution, and
+native annotation creation/update. Missing PDFs require manual Zotero action.
+`inspect_arxiv` and `ensure_arxiv_pdf` survive in historical schemas only and
+return unsupported for new requests. Do not use acquisition as a fallback.
 
-5. In Zotero, select `<BRIDGE_ROOT>` itself and choose **Enable**. Do not select
-   the `client-v1` child folder.
+The requested scope determines whether to save a passage, an explanation, or
+a broader discussion; routine saves do not collect the entire conversation.
+Preserve mathematical meaning and supported references. Long content stays in
+the PDF reader; separate notes require an explicit request. Reader failure does
+not justify repeating a storage-confirmed save.
 
-After Enable, the important paths are:
-
-```text
-<BRIDGE_ROOT>/bridge-v1.json
-<BRIDGE_ROOT>/client-v1/README.md
-<BRIDGE_ROOT>/client-v1/protocol/v1.md
-<BRIDGE_ROOT>/client-v1/protocol/v1-request.schema.json
-<BRIDGE_ROOT>/client-v1/protocol/v1-response.schema.json
-<BRIDGE_ROOT>/client-v1/protocol/examples/
-```
-
-## Publish and read one operation
-
-1. Read `<BRIDGE_ROOT>/bridge-v1.json` and keep the complete descriptor.
-2. Read `<BRIDGE_ROOT>/<statusFile>`, using the relative `statusFile` value from
-   that descriptor. Require bridge version 1, protocol version 1, matching
-   profile and session IDs, and `enabled: true`.
-3. Read `<BRIDGE_ROOT>/bridge-v1.json` again and require the complete descriptor
-   to be unchanged. Stop if it changed or the selected status became disabled.
-4. Build one complete request with an operation ID that matches
-   `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$` and the packaged request schema.
-   Use a fresh ID for every new observation, including reads, status checks,
-   and verification. Reusing an ID returns its recorded historical result.
-5. Publish it with a create-only atomic write at exactly:
-
-   ```text
-   <BRIDGE_ROOT>/<requestDirectory>/<operationId><requestSuffix>
-   ```
-
-6. Poll only the corresponding path:
-
-   ```text
-   <BRIDGE_ROOT>/<resultDirectory>/<operationId><resultSuffix>
-   ```
-
-7. Parse the complete result and require its `protocolVersion` and `operationId`
-   to match the request. Stop using the session if the descriptor changes or
-   its selected status becomes disabled. Recover an uncertain operation only
-   with the same operation ID and byte-equivalent payload in the current
-   session after renewed authorization.
-
-If recovery explicitly rejects an interrupted queued operation as never
-executed and not written, re-read the target and obtain renewed mutation
-approval before submitting a new ID. An unknown outcome must retain its ID.
-
-## Starter prompt
-
-Replace `<BRIDGE_ROOT>` below with the exact absolute directory displayed by
-Zotero, then give the resulting prompt to the local-file client:
-
-> Use local file access to connect to the Zotero Research Companion rooted at
-> `<BRIDGE_ROOT>`. First read `<BRIDGE_ROOT>/client-v1/README.md` and
-> `<BRIDGE_ROOT>/client-v1/protocol/v1.md`. Validate requests against the
-> packaged request schema and examples. Follow the README's **Publish and read
-> one operation** procedure for every publication.
-> Require the descriptor and status to identify the same profile and session.
-> Start with one `connection_status` request in that session and require its
-> response `data.profile.id` to match the descriptor profile. Do not publish a
-> mutation unless I explicitly request it or approve its exact content and
-> target. Use only the session and relative paths in the current descriptor,
-> and never copy a stale pending request into a new session.
-
-For Mac Safe Files, keep its action policy at **Always ask** and authorize only
-the dedicated bridge directory. Both actual ChatGPT Web with Mac Safe Files and direct Codex local files
-completed real study-comment saves, readback, and visible native-editor checks
-in the project validation environment. ChatGPT Work local-file availability
-remains independently unverified. Confirm access on each account and Mac.
-
-No model API key, tunnel key, or credential belongs in this directory. The
-client must create a complete request atomically, poll only its matching result,
-and keep the same operation ID and byte-equivalent payload when recovering an
-uncertain operation. Read `docs/troubleshooting.md` before changing any files by
-hand.
+Removal leaves native annotations and operation history intact. See
+`docs/install.md`, `docs/uninstall.md`, and `docs/troubleshooting.md`.

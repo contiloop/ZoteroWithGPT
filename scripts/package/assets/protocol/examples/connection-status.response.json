@@ -4,7 +4,7 @@
   "state": "succeeded",
   "data": {
     "protocolVersion": 1,
-    "pluginVersion": "0.1.0",
+    "pluginVersion": "0.5.0",
     "zoteroVersion": "10.0.6",
     "profile": {
       "id": "replace-with-published-profile-id",
@@ -12,9 +12,29 @@
     },
     "enabled": true,
     "capabilities": {
-      "operations": ["connection_status", "search_papers", "read_pdf"],
-      "annotationTypes": ["highlight", "note"],
-      "annotationColors": ["#ffd400", "#2ea8e5"],
+      "operations": [
+        "connection_status",
+        "search_papers",
+        "read_pdf",
+        "list_annotations",
+        "list_notes",
+        "read_note",
+        "resolve_anchor",
+        "create_annotation",
+        "update_annotation",
+        "create_note",
+        "update_note",
+        "verify_annotation",
+        "find_local_arxiv"
+      ],
+      "annotationTypes": [
+        "highlight",
+        "note"
+      ],
+      "annotationColors": [
+        "#ffd400",
+        "#2ea8e5"
+      ],
       "maxRequestBytes": 1048576,
       "maxTextBytes": 524288
     },

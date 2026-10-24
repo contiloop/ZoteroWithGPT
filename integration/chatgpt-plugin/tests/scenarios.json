@@ -1,0 +1,745 @@
+{
+  "schemaVersion": 2,
+  "contract": "dedicated-zotero-mcp-v1",
+  "evidenceBoundary": "These are static workflow decision specifications. They are not model executions and do not prove that ChatGPT loaded the plugin, invoked a Zotero tool, read a local PDF, wrote native data, or displayed an annotation in the Zotero reader.",
+  "scenarios": [
+    {
+      "id": "dedicated-connection-status-input",
+      "input": {
+        "pluginSelected": true,
+        "tool": "zotero_connection_status",
+        "arguments": {
+          "operationId": "read.connection.example"
+        }
+      },
+      "expected": {
+        "activation": "connect",
+        "reads": [
+          "zotero_connection_status"
+        ],
+        "writes": [],
+        "exactInputKeys": [
+          "operationId"
+        ],
+        "retainReturnedConnectionPair": true,
+        "genericClientCalls": []
+      }
+    },
+    {
+      "id": "selected-study-startup-read-only",
+      "input": {
+        "paper": "https://arxiv.org/abs/2401.01234v2",
+        "request": "이 논문을 같이 공부해 줘."
+      },
+      "expected": {
+        "activation": "activate",
+        "reads": [
+          "zotero_connection_status",
+          "zotero_find_local_arxiv",
+          "zotero_read_pdf"
+        ],
+        "writes": [],
+        "askForSaveApproval": false,
+        "targetEstablished": "after_discovery_and_fresh_local_pdf_read",
+        "useWebAbstractAsPaper": false
+      }
+    },
+    {
+      "id": "unique-local-pdf-read-without-approval",
+      "input": {
+        "lookupMatches": 1,
+        "matchingPdfAttachments": 1,
+        "readPdfState": "succeeded",
+        "request": "정리 2의 가정이 왜 필요한지 설명해 줘."
+      },
+      "expected": {
+        "activation": "continue_study",
+        "reads": [
+          "zotero_find_local_arxiv",
+          "zotero_read_pdf"
+        ],
+        "writes": [],
+        "requiresMutationApproval": false,
+        "requestConnectionDetails": false,
+        "answerFromActualLocalPdf": true
+      }
+    },
+    {
+      "id": "missing-local-item-wait-and-refresh",
+      "input": {
+        "lookupMatches": 0,
+        "request": "이 논문을 공부해 줘.",
+        "userLaterReportsManualSave": true
+      },
+      "expected": {
+        "activation": "wait_for_manual_zotero_save",
+        "reads": [
+          "zotero_find_local_arxiv",
+          "zotero_find_local_arxiv",
+          "zotero_read_pdf"
+        ],
+        "writes": [],
+        "firstResponse": "ask_user_to_save_paper_and_pdf_in_zotero_then_wait",
+        "resumeWithFreshLookup": true,
+        "acquisitionCalls": []
+      }
+    },
+    {
+      "id": "metadata-only-wait-and-refresh",
+      "input": {
+        "lookupMatches": 1,
+        "matchingPdfAttachments": 0,
+        "request": "이 논문을 공부해 줘.",
+        "userLaterReportsPdfAdded": true
+      },
+      "expected": {
+        "activation": "wait_for_manual_pdf_add",
+        "reads": [
+          "zotero_find_local_arxiv",
+          "zotero_find_local_arxiv",
+          "zotero_read_pdf"
+        ],
+        "writes": [],
+        "firstResponse": "ask_user_to_add_or_restore_pdf_access_then_wait",
+        "resumeWithFreshLookup": true,
+        "acquisitionCalls": []
+      }
+    },
+    {
+      "id": "missing-fingerprint-wait-and-refresh",
+      "input": {
+        "lookupMatches": 1,
+        "matchingPdfAttachments": 1,
+        "selectedAttachmentFingerprint": null,
+        "attachmentState": "inaccessible_or_unverified",
+        "request": "이 논문을 공부해 줘."
+      },
+      "expected": {
+        "activation": "wait_for_manual_pdf_access_restore",
+        "reads": [
+          "zotero_find_local_arxiv"
+        ],
+        "writes": [],
+        "firstResponse": "ask_user_to_restore_the_file_or_attachment_path_in_zotero_then_wait",
+        "readPdfBeforeFreshFingerprint": false,
+        "resumeWithFreshLookup": true,
+        "repairCalls": []
+      }
+    },
+    {
+      "id": "ambiguous-local-candidates",
+      "input": {
+        "lookupMatches": 2,
+        "matchingPdfAttachments": 3,
+        "truncated": false,
+        "request": "이 논문을 공부해 줘."
+      },
+      "expected": {
+        "activation": "clarify",
+        "reads": [
+          "zotero_find_local_arxiv"
+        ],
+        "writes": [],
+        "pickFirst": false,
+        "pickLatest": false,
+        "exposeInternalKeyAsChoice": false,
+        "response": "ask_for_useful_title_version_or_attachment_name"
+      }
+    },
+    {
+      "id": "explicit-version-conflict",
+      "input": {
+        "paper": "https://arxiv.org/abs/2401.01234v2",
+        "localVersionEvidence": [
+          1
+        ],
+        "request": "이 논문을 공부해 줘."
+      },
+      "expected": {
+        "activation": "clarify",
+        "reads": [
+          "zotero_find_local_arxiv"
+        ],
+        "writes": [],
+        "treatLocalPdfAsRequestedVersion": false,
+        "response": "explain_version_conflict_and_ask_which_actual_pdf_to_use"
+      }
+    },
+    {
+      "id": "unknown-local-version",
+      "input": {
+        "paper": "https://arxiv.org/abs/2401.01234",
+        "localVersionEvidence": [
+          null
+        ],
+        "matchingPdfAttachments": 1,
+        "request": "이 PDF가 내가 읽을 파일이야."
+      },
+      "expected": {
+        "activation": "continue_after_actual_pdf_confirmation",
+        "reads": [
+          "zotero_find_local_arxiv",
+          "zotero_read_pdf"
+        ],
+        "writes": [],
+        "reportedVersion": "unknown",
+        "fabricateVersion": false,
+        "unversionedMeansLatest": false
+      }
+    },
+    {
+      "id": "later-save-keeps-established-target",
+      "input": {
+        "accessibleConversationTarget": [
+          "profile",
+          "session",
+          "library",
+          "item",
+          "attachment",
+          "fingerprint",
+          "version_evidence"
+        ],
+        "conversationMaterial": [
+          "user_question",
+          "assistant_explanation"
+        ],
+        "request": "방금 질문과 설명을 해당 구절 옆에 저장해 줘."
+      },
+      "expected": {
+        "activation": "save",
+        "reads": [
+          "zotero_read_pdf",
+          "zotero_resolve_anchor"
+        ],
+        "writes": [
+          "zotero_create_annotation"
+        ],
+        "requestArxivUrlAgain": false,
+        "requestPageQuoteOrNativeKeyWhenInferable": false,
+        "refreshTargetEvidenceBeforeWrite": true,
+        "redundantConfirmation": false
+      }
+    },
+    {
+      "id": "failed-switch-suspends-old-target",
+      "input": {
+        "establishedTarget": "논문 A",
+        "switchRequest": "이제 https://arxiv.org/abs/2501.00001v1 논문으로 바꾸자.",
+        "switchLookup": "failed",
+        "laterRequest": "방금 설명을 저장해 줘."
+      },
+      "expected": {
+        "activation": "clarify",
+        "reads": [
+          "zotero_find_local_arxiv"
+        ],
+        "writes": [],
+        "fallBackToPriorTarget": false,
+        "priorImplicitDestinationSuspended": true,
+        "response": "ask_which_paper_should_receive_the_save"
+      }
+    },
+    {
+      "id": "comparison-reference-retains-source-association",
+      "input": {
+        "establishedTarget": "논문 A",
+        "comparisonReference": "https://arxiv.org/abs/2301.00002v1",
+        "request": "비교 설명과 참고문헌 링크를 원래 정리 옆에 저장해 줘."
+      },
+      "expected": {
+        "activation": "save",
+        "reads": [
+          "zotero_read_pdf",
+          "zotero_resolve_anchor"
+        ],
+        "writes": [
+          "zotero_create_annotation"
+        ],
+        "destination": "논문 A",
+        "comparisonSwitchesDestination": false,
+        "preserveReferenceUrlAndRelevance": true,
+        "acquireReferencedWork": false
+      }
+    },
+    {
+      "id": "independent-conversations-do-not-share-target",
+      "input": {
+        "conversationA": {
+          "establishedTarget": "논문 A"
+        },
+        "conversationB": {
+          "accessibleTargetContext": false,
+          "request": "방금 설명을 저장해 줘."
+        }
+      },
+      "expected": {
+        "activation": "clarify",
+        "reads": [],
+        "writes": [],
+        "useConversationATarget": false,
+        "globalPluginTarget": false,
+        "askFor": [
+          "official_arxiv_url"
+        ]
+      }
+    },
+    {
+      "id": "context-loss-minimum-information",
+      "input": {
+        "conversationMaterial": [
+          "assistant_explanation"
+        ],
+        "accessibleTargetContext": false,
+        "request": "이 설명을 저장해 줘."
+      },
+      "expected": {
+        "activation": "clarify",
+        "reads": [],
+        "writes": [],
+        "askFor": [
+          "official_arxiv_url"
+        ],
+        "askForConnectionPathOrNativeKey": false,
+        "inventTarget": false
+      }
+    },
+    {
+      "id": "long-korean-proof-question-reference-scope",
+      "input": {
+        "conversationMaterial": [
+          "user_question",
+          "assistant_proof_with_equations_comparison_outcomes_and_references"
+        ],
+        "request": "긴 증명과 내 질문, 비교 결과, 실제 참고문헌 링크를 빠짐없이 구절 옆에 저장해 줘.",
+        "body": "사용자 질문: 왜 KL 이웃의 사전확률이 양수여야 하는가?\n\n설명:\n  1. 분모는 $e^{-n\\epsilon}$보다 느리게 감소한다.\n  2. 검정의 제2종 오류를 합하면 보완집합의 질량이 사라진다.\n  3. 비교 방법보다 오류가 작지만 계산량은 증가한다.\n\n참고문헌: https://doi.org/10.1017/CBO9781139029834 — 검정과 사전질량 조건의 배경."
+      },
+      "expected": {
+        "activation": "save",
+        "reads": [
+          "zotero_read_pdf",
+          "zotero_resolve_anchor"
+        ],
+        "writes": [
+          "zotero_create_annotation"
+        ],
+        "destination": "native_annotation_comment",
+        "completeness": "full_requested_scope",
+        "canonicalizeNfcAndBoundaryBeforeOperationId": true,
+        "preserveInteriorWhitespaceMathOutcomesAndLinks": true,
+        "verifySemanticCoverageBeforeAndAfterStorage": true,
+        "truncate": false,
+        "splitForLength": false,
+        "createOverflowNote": false
+      }
+    },
+    {
+      "id": "requested-organization",
+      "input": {
+        "request": "방금 설명한 증명과 내 질문을 Zotero에 정리해 줘.",
+        "source": "Question, proof steps and conditions, relevant references, unrelated tool status."
+      },
+      "expected": {
+        "activation": "save",
+        "reads": [
+          "zotero_read_pdf",
+          "zotero_resolve_anchor"
+        ],
+        "writes": [
+          "zotero_create_annotation"
+        ],
+        "form": "organized_requested_material",
+        "preserveMathConditionsAndReferences": true,
+        "includeUnrelatedConversationOrToolStatus": false,
+        "redundantConfirmation": false
+      }
+    },
+    {
+      "id": "explicit-verbatim-copy",
+      "input": {
+        "request": "이 설명을 그대로 저장해 줘."
+      },
+      "expected": {
+        "activation": "save",
+        "reads": [
+          "zotero_read_pdf",
+          "zotero_resolve_anchor"
+        ],
+        "writes": [
+          "zotero_create_annotation"
+        ],
+        "form": "verbatim_requested_text",
+        "preserveWording": true
+      }
+    },
+    {
+      "id": "requested-summary",
+      "input": {
+        "request": "이 설명을 세 문장으로 요약해서 메모해 줘."
+      },
+      "expected": {
+        "activation": "save",
+        "reads": [
+          "zotero_read_pdf",
+          "zotero_resolve_anchor"
+        ],
+        "writes": [
+          "zotero_create_annotation"
+        ],
+        "form": "three_sentence_summary",
+        "copyWholeConversation": false
+      }
+    },
+    {
+      "id": "no-acquisition-preserve-unrelated-collection",
+      "input": {
+        "paper": "https://arxiv.org/abs/2401.01234v2",
+        "localPaperLibrary": "group_library",
+        "localPaperCollections": [
+          "공동 연구"
+        ],
+        "unrelatedCollection": "읽을 논문",
+        "request": "설명을 이 로컬 PDF의 구절 옆에 저장해 줘."
+      },
+      "expected": {
+        "activation": "save",
+        "reads": [
+          "zotero_find_local_arxiv",
+          "zotero_read_pdf",
+          "zotero_resolve_anchor"
+        ],
+        "writes": [
+          "zotero_create_annotation"
+        ],
+        "acquisitionCalls": [],
+        "searchScope": "all_eligible_libraries",
+        "preserveLibraryAndCollectionPlacement": true,
+        "touchUnrelatedCollection": false
+      }
+    },
+    {
+      "id": "unresolved-anchor-no-write",
+      "input": {
+        "request": "이 반복되는 식 옆에 설명을 저장해 줘.",
+        "resolveAnchorStatus": "unresolved",
+        "reason": "repeated_text_without_distinguishing_context"
+      },
+      "expected": {
+        "activation": "clarify",
+        "reads": [
+          "zotero_read_pdf",
+          "zotero_resolve_anchor"
+        ],
+        "writes": [],
+        "inventCoordinates": false,
+        "response": "ask_for_focused_passage_disambiguation"
+      }
+    },
+    {
+      "id": "stale-pdf-invalidates-anchor",
+      "input": {
+        "establishedFingerprint": "sha256:old",
+        "refreshedFingerprint": "sha256:new",
+        "request": "이 설명을 저장해 줘."
+      },
+      "expected": {
+        "activation": "refresh_anchor",
+        "reads": [
+          "zotero_read_pdf",
+          "zotero_resolve_anchor"
+        ],
+        "writes": [],
+        "reuseOldAnchor": false,
+        "requireFreshResolvedAnchorBeforeWrite": true
+      }
+    },
+    {
+      "id": "oversize-body-rejected-before-mutation",
+      "input": {
+        "request": "전체 증명을 그대로 저장해 줘.",
+        "canonicalBodyBytes": 524289,
+        "advertisedLimitBytes": 524288
+      },
+      "expected": {
+        "activation": "reject_before_mutation",
+        "reads": [],
+        "writes": [],
+        "truncate": false,
+        "split": false,
+        "createOverflowNote": false
+      }
+    },
+    {
+      "id": "approved-body-canonicalization-requires-renewal",
+      "input": {
+        "approvedExactBody": "é proof ",
+        "preparedBody": "é proof",
+        "request": "이 문구를 그대로 저장해 줘."
+      },
+      "expected": {
+        "activation": "renew_approval",
+        "reads": [],
+        "writes": [],
+        "assignWriteIdentityBeforeRenewal": false,
+        "freshIdentityAfterRenewal": true
+      }
+    },
+    {
+      "id": "full-annotation-append",
+      "input": {
+        "request": "기존 주석 끝에 이 반례 설명을 추가해 줘.",
+        "currentComment": "기존의 완전한 설명",
+        "currentRevision": "rev:9",
+        "addition": "반례: 사전질량이 0이면 분모 하한이 성립하지 않는다."
+      },
+      "expected": {
+        "activation": "append",
+        "reads": [
+          "zotero_list_annotations"
+        ],
+        "writes": [
+          "zotero_update_annotation"
+        ],
+        "mode": "append",
+        "expectedRevision": "rev:9",
+        "preserveCompletePriorBody": true,
+        "checkFullCombinedEncodingAndLimit": true,
+        "verifyCompleteCombinedReadback": true
+      }
+    },
+    {
+      "id": "manual-edit-conflict",
+      "input": {
+        "operation": "zotero_update_annotation",
+        "nativeState": "rejected",
+        "errorCode": "conflict"
+      },
+      "expected": {
+        "activation": "clarify",
+        "reads": [
+          "zotero_list_annotations"
+        ],
+        "writes": [],
+        "preserveCurrentBody": true,
+        "readCurrentRevision": true,
+        "renewedApprovalRequired": true,
+        "writeBeforeRenewedApproval": false,
+        "reuseConflictedIdentityWithChangedPayload": false
+      }
+    },
+    {
+      "id": "published-timeout-result-only-recovery",
+      "input": {
+        "operation": "zotero_create_annotation",
+        "wrapper": {
+          "delivery": "published",
+          "result": null,
+          "errorCode": "wait_expired"
+        }
+      },
+      "expected": {
+        "activation": "lookup_original",
+        "reads": [
+          "zotero_get_operation_result"
+        ],
+        "writes": [],
+        "originalWrite": "zotero_create_annotation",
+        "lookupUsesOriginalOperationIdAndConnection": true,
+        "inventQueuedOrRunning": false,
+        "republishWrite": false,
+        "newOperationId": false,
+        "fallbackRoute": false
+      }
+    },
+    {
+      "id": "missing-tool-response-result-only-recovery",
+      "input": {
+        "operation": "zotero_create_annotation",
+        "toolResponse": "missing"
+      },
+      "expected": {
+        "activation": "lookup_original_or_report_unresolved",
+        "reads": [
+          "zotero_get_operation_result"
+        ],
+        "writes": [],
+        "originalWrite": "zotero_create_annotation",
+        "preserveExactPayloadAuthorizationConnectionAndId": true,
+        "inventQueuedOrRunning": false,
+        "lookupReconcilesByWriting": false,
+        "resaveWhenLookupMissing": false
+      }
+    },
+    {
+      "id": "native-queued-bounded-result-lookup",
+      "input": {
+        "operation": "zotero_create_annotation",
+        "wrapper": {
+          "delivery": "published",
+          "result": {
+            "state": "queued"
+          },
+          "error": null
+        }
+      },
+      "expected": {
+        "activation": "bounded_lookup_until_terminal_or_pending",
+        "reads": [
+          "zotero_get_operation_result"
+        ],
+        "writes": [],
+        "originalWrite": "zotero_create_annotation",
+        "nativeResultNonNull": true,
+        "lookupUsesOriginalOperationIdAndConnection": true,
+        "lookupStrategy": "bounded",
+        "reportIfStillNonterminal": "pending",
+        "republishWrite": false,
+        "newOperationId": false
+      }
+    },
+    {
+      "id": "native-running-bounded-result-lookup",
+      "input": {
+        "operation": "zotero_create_annotation",
+        "wrapper": {
+          "delivery": "published",
+          "result": {
+            "state": "running"
+          },
+          "error": null
+        }
+      },
+      "expected": {
+        "activation": "bounded_lookup_until_terminal_or_pending",
+        "reads": [
+          "zotero_get_operation_result"
+        ],
+        "writes": [],
+        "originalWrite": "zotero_create_annotation",
+        "nativeResultNonNull": true,
+        "lookupUsesOriginalOperationIdAndConnection": true,
+        "lookupStrategy": "bounded",
+        "reportIfStillNonterminal": "pending",
+        "republishWrite": false,
+        "newOperationId": false
+      }
+    },
+    {
+      "id": "not-published-is-invocation-local-evidence",
+      "input": {
+        "operation": "zotero_create_annotation",
+        "wrapper": {
+          "delivery": "not_published",
+          "result": null,
+          "errorCode": "connection_unavailable"
+        }
+      },
+      "expected": {
+        "activation": "retain_identity_and_report",
+        "reads": [
+          "zotero_get_operation_result"
+        ],
+        "writes": [],
+        "originalWrite": "zotero_create_annotation",
+        "provesNoEarlierPublication": false,
+        "newOperationId": false
+      }
+    },
+    {
+      "id": "terminal-indeterminate-same-identity",
+      "input": {
+        "operation": "zotero_create_annotation",
+        "nativeState": "indeterminate",
+        "errorCode": "unknown_outcome"
+      },
+      "expected": {
+        "activation": "report_unresolved",
+        "reads": [],
+        "writes": [],
+        "originalWrite": "zotero_create_annotation",
+        "retainOriginalIdentityAndPayload": true,
+        "newWrite": false,
+        "fallbackResave": false
+      }
+    },
+    {
+      "id": "ordinary-storage-success-finishes",
+      "input": {
+        "operation": "zotero_create_annotation",
+        "nativeState": "succeeded",
+        "verification": {
+          "storage": "confirmed",
+          "viewer": "not_checked"
+        },
+        "savedBodyMatchesPreparedBody": true,
+        "requestedScopeCovered": true
+      },
+      "expected": {
+        "activation": "report_saved",
+        "reads": [],
+        "writes": [],
+        "originalWrite": "zotero_create_annotation",
+        "requireViewerCheck": false,
+        "reportStorage": "confirmed",
+        "claimDisplayed": false,
+        "returnDeepLinkWhenPresent": true
+      }
+    },
+    {
+      "id": "requested-viewer-check-failure-does-not-repeat-write",
+      "input": {
+        "researcherRequestedReaderCheck": true,
+        "operation": "zotero_verify_annotation",
+        "verification": {
+          "storage": "confirmed",
+          "viewer": "failed"
+        }
+      },
+      "expected": {
+        "activation": "report_storage_and_viewer_separately",
+        "reads": [
+          "zotero_verify_annotation"
+        ],
+        "writes": [],
+        "reportStorage": "confirmed",
+        "reportViewer": "failed",
+        "retryCreateOrUpdate": false
+      }
+    },
+    {
+      "id": "native-rejection-is-not-wrapper-failure",
+      "input": {
+        "wrapper": {
+          "delivery": "published",
+          "result": {
+            "state": "rejected",
+            "errorCode": "stale_attachment"
+          },
+          "error": null
+        }
+      },
+      "expected": {
+        "activation": "report_native_rejection",
+        "reads": [],
+        "writes": [],
+        "treatAsPublishedNativeResult": true,
+        "claimSuccess": false,
+        "inventWrapperError": false
+      }
+    },
+    {
+      "id": "separate-note-only-on-explicit-request",
+      "input": {
+        "request": "이 종합 내용을 별도 자식 노트로 저장해 줘."
+      },
+      "expected": {
+        "activation": "save_explicit_note",
+        "reads": [],
+        "writes": [
+          "zotero_create_note"
+        ],
+        "inferNoteFromLength": false,
+        "authorizationRequired": true
+      }
+    }
+  ]
+}

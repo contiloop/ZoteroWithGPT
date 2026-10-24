@@ -4,62 +4,207 @@
   "title": "Zotero AI Research Companion protocol-v1 response",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "protocolVersion",
-    "operationId",
-    "state",
-    "data",
-    "error",
-    "verification"
-  ],
+  "required": ["protocolVersion", "operationId", "state", "data", "error", "verification"],
   "properties": {
     "protocolVersion": { "const": 1 },
-    "operationId": {
-      "type": "string",
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
-    },
-    "state": {
-      "enum": ["queued", "running", "succeeded", "rejected", "failed", "indeterminate"]
-    },
+    "operationId": { "$ref": "#/$defs/operationId" },
+    "state": { "enum": ["queued", "running", "succeeded", "rejected", "failed", "indeterminate"] },
     "data": {
-      "description": "The operation-specific result object, or null when no result data is available.",
-      "type": ["object", "null"]
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/successData" },
+        { "$ref": "#/$defs/ensureArxivItemOnlyResult" }
+      ]
     },
     "error": {
       "oneOf": [
         { "type": "null" },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["code", "message", "retryable"],
-          "properties": {
-            "code": {
-              "enum": [
-                "invalid_request",
-                "unsupported_version",
-                "unsupported_operation",
-                "permission_denied",
-                "not_connected",
-                "not_found",
-                "ambiguous_target",
-                "unresolved_anchor",
-                "stale_attachment",
-                "conflict",
-                "duplicate_id_mismatch",
-                "unsupported_capability",
-                "too_large",
-                "storage_error",
-                "verification_failed",
-                "unknown_outcome"
-              ]
-            },
-            "message": { "type": "string" },
-            "retryable": { "type": "boolean" }
-          }
-        }
+        { "$ref": "#/$defs/protocolError" }
       ]
     },
-    "verification": {
+    "verification": { "$ref": "#/$defs/verificationSummary" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "enum": ["queued", "running"] } }, "required": ["state"] },
+      "then": { "properties": { "data": { "type": "null" }, "error": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "state": { "const": "succeeded" } }, "required": ["state"] },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/successData" },
+          "error": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": { "const": "succeeded" },
+          "data": { "$ref": "#/$defs/inspectArxivResult" }
+        },
+        "required": ["state", "data"]
+      },
+      "then": {
+        "properties": {
+          "verification": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["storage", "viewer"],
+            "properties": {
+              "storage": { "const": "not_applicable" },
+              "viewer": { "const": "not_applicable" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": { "const": "succeeded" },
+          "data": { "$ref": "#/$defs/findLocalArxivResult" }
+        },
+        "required": ["state", "data"]
+      },
+      "then": {
+        "properties": {
+          "verification": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["storage", "viewer"],
+            "properties": {
+              "storage": { "const": "not_applicable" },
+              "viewer": { "const": "not_applicable" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": { "const": "succeeded" },
+          "data": { "$ref": "#/$defs/ensureArxivReadyResult" }
+        },
+        "required": ["state", "data"]
+      },
+      "then": {
+        "properties": {
+          "verification": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["storage", "viewer"],
+            "properties": {
+              "storage": { "const": "confirmed" },
+              "viewer": { "const": "not_checked" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "state": { "const": "rejected" } }, "required": ["state"] },
+      "then": {
+        "properties": {
+          "data": { "type": "null" },
+          "error": { "$ref": "#/$defs/protocolError" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "state": { "const": "indeterminate" } }, "required": ["state"] },
+      "then": {
+        "properties": {
+          "data": { "type": "null" },
+          "error": {
+            "allOf": [
+              { "$ref": "#/$defs/protocolError" },
+              { "properties": { "code": { "const": "unknown_outcome" } } }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "state": { "const": "failed" } }, "required": ["state"] },
+      "then": {
+        "properties": {
+          "data": {
+            "oneOf": [
+              { "type": "null" },
+              { "$ref": "#/$defs/ensureArxivItemOnlyResult" }
+            ]
+          },
+          "error": { "$ref": "#/$defs/protocolError" }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "data": { "$ref": "#/$defs/ensureArxivItemOnlyResult" } },
+              "required": ["data"]
+            },
+            "then": {
+              "properties": {
+                "error": {
+                  "allOf": [
+                    { "$ref": "#/$defs/protocolError" },
+                    { "properties": { "code": { "const": "storage_error" } } }
+                  ]
+                },
+                "verification": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["storage", "viewer"],
+                  "properties": {
+                    "storage": { "const": "confirmed" },
+                    "viewer": { "const": "not_checked" }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "operationId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "x-maxUtf8Bytes": 512
+    },
+    "nonemptyString": { "type": "string", "minLength": 1 },
+    "isoTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8])))|(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.[0-9]+)?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$"
+    },
+    "protocolError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "retryable"],
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid_request", "unsupported_version", "unsupported_operation",
+            "permission_denied", "not_connected", "not_found", "ambiguous_target",
+            "unresolved_anchor", "stale_attachment", "conflict", "duplicate_id_mismatch",
+            "unsupported_capability", "too_large", "storage_error", "verification_failed",
+            "unknown_outcome"
+          ]
+        },
+        "message": { "$ref": "#/$defs/nonemptyString" },
+        "retryable": { "type": "boolean" }
+      }
+    },
+    "verificationSummary": {
       "type": "object",
       "additionalProperties": false,
       "required": ["storage", "viewer"],
@@ -67,6 +212,664 @@
         "storage": { "enum": ["not_applicable", "not_checked", "confirmed", "failed"] },
         "viewer": { "enum": ["not_applicable", "not_checked", "confirmed", "failed"] }
       }
+    },
+    "rectangle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x1", "y1", "x2", "y2"],
+      "properties": {
+        "x1": { "type": "number", "minimum": 0 },
+        "y1": { "type": "number", "minimum": 0 },
+        "x2": { "type": "number", "exclusiveMinimum": 0 },
+        "y2": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "matchEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "exact"],
+      "properties": {
+        "method": { "enum": ["exact_quote", "quote_with_context", "inspected_region"] },
+        "matchedText": { "$ref": "#/$defs/nonemptyString" },
+        "exact": { "type": "boolean" }
+      }
+    },
+    "resolvedAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["libraryId", "itemKey", "attachmentKey", "attachmentFingerprint", "pageIndex", "pageLabel", "rectangles", "matchEvidence"],
+      "properties": {
+        "libraryId": { "$ref": "#/$defs/identifier" },
+        "itemKey": { "$ref": "#/$defs/identifier" },
+        "attachmentKey": { "$ref": "#/$defs/identifier" },
+        "attachmentFingerprint": { "$ref": "#/$defs/identifier" },
+        "pageIndex": { "type": "integer", "minimum": 0 },
+        "pageLabel": { "$ref": "#/$defs/nonemptyString" },
+        "rectangles": { "type": "array", "minItems": 1, "maxItems": 512, "items": { "$ref": "#/$defs/rectangle" } },
+        "selectedText": { "$ref": "#/$defs/nonemptyString" },
+        "matchEvidence": { "$ref": "#/$defs/matchEvidence" }
+      }
+    },
+    "verificationDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["confirmed", "description"],
+      "properties": {
+        "confirmed": { "type": "boolean" },
+        "description": { "type": "string" }
+      }
+    },
+    "connectionStatusResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "pluginVersion", "zoteroVersion", "profile", "enabled", "capabilities", "transport"],
+      "properties": {
+        "protocolVersion": { "const": 1 },
+        "pluginVersion": { "$ref": "#/$defs/nonemptyString" },
+        "zoteroVersion": { "$ref": "#/$defs/nonemptyString" },
+        "profile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id"],
+          "properties": {
+            "id": { "$ref": "#/$defs/identifier" },
+            "name": { "$ref": "#/$defs/nonemptyString" }
+          }
+        },
+        "enabled": { "type": "boolean" },
+        "capabilities": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operations", "annotationTypes", "annotationColors", "maxRequestBytes", "maxTextBytes"],
+          "properties": {
+            "operations": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "enum": ["connection_status", "search_papers", "read_pdf", "list_annotations", "list_notes", "read_note", "resolve_anchor", "create_annotation", "update_annotation", "create_note", "update_note", "verify_annotation", "inspect_arxiv", "ensure_arxiv_pdf", "find_local_arxiv"] }
+            },
+            "annotationTypes": { "type": "array", "uniqueItems": true, "items": { "enum": ["highlight", "note"] } },
+            "annotationColors": { "type": "array", "uniqueItems": true, "items": { "enum": ["#ffd400", "#ff6666", "#5fb236", "#2ea8e5", "#a28ae5", "#e56eee", "#f19837", "#aaaaaa"] } },
+            "maxRequestBytes": { "type": "integer", "minimum": 1 },
+            "maxTextBytes": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "transport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "description"],
+          "properties": {
+            "kind": { "enum": ["http", "native_messaging", "custom"] },
+            "description": { "$ref": "#/$defs/nonemptyString" }
+          }
+        }
+      }
+    },
+    "attachmentSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attachmentKey", "title", "contentType"],
+      "properties": {
+        "attachmentKey": { "$ref": "#/$defs/identifier" },
+        "title": { "type": "string" },
+        "contentType": { "$ref": "#/$defs/nonemptyString" },
+        "fingerprint": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "paperMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["libraryId", "itemKey", "title", "creators", "attachments"],
+      "properties": {
+        "libraryId": { "$ref": "#/$defs/identifier" },
+        "itemKey": { "$ref": "#/$defs/identifier" },
+        "title": { "type": "string" },
+        "creators": { "type": "array", "items": { "type": "string" } },
+        "year": { "type": "integer" },
+        "attachments": { "type": "array", "items": { "$ref": "#/$defs/attachmentSummary" } }
+      }
+    },
+    "searchPapersResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["matches"],
+      "properties": { "matches": { "type": "array", "items": { "$ref": "#/$defs/paperMatch" } } }
+    },
+    "passageCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exact"],
+      "properties": {
+        "exact": { "$ref": "#/$defs/nonemptyString" },
+        "prefix": { "type": "string" },
+        "suffix": { "type": "string" }
+      }
+    },
+    "regionCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rectangles"],
+      "properties": {
+        "rectangles": { "type": "array", "minItems": 1, "maxItems": 512, "items": { "$ref": "#/$defs/rectangle" } },
+        "selectedText": { "$ref": "#/$defs/nonemptyString" }
+      }
+    },
+    "pdfPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pageIndex", "pageLabel", "text", "passageCandidates", "regionCandidates"],
+      "properties": {
+        "pageIndex": { "type": "integer", "minimum": 0 },
+        "pageLabel": { "$ref": "#/$defs/nonemptyString" },
+        "text": { "type": "string" },
+        "passageCandidates": { "type": "array", "items": { "$ref": "#/$defs/passageCandidate" } },
+        "regionCandidates": { "type": "array", "items": { "$ref": "#/$defs/regionCandidate" } }
+      }
+    },
+    "readPdfResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attachmentFingerprint", "attachmentRevision", "pages"],
+      "properties": {
+        "attachmentFingerprint": { "$ref": "#/$defs/identifier" },
+        "attachmentRevision": { "$ref": "#/$defs/identifier" },
+        "pages": { "type": "array", "items": { "$ref": "#/$defs/pdfPage" } }
+      }
+    },
+    "nativeAnnotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["annotationKey", "revision", "type", "anchor", "comment", "deepLink"],
+      "properties": {
+        "annotationKey": { "$ref": "#/$defs/identifier" },
+        "revision": { "$ref": "#/$defs/identifier" },
+        "type": { "enum": ["highlight", "note"] },
+        "anchor": { "$ref": "#/$defs/resolvedAnchor" },
+        "text": { "type": "string" },
+        "comment": { "type": "string" },
+        "color": { "enum": ["#ffd400", "#ff6666", "#5fb236", "#2ea8e5", "#a28ae5", "#e56eee", "#f19837", "#aaaaaa"] },
+        "deepLink": { "$ref": "#/$defs/nonemptyString" }
+      }
+    },
+    "listAnnotationsResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["annotations"],
+      "properties": { "annotations": { "type": "array", "items": { "$ref": "#/$defs/nativeAnnotation" } } }
+    },
+    "noteSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["noteKey", "parentItemKey", "title", "revision"],
+      "properties": {
+        "noteKey": { "$ref": "#/$defs/identifier" },
+        "parentItemKey": { "$ref": "#/$defs/identifier" },
+        "title": { "type": "string" },
+        "revision": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "listNotesResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["notes"],
+      "properties": { "notes": { "type": "array", "items": { "$ref": "#/$defs/noteSummary" } } }
+    },
+    "readNoteResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parentItemKey", "noteKey", "revision", "content", "deepLink"],
+      "properties": {
+        "parentItemKey": { "$ref": "#/$defs/identifier" },
+        "noteKey": { "$ref": "#/$defs/identifier" },
+        "revision": { "$ref": "#/$defs/identifier" },
+        "content": { "type": "string" },
+        "deepLink": { "$ref": "#/$defs/nonemptyString" }
+      }
+    },
+    "anchorCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchor", "reason"],
+      "properties": {
+        "anchor": { "$ref": "#/$defs/resolvedAnchor" },
+        "reason": { "$ref": "#/$defs/nonemptyString" }
+      }
+    },
+    "resolveAnchorResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "anchor"],
+          "properties": { "status": { "const": "resolved" }, "anchor": { "$ref": "#/$defs/resolvedAnchor" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reason", "candidates"],
+          "properties": {
+            "status": { "const": "unresolved" },
+            "reason": { "$ref": "#/$defs/nonemptyString" },
+            "candidates": { "type": "array", "items": { "$ref": "#/$defs/anchorCandidate" } }
+          }
+        }
+      ]
+    },
+    "savedAnnotationSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pageIndex", "pageLabel", "rectangles", "comment"],
+      "properties": {
+        "pageIndex": { "type": "integer", "minimum": 0 },
+        "pageLabel": { "$ref": "#/$defs/nonemptyString" },
+        "rectangles": { "type": "array", "minItems": 1, "maxItems": 512, "items": { "$ref": "#/$defs/rectangle" } },
+        "selectedText": { "$ref": "#/$defs/nonemptyString" },
+        "comment": { "type": "string" }
+      }
+    },
+    "createAnnotationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["annotationKey", "revision", "deepLink", "saved"],
+      "properties": {
+        "annotationKey": { "$ref": "#/$defs/identifier" },
+        "revision": { "$ref": "#/$defs/identifier" },
+        "deepLink": { "$ref": "#/$defs/nonemptyString" },
+        "saved": { "$ref": "#/$defs/savedAnnotationSnapshot" }
+      }
+    },
+    "updateAnnotationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["annotationKey", "revision", "comment", "deepLink"],
+      "properties": {
+        "annotationKey": { "$ref": "#/$defs/identifier" },
+        "revision": { "$ref": "#/$defs/identifier" },
+        "comment": { "type": "string" },
+        "deepLink": { "$ref": "#/$defs/nonemptyString" }
+      }
+    },
+    "noteMutationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["noteKey", "revision", "content", "deepLink"],
+      "properties": {
+        "noteKey": { "$ref": "#/$defs/identifier" },
+        "revision": { "$ref": "#/$defs/identifier" },
+        "content": { "type": "string" },
+        "deepLink": { "$ref": "#/$defs/nonemptyString" }
+      }
+    },
+    "verifyAnnotationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["annotationKey", "storageEvidence", "viewerEvidence"],
+      "properties": {
+        "annotationKey": { "$ref": "#/$defs/identifier" },
+        "storageEvidence": { "$ref": "#/$defs/verificationDetail" },
+        "viewerEvidence": { "$ref": "#/$defs/verificationDetail" }
+      }
+    },
+    "articleIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["arxivId", "version"],
+      "properties": {
+        "arxivId": {
+          "type": "string",
+          "oneOf": [
+            { "pattern": "^[0-9]{2}(?:0[1-9]|1[0-2])\\.(?!0{4,5}$)[0-9]{4,5}$" },
+            { "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*/[0-9]{2}(?:0[1-9]|1[0-2])(?!000$)[0-9]{3}$" }
+          ]
+        },
+        "version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+      }
+    },
+    "localArxivIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["arxivId", "version"],
+      "properties": {
+        "arxivId": { "$ref": "#/$defs/articleIdentity/properties/arxivId" },
+        "version": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+          ]
+        }
+      }
+    },
+    "localArxivEvidence": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["attachmentKey", "origin", "arxivId", "version"],
+          "properties": {
+            "attachmentKey": { "type": "null" },
+            "origin": { "enum": ["url", "archive_id", "extra", "provenance"] },
+            "arxivId": { "$ref": "#/$defs/articleIdentity/properties/arxivId" },
+            "version": { "$ref": "#/$defs/localArxivIdentity/properties/version" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["attachmentKey", "origin", "arxivId", "version"],
+          "properties": {
+            "attachmentKey": { "$ref": "#/$defs/identifier" },
+            "origin": { "const": "url" },
+            "arxivId": { "$ref": "#/$defs/articleIdentity/properties/arxivId" },
+            "version": { "$ref": "#/$defs/localArxivIdentity/properties/version" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["attachmentKey", "origin", "arxivId", "version", "fingerprint"],
+          "properties": {
+            "attachmentKey": { "$ref": "#/$defs/identifier" },
+            "origin": { "const": "provenance" },
+            "arxivId": { "$ref": "#/$defs/articleIdentity/properties/arxivId" },
+            "version": { "$ref": "#/$defs/localArxivIdentity/properties/version" },
+            "fingerprint": { "$ref": "#/$defs/identifier" }
+          }
+        }
+      ]
+    },
+    "localArxivPaperMatch": {
+      "allOf": [
+        { "$ref": "#/$defs/paperMatch" },
+        {
+          "type": "object",
+          "properties": {
+            "attachments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "contentType": { "const": "application/pdf" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "localArxivMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paper", "evidence"],
+      "properties": {
+        "paper": { "$ref": "#/$defs/localArxivPaperMatch" },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/localArxivEvidence" }
+        }
+      }
+    },
+    "findLocalArxivResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "matches", "truncated"],
+      "properties": {
+        "source": { "$ref": "#/$defs/localArxivIdentity" },
+        "matches": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/localArxivMatch" }
+        },
+        "truncated": { "type": "boolean" }
+      },
+      "description": "Runtime validation additionally enforces native-key uniqueness and deterministic order, evidence attachment membership, current-fingerprint equality for attachment provenance, and at least one requested-identifier evidence record per match."
+    },
+    "arxivMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "authors", "published", "updated", "abstract"],
+      "properties": {
+        "title": { "$ref": "#/$defs/nonemptyString" },
+        "authors": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonemptyString" } },
+        "published": { "$ref": "#/$defs/isoTimestamp" },
+        "updated": { "$ref": "#/$defs/isoTimestamp" },
+        "abstract": { "type": "string" },
+        "doi": { "$ref": "#/$defs/nonemptyString" }
+      }
+    },
+    "arxivSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["arxivId", "version", "abstractUrl", "pdfUrl", "metadata"],
+      "properties": {
+        "arxivId": { "$ref": "#/$defs/articleIdentity/properties/arxivId" },
+        "version": { "$ref": "#/$defs/articleIdentity/properties/version" },
+        "abstractUrl": { "type": "string", "pattern": "^https://arxiv\\.org/abs/(?:[0-9]{2}(?:0[1-9]|1[0-2])\\.[0-9]{4,5}|[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*/[0-9]{2}(?:0[1-9]|1[0-2])[0-9]{3})v[1-9][0-9]*$" },
+        "pdfUrl": { "type": "string", "pattern": "^https://arxiv\\.org/pdf/(?:[0-9]{2}(?:0[1-9]|1[0-2])\\.[0-9]{4,5}|[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*/[0-9]{2}(?:0[1-9]|1[0-2])[0-9]{3})v[1-9][0-9]*$" },
+        "metadata": { "$ref": "#/$defs/arxivMetadata" }
+      },
+      "description": "Runtime validation requires both URLs to equal the server-constructed URLs for arxivId and version."
+    },
+    "importSelection": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "create" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "itemKey", "expectedItemRevision"],
+          "properties": {
+            "kind": { "const": "attach" },
+            "itemKey": { "$ref": "#/$defs/identifier" },
+            "expectedItemRevision": { "$ref": "#/$defs/identifier" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "itemKey", "attachmentKey", "expectedFingerprint"],
+          "properties": {
+            "kind": { "const": "reuse" },
+            "itemKey": { "$ref": "#/$defs/identifier" },
+            "attachmentKey": { "$ref": "#/$defs/identifier" },
+            "expectedFingerprint": { "$ref": "#/$defs/identifier" }
+          }
+        }
+      ]
+    },
+    "arxivCandidateAttachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attachmentKey", "fingerprint", "version", "identity"],
+      "properties": {
+        "attachmentKey": { "$ref": "#/$defs/identifier" },
+        "fingerprint": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/identifier" }] },
+        "version": { "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }] },
+        "identity": { "enum": ["verified", "unverified"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "identity": { "const": "verified" } }, "required": ["identity"] },
+          "then": { "properties": { "version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 } } }
+        }
+      ]
+    },
+    "arxivCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["itemKey", "itemRevision", "title", "attachments"],
+      "properties": {
+        "itemKey": { "$ref": "#/$defs/identifier" },
+        "itemRevision": { "$ref": "#/$defs/identifier" },
+        "title": { "$ref": "#/$defs/nonemptyString" },
+        "attachments": { "type": "array", "items": { "$ref": "#/$defs/arxivCandidateAttachment" } }
+      }
+    },
+    "inspectArxivResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "libraryId", "candidates", "decision", "reason", "inspectionToken"],
+      "properties": {
+        "source": { "$ref": "#/$defs/arxivSource" },
+        "libraryId": { "$ref": "#/$defs/identifier" },
+        "candidates": { "type": "array", "items": { "$ref": "#/$defs/arxivCandidate" } },
+        "decision": { "enum": ["create", "attach", "reuse", "needs_choice"] },
+        "reason": { "$ref": "#/$defs/nonemptyString" },
+        "inspectionToken": { "$ref": "#/$defs/identifier" },
+        "selection": { "$ref": "#/$defs/importSelection" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "decision": { "const": "create" } }, "required": ["decision"] },
+          "then": {
+            "required": ["selection"],
+            "properties": {
+              "candidates": { "type": "array", "maxItems": 0 },
+              "selection": {
+                "type": "object", "additionalProperties": false, "required": ["kind"],
+                "properties": { "kind": { "const": "create" } }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "decision": { "const": "attach" } }, "required": ["decision"] },
+          "then": {
+            "required": ["selection"],
+            "properties": {
+              "candidates": {
+                "type": "array", "minItems": 1, "maxItems": 1,
+                "items": {
+                  "allOf": [
+                    { "$ref": "#/$defs/arxivCandidate" },
+                    { "properties": { "attachments": { "type": "array", "maxItems": 0 } } }
+                  ]
+                }
+              },
+              "selection": {
+                "type": "object", "additionalProperties": false, "required": ["kind", "itemKey", "expectedItemRevision"],
+                "properties": {
+                  "kind": { "const": "attach" }, "itemKey": { "$ref": "#/$defs/identifier" },
+                  "expectedItemRevision": { "$ref": "#/$defs/identifier" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "decision": { "const": "reuse" } }, "required": ["decision"] },
+          "then": {
+            "required": ["selection"],
+            "properties": {
+              "candidates": {
+                "type": "array", "minItems": 1, "maxItems": 1,
+                "items": {
+                  "allOf": [
+                    { "$ref": "#/$defs/arxivCandidate" },
+                    {
+                      "properties": {
+                        "attachments": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 1,
+                          "items": {
+                            "allOf": [
+                              { "$ref": "#/$defs/arxivCandidateAttachment" },
+                              {
+                                "type": "object",
+                                "required": ["fingerprint", "version", "identity"],
+                                "properties": {
+                                  "fingerprint": { "$ref": "#/$defs/identifier" },
+                                  "version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+                                  "identity": { "const": "verified" }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "selection": {
+                "type": "object", "additionalProperties": false,
+                "required": ["kind", "itemKey", "attachmentKey", "expectedFingerprint"],
+                "properties": {
+                  "kind": { "const": "reuse" }, "itemKey": { "$ref": "#/$defs/identifier" },
+                  "attachmentKey": { "$ref": "#/$defs/identifier" },
+                  "expectedFingerprint": { "$ref": "#/$defs/identifier" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "decision": { "const": "needs_choice" } }, "required": ["decision"] },
+          "then": {
+            "properties": {
+              "candidates": { "type": "array", "minItems": 1 },
+              "selection": false
+            }
+          }
+        }
+      ],
+      "description": "Runtime validation also binds selection fields to the complete candidate snapshot and permits conservative needs_choice when acquired bytes conflict with an otherwise reusable attachment."
+    },
+    "ensureArxivReadyResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "libraryId", "completion", "itemKey", "itemAction", "attachmentKey", "attachmentFingerprint", "pdfAction", "deepLink"],
+      "properties": {
+        "source": { "$ref": "#/$defs/articleIdentity" },
+        "libraryId": { "$ref": "#/$defs/identifier" },
+        "completion": { "const": "ready" },
+        "itemKey": { "$ref": "#/$defs/identifier" },
+        "itemAction": { "enum": ["created", "reused"] },
+        "attachmentKey": { "$ref": "#/$defs/identifier" },
+        "attachmentFingerprint": { "$ref": "#/$defs/identifier" },
+        "pdfAction": { "enum": ["downloaded", "reused"] },
+        "deepLink": { "$ref": "#/$defs/nonemptyString" }
+      }
+    },
+    "ensureArxivItemOnlyResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "libraryId", "completion", "itemKey", "itemAction", "attachmentKey", "attachmentFingerprint", "pdfAction", "deepLink"],
+      "properties": {
+        "source": { "$ref": "#/$defs/articleIdentity" },
+        "libraryId": { "$ref": "#/$defs/identifier" },
+        "completion": { "const": "item_only" },
+        "itemKey": { "$ref": "#/$defs/identifier" },
+        "itemAction": { "enum": ["created", "reused"] },
+        "attachmentKey": { "type": "null" },
+        "attachmentFingerprint": { "type": "null" },
+        "pdfAction": { "const": "none" },
+        "deepLink": { "$ref": "#/$defs/nonemptyString" }
+      }
+    },
+    "successData": {
+      "oneOf": [
+        { "$ref": "#/$defs/connectionStatusResult" },
+        { "$ref": "#/$defs/searchPapersResult" },
+        { "$ref": "#/$defs/readPdfResult" },
+        { "$ref": "#/$defs/listAnnotationsResult" },
+        { "$ref": "#/$defs/listNotesResult" },
+        { "$ref": "#/$defs/readNoteResult" },
+        { "$ref": "#/$defs/resolveAnchorResult" },
+        { "$ref": "#/$defs/createAnnotationResult" },
+        { "$ref": "#/$defs/updateAnnotationResult" },
+        { "$ref": "#/$defs/noteMutationResult" },
+        { "$ref": "#/$defs/verifyAnnotationResult" },
+        { "$ref": "#/$defs/inspectArxivResult" },
+        { "$ref": "#/$defs/ensureArxivReadyResult" },
+        { "$ref": "#/$defs/findLocalArxivResult" }
+      ]
     }
   }
 }

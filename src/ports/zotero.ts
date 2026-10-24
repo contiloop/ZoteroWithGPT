@@ -2,6 +2,7 @@ import type {
   ConnectionStatusResult,
   CreateAnnotationResult,
   CreateNoteResult,
+  FindLocalArxivResult,
   ListAnnotationsResult,
   ListNotesResult,
   ReadNoteResult,
@@ -18,6 +19,9 @@ import type { OperationIdentity } from "./execution.js";
 export interface ZoteroReadPort {
   connectionStatus(request: RequestFor<"connection_status">): Promise<ConnectionStatusResult>;
   searchPapers(request: RequestFor<"search_papers">): Promise<SearchPapersResult>;
+  findLocalArxiv(
+    request: RequestFor<"find_local_arxiv">,
+  ): Promise<FindLocalArxivResult>;
   readPdf(request: RequestFor<"read_pdf">): Promise<ReadPdfResult>;
   listAnnotations(request: RequestFor<"list_annotations">): Promise<ListAnnotationsResult>;
   listNotes(request: RequestFor<"list_notes">): Promise<ListNotesResult>;

@@ -1,6 +1,12 @@
 # Decisions
 
-| Record | Decision | Consequence |
-| --- | --- | --- |
-| 0001-native-file-bridge | Native annotations behind a local request/result bridge | Existing file-only MCP and direct local clients share one bounded interface |
-| 0002-reader-rendering | Native editable Markdown/LaTeX plus sanitized rendering using permissive dependencies | Removal retains readable source and avoids copying AGPL plugin code |
+- [Native file bridge](0001-native-file-bridge.md): existing file-only Mac access
+  requires a Zotero-side native executor; history survives removal.
+- [Reader rendering](0002-reader-rendering.md): editable native math source plus
+  disposable preview avoids overflow notes and unapproved copyleft code.
+- [Retired import](0003-conversational-arxiv-save.md): preserve historical journal
+  interpretation without retaining acquisition execution.
+- [Selected local study](0004-selected-local-arxiv-study.md): manual paper saving,
+  conversation-local targets, and requested-content saves.
+- [Dedicated MCP and tunnel](0005-dedicated-mcp-tunnel.md): a fixed typed adapter
+  and separately owned runtime preserve bridge/native authority boundaries.

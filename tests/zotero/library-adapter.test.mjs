@@ -72,9 +72,22 @@ class NativeApiDouble {
   notesUpdated = 0;
   annotations = new Map();
   notes = new Map();
+  localArxivDiscovery = undefined;
+  localArxivCalls = [];
 
   async runtimeStatus() {
     return { zoteroVersion: "10.0.6-runtime", profileName: "Test Profile" };
+  }
+
+  async findLocalArxiv(reference, limit) {
+    this.localArxivCalls.push({ reference: structuredClone(reference), limit });
+    if (this.localArxivDiscovery !== undefined) {
+      return structuredClone(this.localArxivDiscovery);
+    }
+    throw new CoreOperationError(
+      "unsupported_capability",
+      "Offline local arXiv discovery is not active in this native test double",
+    );
   }
 
   async searchPapers() {
@@ -246,7 +259,7 @@ class NativeApiDouble {
   }
 }
 
-function adapter(native = new NativeApiDouble()) {
+function adapter(native = new NativeApiDouble(), options = {}) {
   const noteContent = new DomPurifyNativeNoteContentPolicy({ window: new JSDOM("").window });
   return new ZoteroLibraryAdapter({
     native,
@@ -256,6 +269,7 @@ function adapter(native = new NativeApiDouble()) {
     pluginVersion: "0.1.0",
     enabled: true,
     transport: { kind: "custom", description: "Test transport" },
+    ...options,
   });
 }
 
@@ -272,6 +286,100 @@ function windowLikeWithDocument(window, document) {
     DOMParser: window.DOMParser,
   };
 }
+
+test("connection status advertises thirteen native operations without acquisition", async () => {
+  const result = await adapter().connectionStatus({
+    protocolVersion: 1,
+    operationId: "op-connection-capabilities",
+    operation: "connection_status",
+    payload: {},
+  });
+
+  assert.equal(result.capabilities.operations.length, 13);
+  assert.equal(result.capabilities.operations.includes("inspect_arxiv"), false);
+  assert.equal(result.capabilities.operations.includes("ensure_arxiv_pdf"), false);
+  assert.equal(result.capabilities.operations.includes("find_local_arxiv"), true);
+  assert.equal(result.capabilities.operations.includes("verify_annotation"), true);
+});
+
+test("connection status advertises arXiv operations when production composition activates them", async () => {
+  const operations = [
+    "connection_status", "search_papers", "read_pdf", "list_annotations", "list_notes",
+    "read_note", "resolve_anchor", "create_annotation", "update_annotation", "create_note",
+    "update_note", "verify_annotation", "inspect_arxiv", "ensure_arxiv_pdf",
+  ];
+  const result = await adapter(new NativeApiDouble(), { operations }).connectionStatus({
+    protocolVersion: 1,
+    operationId: "op-connection-arxiv-capabilities",
+    operation: "connection_status",
+    payload: {},
+  });
+  assert.deepEqual(result.capabilities.operations, operations);
+  assert.equal(result.capabilities.operations.includes("find_local_arxiv"), false);
+});
+
+test("offline arXiv discovery fails clearly while the native port is inert", async () => {
+  await assert.rejects(
+    () => adapter().findLocalArxiv({
+      protocolVersion: 1,
+      operationId: "op-find-local-inert",
+      operation: "find_local_arxiv",
+      profileId: "profile-A",
+      payload: { url: "https://arxiv.org/abs/2401.01234v2" },
+    }),
+    (error) => error instanceof CoreOperationError && error.code === "unsupported_capability",
+  );
+});
+
+test("offline arXiv discovery passes canonical identity and the default limit to native discovery", async () => {
+  const native = new NativeApiDouble();
+  native.localArxivDiscovery = {
+    matches: [
+      {
+        paper: {
+          libraryId: "2",
+          itemKey: "LOCAL001",
+          title: "Existing local paper",
+          creators: ["Ada Example"],
+          attachments: [
+            {
+              attachmentKey: "LOCALPDF",
+              title: "Existing PDF",
+              contentType: "application/pdf",
+              fingerprint: "sha256:local-pdf",
+            },
+          ],
+        },
+        evidence: [
+          {
+            attachmentKey: "LOCALPDF",
+            origin: "provenance",
+            arxivId: "2401.01234",
+            version: 2,
+            fingerprint: "sha256:local-pdf",
+          },
+        ],
+      },
+    ],
+    truncated: false,
+  };
+
+  const result = await adapter(native).findLocalArxiv({
+    protocolVersion: 1,
+    operationId: "op-find-local-active",
+    operation: "find_local_arxiv",
+    profileId: "profile-A",
+    payload: { url: "https://arxiv.org/pdf/2401.01234v2?download=1#page=3" },
+  });
+
+  assert.deepEqual(native.localArxivCalls, [
+    { reference: { arxivId: "2401.01234", version: 2 }, limit: 25 },
+  ]);
+  assert.deepEqual(result, {
+    source: { arxivId: "2401.01234", version: 2 },
+    ...native.localArxivDiscovery,
+  });
+});
 
 test("paper discovery returns ambiguous titles and every PDF candidate", async () => {
   const result = await adapter().searchPapers({

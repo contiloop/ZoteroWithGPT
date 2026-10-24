@@ -7,15 +7,20 @@ import {
   MAX_REQUEST_BYTES,
   MAX_TEXT_BYTES,
   NATIVE_ANNOTATION_COLORS,
+  BASE_OPERATION_NAMES,
+  LOCAL_STUDY_OPERATION_NAMES,
   OPERATION_NAMES,
   PROTOCOL_VERSION,
   type ConnectionStatusResult,
   type CreateAnnotationResult,
   type CreateNoteResult,
+  type FindLocalArxivResult,
   type ListAnnotationsResult,
   type ListNotesResult,
   type NativeAnnotation,
   type NativeAnnotationColor,
+  type OperationName,
+  parseArxivUrl,
   type ReadNoteResult,
   type ReadPdfResult,
   type RequestFor,
@@ -119,6 +124,7 @@ export class ZoteroLibraryAdapter
   #enabled: boolean;
   readonly #accessGate: ZoteroLibraryAdapterOptions["accessGate"];
   readonly #transport: ZoteroLibraryAdapterOptions["transport"];
+  readonly #operations: OperationName[];
 
   constructor(options: ZoteroLibraryAdapterOptions) {
     this.#native = options.native;
@@ -129,6 +135,15 @@ export class ZoteroLibraryAdapter
     this.#enabled = options.enabled;
     this.#accessGate = options.accessGate;
     this.#transport = options.transport;
+    this.#operations = [...(options.operations ?? [...BASE_OPERATION_NAMES, ...LOCAL_STUDY_OPERATION_NAMES])];
+    if (
+      this.#operations.length !== new Set(this.#operations).size ||
+      this.#operations.some((operation) =>
+        !(OPERATION_NAMES as readonly OperationName[]).includes(operation)
+      )
+    ) {
+      throw new TypeError("Active operation capabilities must be unique protocol-v1 operations");
+    }
   }
 
   async connectionStatus(
@@ -145,7 +160,7 @@ export class ZoteroLibraryAdapter
       },
       enabled: this.#isEnabled(),
       capabilities: {
-        operations: [...OPERATION_NAMES],
+        operations: [...this.#operations],
         annotationTypes: ["highlight", "note"],
         annotationColors: [...NATIVE_ANNOTATION_COLORS],
         maxRequestBytes: MAX_REQUEST_BYTES,
@@ -170,6 +185,32 @@ export class ZoteroLibraryAdapter
         ...(match.year === undefined ? {} : { year: match.year }),
         attachments: match.attachments.map((attachment) => ({ ...attachment })),
       })),
+    };
+  }
+
+  async findLocalArxiv(
+    request: RequestFor<"find_local_arxiv">,
+  ): Promise<FindLocalArxivResult> {
+    this.#assertProfile(request.profileId);
+    const source = parseArxivUrl(request.payload.url);
+    const result = await this.#native.findLocalArxiv(
+      source,
+      request.payload.limit ?? DEFAULT_LIMIT,
+    );
+    return {
+      source: { arxivId: source.arxivId, version: source.version ?? null },
+      matches: result.matches.map((match) => ({
+        paper: {
+          libraryId: match.paper.libraryId,
+          itemKey: match.paper.itemKey,
+          title: match.paper.title,
+          creators: [...match.paper.creators],
+          ...(match.paper.year === undefined ? {} : { year: match.paper.year }),
+          attachments: match.paper.attachments.map((attachment) => ({ ...attachment })),
+        },
+        evidence: match.evidence.map((entry) => ({ ...entry })),
+      })),
+      truncated: result.truncated,
     };
   }
 

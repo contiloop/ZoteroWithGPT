@@ -1,123 +1,30 @@
 # Troubleshooting
 
-Start with **Tools → Research Companion Settings…**. Record the displayed
-state, selected directory, session ID, and detail. These diagnostics contain no
-API key because this plugin does not use one.
+| Symptom | Action |
+| --- | --- |
+| Settings menu missing | Check the extension in Tools → Plugins and restart after installation. Reinstall uses remove/restart/install/restart. |
+| Update service unavailable | Expected: packages are installed manually; the reserved `.invalid` URL is not an updater. |
+| Disabled or Enable error | Select an existing dedicated root, enable explicitly, and check permissions. Directory selection alone does not enable processing. |
+| Server dependency install fails | Confirm Node.js 24–26 and npm 11.4.2, extract a fresh server ZIP, and run the included production lock command. Do not reuse a worktree or symlinked `node_modules`. |
+| Lifecycle install rejects an executable | The path may be a symlink, but its canonical target must be a regular executable. Check the independent Node and reviewed tunnel-client target separately from bridge/credential permissions. |
+| Lifecycle install rejects a private path | The install, bridge, credential, and resolved tunnel control paths cannot contain a symlink component or overlap owned/control roots. Supply canonical paths; on macOS resolve `/tmp` to `/private/tmp`. Executable symlinks follow the separate rule above. |
+| Lifecycle install rejects the credential | Supply an existing `file:` reference to a regular non-symlink file with no group/other permissions. Never paste the key itself. |
+| ChatGPT cannot connect | Require owned runtime status `processRunning`, `healthy`, and `ready`; confirm the private account plugin uses the verified dedicated MCP app binding; keep Zotero enabled and running. The portable ZIP alone is unconfigured. |
+| Version mismatch | Update all four portable artifacts together, then build the private account archive from the current guarded account manifests. |
+| Remove refuses the runtime root | Preserve the tree. An unknown top-level, dependency, or managed-profile entry, copied marker, symlink, or root mismatch failed the ownership fence; inspect it locally instead of forcing recursive deletion. |
+| Account overlay retains old resources | Apply each exact file in the helper's `deletePaths`; a directory prefix is not an exact delete path. |
+| Rollback does not reconnect | Expected: runtime rollback restores the previous route and leaves it stopped. Inspect it, then start explicitly. Account routing rollback has a separate newer-version requirement. |
+| Paper missing, PDF absent, or fingerprint unavailable | Save/restore the PDF manually in Zotero, then request fresh discovery. Do not use an import fallback. |
+| Several candidates | Choose by title/version/attachment. An unversioned link does not select the latest version. |
+| No result file | Check current descriptor/status/descriptor. Missing output does not prove the write did not run; keep its original identity. |
+| Conflict | Read the current annotation and resolve the changed edit. Do not overwrite a manual edit using an old revision. |
+| Too large or unrepresentable text | Review the requested scope or exact body; do not silently truncate, split, or create overflow notes. |
+| Saved but reader check failed | Open the returned Zotero link and inspect the comment. Do not repeat the save. A normal restart may clear stale reader wrappers. |
+| Reader request remains running | Stop new requests and preserve its ID. See the unresolved reader-acquisition finding; another quick item query does not establish reader readiness. |
+| Unknown outcome | Preserve the original operation and report uncertainty; never substitute a new write ID. |
 
-## The settings item is missing
-
-Open **Tools → Plugins** and confirm that **Zotero AI Research Companion** is
-installed and enabled. This release supports Zotero 10.0.6 through 10.0.x.
-Close and reopen the main Zotero window after enabling the plugin. If the XPI
-was rejected as an older version, remove the installed development build and
-install the versioned release manually.
-
-## Check for Updates reports that updates are unavailable
-
-This release is distributed manually and has no update server. Zotero 10.0.6's
-extension loader requires a truthy `applications.zotero.update_url`, even for a
-manual-only XPI. The package therefore uses
-`https://updates.invalid/zotero-ai-research-companion/updates.json`. The
-`.invalid` top-level domain is reserved for names that cannot resolve, so a
-manual **Check for Updates** can report a download error or unavailable update.
-That result is expected and does not indicate a bridge or Zotero-library error.
-
-Package verification requires that exact value as this release's audited
-manual-distribution policy. Other values are rejected by the release tooling;
-that policy does not claim Zotero rejects every other URI form. Install newer
-versions manually from the same trusted source as the original XPI.
-
-## The connection is Disabled
-
-Choose a dedicated directory, then choose **Enable**. Directory selection alone
-does not enable processing. If a directory is already shown, Enable starts a
-fresh session. **Reconnect** closes the current session and starts another
-fresh session in the same directory.
-
-## Enable reports an error
-
-The selected root must already exist and be an absolute canonical directory. It
-cannot be a symbolic link. The current macOS user must be able to create private
-subdirectories and files there. Select a new empty dedicated directory instead
-of changing permissions on a shared directory.
-
-If the directory was moved, renamed, replaced by a link, or removed after
-enable, disable the connection, restore or select a valid dedicated directory,
-and enable again. Do not repair the setup by editing `bridge-v1.json` or a
-session status file manually.
-
-## Status is Ready but no result appears
-
-First confirm that the local client can read
-`<BRIDGE_ROOT>/client-v1/README.md`. If it cannot, copy the contents of the
-matching versioned client folder into `<BRIDGE_ROOT>/client-v1` with Finder.
-Do not point the client at the compressed XPI and do not select `client-v1` as
-the bridge root.
-
-Check the client in this order:
-
-1. Read `bridge-v1.json` from the selected root.
-2. Read the exact relative `statusFile` it publishes.
-3. Require matching bridge version, protocol version, profile ID, and session
-   ID, with `enabled: true`.
-4. Read `bridge-v1.json` again and require the complete descriptor to be
-   unchanged.
-5. Publish the complete request atomically to the exact current
-   `requestDirectory` with the published `.request.json` suffix.
-6. Poll only the matching path under the current `resultDirectory`.
-
-Do not select a session by modification time. Do not append to a final request,
-overwrite it, or copy an old pending request into a new session. A mutation
-request also needs nonempty authorization metadata reflecting the user's
-current instruction.
-
-When the descriptor changes or its status becomes disabled, stop polling that
-session. After renewed authorization, recover an uncertain operation with the
-same operation ID and byte-equivalent payload in the current session.
-
-If the terminal result explicitly says an interrupted queued operation was
-never executed and not written, re-read the target and obtain renewed mutation
-approval before submitting a fresh ID. Do not apply this rule to an unknown
-native outcome. New reads, status checks, and verification always need fresh
-IDs; historical IDs return historical observations.
-
-## A request is rejected
-
-- `invalid_request` or `unsupported_version`: validate the complete JSON
-  against the packaged protocol-v1 schema and use only documented fields.
-- `permission_denied`: use the current profile ID; for a mutation, record the
-  user's explicit request or approved proposal in `authorization`.
-- `duplicate_id_mismatch`: the operation ID already identifies different
-  content. Do not alter its historical record. Use a new ID only for newly
-  authorized changed content or target.
-- `conflict`: a person or sync changed the annotation or note after it was
-  read. Read it again and obtain renewed approval before a new operation.
-- `stale_attachment`: the PDF changed. Read the attachment and resolve the
-  passage again.
-- `unresolved_anchor`: the current reader evidence is missing or ambiguous.
-  Ask the user to select or identify the passage; do not guess a candidate.
-- `too_large`: obey the size limit published in the current descriptor and the
-  field limits in `protocol/v1.md`. Do not truncate approved content silently.
-
-An `indeterminate` result means the native outcome is unknown. Do not retry it
-under a new ID. Keep its original identity and follow the recovery rules above.
-
-## A native save exists but viewer verification failed
-
-Storage and reader evidence are separate. If the result is `succeeded` with
-`verification.storage: "confirmed"`, do not repeat the write. A closed,
-background, or unavailable PDF reader can make viewer verification fail even
-though the native Zotero record is saved. Open the target PDF and inspect the
-annotation before requesting a separate verification operation.
-
-## Disable or uninstall behavior is unclear
-
-Disable prevents new dispatch in the selected session, but a request that was
-already dispatched can finish. The active status file is authoritative. The
-uninstall procedure retains native records and the operation identity journal;
-see `uninstall.md` for the exact optional transient files and preference keys.
-
-Do not delete Zotero data, other plugin files, an MCP server, or a tunnel while
-diagnosing this XPI. Mac Safe Files and tunnel setup belong to their owner's
-runbook. ChatGPT Work remains independently unverified, and local package
-success does not establish ChatGPT Web end-to-end acceptance.
+Request/result files and the journal contain private study text. Redact them
+before sharing diagnostics. Lifecycle errors omit command stdout/stderr so a
+tunnel ID, credential path, or key cannot be copied into a public log.
+[Removal](uninstall.md) retains bridge sessions, native study data, and
+duplicate protection.

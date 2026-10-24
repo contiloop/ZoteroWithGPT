@@ -1,0 +1,21 @@
+{
+  "protocolVersion": 1,
+  "operationId": "example-ensure-arxiv-1",
+  "state": "succeeded",
+  "data": {
+    "source": { "arxivId": "2401.01234", "version": 2 },
+    "libraryId": "1",
+    "completion": "ready",
+    "itemKey": "ITEM1234",
+    "itemAction": "created",
+    "attachmentKey": "ATTACH01",
+    "attachmentFingerprint": "sha256:example-pdf",
+    "pdfAction": "downloaded",
+    "deepLink": "zotero://open-pdf/library/items/ATTACH01"
+  },
+  "error": null,
+  "verification": {
+    "storage": "confirmed",
+    "viewer": "not_checked"
+  }
+}

@@ -1,88 +1,186 @@
-# Study-session acceptance
+# Acceptance evidence
 
-Observed on 2026-10-21–22 with Zotero 10.0.6 on macOS arm64 and the packaged Research Companion 0.1.0. This record separates actual ChatGPT Web actions, direct Codex local actions, native UI observations, and automated checks. The local study flow and integrated source verification passed; final independent release review is separate from public publication.
+## Baseline: actual Web and Zotero
 
-## Real paper and test ownership
+0.3.1 selected-plugin conversations read owned LayerNorm and ResNet PDFs, then
+created native passage-linked highlights/comments. Fresh native readback matched
+the submitted body and the Zotero reader displayed the comments. Ambiguous
+ResNet candidates required an explicit choice; targets did not cross chats.
 
-The real paper was *Scaling up Test-Time Compute with Latent Reasoning: A Recurrent Depth Approach* (Geiping et al., 2025). Original item `LT2PF6MC`, attachment `9B6NE4M4`, library `1`, was read only. Its initial and subsequent annotation listings were empty.
+Earlier unchanged native runtime checks covered requested append, stale-revision
+rejection after manual editing, ordinary component reinstall, and immutable
+replay without duplicate creation. Private evidence is retained under
+`.local/validation/local-study/` and `.local/validation/local-study-0.3.1/`.
+Do not distribute those folders: requests/results contain study content.
 
-To honor the agreed test boundary, a byte-identical PDF was imported through Zotero's normal importer as **Research Companion Acceptance Copy — Huginn: Scaling up Test-Time Compute with Latent Reasoning**, item `L4QBNWND`, attachment `PD27UJ6H`. Ownership note `JT29BG47` identifies this separate test copy. Study writes target only the copy. Both PDFs retain SHA-256 `96f4543683a06a470ccb0b6b0db27a98f283fde9467d175e838f03a629a76c7b`.
+## Scope correction
 
-## ChatGPT Web study and approval
+A separate test required byte-identical copying of complete Web conversation
+blocks. One 0.3.1 run changed formatting and omitted UI/status text before
+submission; it still stored and displayed the submitted comment. This additional
+criterion does not determine whether requested notes/highlights work. An older
+0.3.0 run did omit empirical study details before submission; that remains a
+real content-quality failure, not a storage failure.
 
-The actual [test conversation](https://example.invalid/private-chat/2) used the installed Mac Safe Files connection. It read the matching client instructions and published create-only requests after checking descriptor, status, and descriptor again. The production connection reported plugin `0.1.0`, host `10.0.6`, profile `060902e7-34a5-4f7e-b983-2376ecd861db`, and session `639bce80c4f3e258f081804c2af45eae`. No permission prompt appeared during these observed calls; no account policy was changed.
+The product follows the requested form and scope. It must preserve a requested
+proof's meaning and conditions, but need not archive plugin labels, tool status,
+or unrelated turns. Verbatim comparison applies when verbatim copying is asked.
 
-| Operation ID | Actual result |
-| --- | --- |
-| `web-release-status-1` | Connected production extension, correct profile/version |
-| `web-huginn-search-1` | Found the original Huginn paper and PDF |
-| `web-huginn-read-1` | Read page indexes 0–2, returning real paper text and location candidates |
-| `web-huginn-annotations-1` | Read the original PDF's existing annotations: none |
-| `web-copy-read-1` | Read the copy's page index 2 before writing |
-| `web-copy-anchor-1` | Resolved the exact selected sentence to two page-local rectangles |
-| `web-copy-save-1` | Saved native highlight `WCBZZI8H`, storage confirmed |
+## Current cut
 
-Before approval, all four Web requests were read operations. No annotation, annotation update, or item-note request existed. ChatGPT proposed a Korean question and long explanation in conversation; it did not save the proposal. A subsequent explicit approval authorized the one passage-linked comment on the test copy.
+`npm run verify` passed on the 0.4.0 cut: 213 tests, type checking, build,
+deterministic package checks, 30 XPI members, 15 client files, and 22 portable
+plugin files. All 22 conversation scenarios are specifications, not model runs.
+A separate unused-symbol check passed, and source comparison confirmed all
+40 surviving native adapter methods unchanged. Baseline observations remain
+labeled by their original versions.
 
-The selected sentence on displayed page 3, Section 3.1, is: “This recurrent design is the minimal setup required to learn stable iterative operators.” The saved comment includes the user's question, a distinction between the paper's empirical claim and mathematical convergence, a five-step sufficient-condition explanation using a contraction mapping and fixed point, remaining questions, and paper/model/code reference links. The extra mathematical assumptions are labeled as an explanatory sufficient condition, not a proof about the trained Huginn model. No separate item note was created for the long explanation.
+On 2026-10-23, the private account plugin, installed XPI, and configured client
+kit were updated to 0.4.0. The XPI SHA-256 matched the reviewed package
+(`e6066e2e9b84b9abb0768756043461d0906cc44b9e0fc1b574be3a476783f614`);
+the journal was byte-identical across installation. Account identity, private
+root, Mac dependency, and existing default prompt were preserved; five obsolete
+import examples were removed. Runtime status advertised 13 active operations.
 
-The actual Zotero sidebar showed the comment's Korean paragraphs, numbered steps, inline/display mathematics, and reference text beside the highlighted sentence. Clicking the annotation navigated to page 3 and exposed the correct two-line highlight. The original editable Markdown/LaTeX remained available through **Edit native comment**.
+A fresh explicitly selected ChatGPT Web conversation read pages 1–3 of the
+owned LayerNorm v1 fixture without writing annotations. A later request, without
+repeating the link, created one yellow highlight with a two-sentence Korean
+comment beside page 2 equation (3). The submitted and stored bodies matched.
+The first viewer check failed while another page was active; selecting the new
+annotation showed the source highlight and complete comment. A fresh read-only
+verification then confirmed both storage and viewer. No second create was sent,
+and the PDF SHA-256 remained unchanged. Private evidence and conversation URL
+are in `.local/validation/core-cut/live/summary.json` and its protocol folder.
 
-Initial automated viewer checks returned `failed` while storage remained `confirmed`. This included one check with the copy tab active and its formatted content visibly displayed. In native source-edit mode, `local-huginn-source-visible-1` returned both storage and viewer `confirmed`. These earlier failures are unclassified prior-session observations; screenshots alone are not represented as successful protocol viewer responses.
+## Latency diagnosis, 2026-10-24
 
-After installing the independently reviewed diagnostic package (SHA-256 `e7da52a27f6a83d81882a9e3fee381dbaacbf76ba45f796b89d570ff49afe708`) through the normal Plugins Manager, fresh session `62f30ae98e472b7589b7df432771ff49` returned storage and formatted viewer `confirmed` for `diagnostic-copy-preview-1`. The actual screenshot showed the Korean question and explanation, MathML equations, and exact highlighted sentence together. Switching to **Edit native comment**, scrolling to the end, and choosing **Show formatted comment** again also passed `diagnostic-copy-preview-transition-1`. The earlier failure is retained as historical evidence; these later successes do not establish its root cause.
+Original bridge request/result file birth times from the 0.4.0 Web run show
+254 ms for connection status, 285 ms for discovery, 684 ms for PDF reading,
+219 ms for anchor resolution, and 1,160 ms for annotation creation. These
+intervals include scanner waiting and result publication. Consecutive save
+requests arrived 54–56 seconds apart; those gaps do not isolate model time,
+transport, and approval interaction.
 
-Independent source review confirmed the diagnostic patch did not relax the acceptance predicate. Between the failed and successful observations, both the comment revision and plugin/reader lifecycle changed; this is not a controlled package-only comparison. The failure did not recur in those two fresh-session checks. A background-tab control, `diagnostic-copy-background-1`, correctly reported storage confirmed and viewer failed at `reader_not_visible`.
+A fresh read-only probe through the actual Mac Safe Files connector in Codex
+measured 7,828 ms for policy status; 3,434/3,239/4,011 ms for the
+descriptor/status/descriptor gate; 4,941 ms for request creation; and 6,968 ms
+for result reading. The bridge request-to-result interval was 379 ms. This
+is a Codex connector sample, not a ChatGPT Web latency benchmark. Its operation
+ID is `latency-read-1792768512669` in the existing private bridge session.
+No annotations were created by this probe.
 
-## Concurrent manual edit
+Source workflow changes reuse policy within a turn and connection capabilities
+within an unchanged session, read result files without a preliminary stat, and
+reserve viewer verification for requested visibility checks. Every publication
+still validates descriptor/status/descriptor; writes still require current PDF
+evidence and complete saved-body comparison. Plugin validation passed (22
+scenario specifications, no model execution). The installed 0.4.0 plugin is
+unchanged; post-change Web latency has not been measured.
 
-The actual Zotero native comment editor was used to append a Korean manual-edit marker while preserving the whole existing comment. A fresh native listing returned revision `sha256:0dbd9d88a2b1136d45db0c0647a49479435ff70266ca818305f624e10f12dcf7` and exactly one marker.
+## 0.5.0 package verification, 2026-10-24
 
-ChatGPT then submitted `web-copy-stale-update-1` using the earlier saved revision `sha256:12f4cce46678dd2ffb46d23976f1a65194d50c310ce2fa8199d80dac770f416c`. The extension rejected it with `conflict`, `retryable: false`. `web-copy-conflict-read-1` confirmed the manual marker and original explanation remained, and the attempted new question was absent. ChatGPT reported the conflict without automatically retrying with the new revision.
+At source revision `c790056`, `npm run verify` passed 271 tests, including all
+nested MCP tests exactly once, plus root and nested type checks, builds, package
+validation, and the unconfigured plugin validator. The release contains 30 XPI
+files, 15 generic-client files, five portable-plugin files, and 35 locked server
+files. Verification extracted the server to a relocated path, ran
+`npm ci --omit=dev --ignore-scripts`, then used the official MCP SDK stdio
+client to initialize it and discover the exact 14-tool inventory.
 
-A separately renewed explicit approval authorized `web-copy-approved-append-1` against the freshly read revision. It succeeded, preserving the manual marker and adding the requested question. `web-copy-after-append-1` independently read both back; `web-copy-after-append-verify-1` confirmed storage and the visible native comment editor separately. The actual Web conversation displayed these three successful results. The resulting revision was `sha256:be64c7335d2df801da91545bc7cd5f5b4962c236bef8575733f96c2efb604392`. No new annotation or separate note was created.
+Two independent clean Git-tree exports each ran the root and nested locked
+installs and built all four artifacts. Their archive inventories and bytes
+matched; the two client directories also matched file for file. The reviewed
+artifact SHA-256 values were:
 
-## Other acceptance evidence
+```text
+6fc8fa6f16bfdd48f1621e0277525bd55f62e2f9058738bb7898deec1c82cd9f  zotero-ai-research-companion-0.5.0.xpi
+13fbeb6bf75ed1b35d72bb239a2d525a8932c960be59e0aee0850ba20156bef1  zotero-study-save-0.5.0.zip
+eb472970d8b020ffa1abff4a77e1562d411ff26de8d4d62d495161ab2c8982c4  zotero-mcp-server-0.5.0.zip
+```
 
-- A direct Codex local-file client read the real copy and submitted an intentionally nonexistent quoted passage as `local-huginn-unresolved-1`. The resolver returned `unresolved`, no candidates, and no annotation write. A later native listing contained only the intended Web-created highlight.
-- Fresh native listings confirmed the original paper still had no annotations and the copy had exactly one highlight plus its ownership item note. SHA-256 assertions passed for the original, copy, and earlier synthetic fixture PDF. The fixture hash remained `c2fbe4c5d2d2a372492278542b9aa4008dbf8407f8bc54335a3aaf30b990e336`.
-- Actual production-package removal/reinstall retained the earlier fixture comment, rejected old pending-session execution, and replayed an original successful request without duplicating its annotation. That test used the packaged artifact with SHA-256 `14be160836366dcc9e28defbbe86b1c1d490b6269699c80b457fcd30c169d16c`.
-- A real native commit-boundary fault injection during development interrupted result finalization after a native note committed. Recovery reconciled the existing native key without duplication. This was fault injection against real Zotero storage, not a forced application crash.
-- A fresh source extraction with `npm ci` and `npm run verify` exited 0 with 135 tests and produced the exact installed package hash. No developer profile or credential was needed to build.
+Controlled temporary fixtures verified owned install, start/status/stop/remove,
+same-version repair, reinstall with bridge/native history outside the install
+root, stopped rollback, exact obsolete-account-file derivation, and diagnostic
+redaction. Follow-up cases reject symlink ancestors on every private path,
+install/bridge overlap with the pinned tunnel-client control root, and unknown
+dependency or managed-profile entries before any remove command. They also
+confirm every child tunnel command receives that pinned root and unrelated
+shared control-state files survive lifecycle removal. Portable scans found no
+account app ID, credential pattern, private user path, session directory,
+operation journal, or validation history.
 
-## Direct local execution without Mac MCP
+The private tunnel preflight created a separate Zotero tunnel in the same
+account and workspace, then confirmed that the existing protected `file:`
+credential could use it. It did not replace the shared Mac catalog, rotate or
+copy the credential, or start a competing client under the old tunnel identity.
 
-The approved no-MCP alternative was exercised by Codex using local file operations only. `codex-copy-before-1` read the current native annotation. `codex-copy-append-1` appended a Korean measurement idea comparing distances between sampled initial-state trajectories and answer accuracy; `codex-copy-after-1` independently read back all 1,850 characters, including the earlier Web question and manual marker. The copy still had exactly one annotation. Revision: `sha256:2f7b3c146307b1af37864aa93629ade7994341b4dd62af57b801a97b3cda4662`.
+## Live acceptance, 2026-10-24
 
-The real reader refreshed the formatted content, including the new paragraph. After opening **Edit native comment**, `codex-copy-verify-1` confirmed both storage and the visible native editor. Activating the other owned PDF tab caused `codex-copy-background-verify-1` to report storage `confirmed`, viewer `failed`, demonstrating that a background reader is not accepted as visible evidence.
+Three selected-plugin study/save pairs ran through the installed 0.4 Mac route
+before any account update. Afterward, the verified 0.5 server was installed in
+its private runtime root, the verified extension was installed in Zotero, and a
+separately named ChatGPT custom MCP connection exposed the packaged 14 tools.
+The temporary 0.5 account plugin release depended only on that dedicated
+connection. Three further selected-plugin study/save pairs used its visible
+`zotero_` tool cards and the dedicated runtime.
 
-Independent ChatGPT Work availability and billing remain unverified. No public release, shared MCP reconfiguration, or user-library cleanup was performed.
+Each study turn read the owned local PDF and made no Zotero write. Each save
+turn created exactly one requested passage-linked native annotation. Native
+readback matched the prepared body, and the active Zotero reader showed the
+highlight, passage, and body boundaries. The six saved bodies ranged from
+2,480 to 8,729 characters. Content maps checked the requested question,
+explanation, proof or derivation, comparison, and supported references rather
+than relying on a storage hash alone. In the bounded third dedicated trial, the
+stored question block exactly matched the 460-character submitted question;
+an apparent early ending in Zotero accessibility output was display truncation.
+The LayerNorm, ResNet, and owned synthetic-fixture PDF hashes did not change.
 
-## Integrated package follow-up — 2026-10-22
+The paired timings were mixed:
 
-Source `852e6af` passed `npm run verify` (exit 0, 158 tests). Clean `git archive` extraction, `npm ci`, and the same command both exited 0 and reproduced installed XPI SHA-256 `49b21211352f90846c34a2e029e8f5f554523c91a35380f8c421dce70882ee54` exactly. This build includes aggregate saved-body limits, final cached-native-object access checks, bounded inert child-note safety processing, preservation of existing rich note bytes, and definitive non-writing rejection of interrupted queued operations.
+| Route and phase | Runs | UI “Worked for” median (range) | Observed wall upper bound median (range) | Write approval |
+| --- | ---: | ---: | ---: | --- |
+| Existing Mac 0.4 study | 3 | 122 s (84–160) | 177 s (155–271) | none |
+| Dedicated 0.5 study | 3 | 94 s (85–106) | 179 s (103–252) | none |
+| Existing Mac 0.4 save | 3 | 196 s (131–442) | 225 s (157–490) | none |
+| Dedicated 0.5 save | 3 | 226 s (218–280) | 253 s (241–327) | one “Allow once” per run |
 
-On that actual installed package, operations prefixed `final-1792594965692` created optional fixture notes `CW5FWIFE` and `6VBLSECS`. Safe reference HTML, preformatted mathematics, and a table survived create/readback; unsafe resource markup remained escaped readable source with no active image. Append preserved the exact existing rich-note body. An incoming fragment within its own limit but exceeding the combined 524,288-byte limit was rejected as `too_large` for both note and annotation; fresh reads proved no revision or content change. Original, copy, and synthetic fixture PDF hash assertions passed unchanged.
+The wall endpoint is the next periodic final observation, so it includes
+polling uncertainty. Body size, model work, and approval behavior also differed.
+With three runs per route, these observations do not establish a speedup.
 
-The connection moved out of temporary test directories into the dedicated ignored `.local/bridge` directory, using the matching client kit. Actual Web requests `web-final-read-current-1`, `web-final-approved-append-1`, and `web-final-after-append-1` read the current revision, appended one newly authorized Korean question, and freshly read it back. The current comment has 1,906 characters, exactly one added question, and all manual edits, proofs, references, and prior questions. Revision: `sha256:9214977ab8eb63d622f2e32194c37805edd1990b3ba3f1acd1387a127ebfc60e`.
+Fresh Web conversations also refused a save without a retained target, exposed
+three ambiguous ResNet candidates for explicit choice, and suspended the old
+implicit target after both an invalid arXiv identifier and a valid-but-missing
+paper. No fallback write followed those failures. The dedicated runtime then
+passed an ordinary stop/remove/reinstall/start cycle with
+`processRunning=true`, `healthy=true`, and `ready=true`. Its configuration was
+unchanged. The extension passed a normal disable/remove/restart/install/restart
+cycle, and the account plugin passed **Uninstall** and reinstall while retaining
+the same backend identity. The original successful operation remained
+readable through its original connection after all three reinstall cycles.
+All 329 pre-lifecycle journal records retained their canonical digests; two
+later records were read-only connection-status observations.
 
-The first hot-update viewer check, `web-final-verify-visible-1`, reported storage confirmed and viewer failed at `inspection_error`. Zotero's actual error console showed `can't access dead object`. An independent source probe reproduced a removed unrelated reader poisoning synchronization. Normal Quit/reopen on the identical installed XPI restored strict formatted verification: direct `final-restart-viewer-1792595288751` and actual Web `web-final-restart-verify-1` both confirmed storage and viewer. The Web also freshly read unchanged content with `web-final-restart-read-1`; no mutation was repeated.
+One owned synthetic-fixture create remains unresolved. ChatGPT displayed a
+model-authored summary that the call had been blocked, but the raw tool
+arguments and raw error were not available, the tunnel runtime log contained no
+payload evidence, and the inspected active bridge session retained no request
+under that operation ID. A bounded annotation listing did not show the proposed
+new annotation. Those observations do not prove that the service never received
+or executed the call. The operation was not reissued under the same or a new
+ID, and an older annotation was not used as a substitute. Consequently
+original-ID result recovery remains unresolved, and the fixture-dependent
+append, manual-edit conflict, deletion, and historical replay tests were not
+live-accepted in this run.
 
-The reader lifecycle was then hardened in `d8008f3`, integrated at source `97d75df950c8ad3fcb0b31867c0e2a6bef575c2a`. Tests first reproduced the removed-reader and cleanup failures, then passed. Independent review ran typecheck and 15 focused tests plus a retained-dead-reader probe; strict viewer predicates remained unchanged. Full integrated `npm run verify` exited 0 with 160 tests.
+Because the latency comparison was inconclusive, the selected account plugin
+was restored to the prior shared Mac route as version 0.5.1 using the preserved
+old content. Its identity, private audience, presentation, and default prompts
+were retained. A fresh selected-plugin chat then completed Mac Safe Files
+policy status, file stat, and file read calls with no write. The dedicated
+Zotero connection, tunnel, and healthy 0.5 runtime remain available separately;
+the shared Mac app itself was not modified.
 
-The resulting XPI SHA-256 is `01975e560f477ac024d23ed29cd5a4c1da1bd9bd4ad61ac256901158e29cf152`. It was installed through the normal Plugins Manager, and the installed profile artifact hash matched exactly. Without a restart, `release-160-1792595852486-viewer` confirmed storage and strict formatted preview; its fresh read confirmed the complete 1,906-character native comment and one annotation. The original paper still had zero annotations. The prior note-policy smoke is attributed to the preceding artifact because the only subsequent code change was reader lifecycle isolation.
-
-## Acceptance coverage
-
-| Group | Verified evidence |
-| --- | --- |
-| Web reading and contextual save | Actual Web/Mac MCP search, PDF read, resolved two-rectangle native highlight, Korean question/proof/references, actual reader |
-| Approval and conflict protection | Read-only proposal before approval; native manual edit; stale Web update rejected; separately approved Web append preserved content |
-| Identity and recovery | Historical replay without duplicates; real commit-boundary recovery; unresolved passage non-write; unchanged PDF hashes |
-| No-MCP local execution | Actual Codex local-file read, append, readback, native-reader evidence; approved alternative to independently unverified Work |
-| Local installation lifecycle | Packaged install, disable, remove, reinstall, native-content retention, stale-session nonexecution, historical identity retention |
-| Reproducible delivery | Clean dependency install, full verification, deterministic package comparison, compatibility/notice/path validation |
-
-Public publication, an independently tested Work route, and a public Mac Safe Files installer are not claimed. The owned test papers/notes remain in Zotero; their removal was not silently performed.
-
-Final Web follow-up on the reader-hardened installed artifact used session `7b544dc8a43dccb9bee7cfb23fbb8b32`: `web-release160-read-1` freshly confirmed the complete native comment, and `web-release160-verify-1` returned storage and formatted viewer `confirmed`. These were read-only operations; no successful mutation was repeated. A second clean source extraction at `5675e2b`, with no dependencies or generated files, passed `npm ci` and `npm run verify` (both exit 0, 160 tests) and reproduced final installed XPI SHA-256 `01975e560f477ac024d23ed29cd5a4c1da1bd9bd4ad61ac256901158e29cf152` exactly.
+Private live evidence is retained in the local validation tree and must not be
+distributed. It includes study text, request/result records, account
+observations, and native library identifiers.

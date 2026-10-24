@@ -248,6 +248,44 @@ test("same operation ID and payload is replayed without executing twice", async 
   assert.deepEqual(serializer.calls, ["profile-A"]);
 });
 
+test("offline local arXiv lookup remains a replayable read outside mutation serialization", async () => {
+  const store = new MemoryOperationStore();
+  const serializer = new InlineMutationSerializer();
+  const coordinator = new OperationCoordinator({
+    store,
+    digest: new StableDigest(),
+    serializer,
+  });
+  const request = validateProtocolRequest({
+    protocolVersion: 1,
+    operationId: "op.find-local-core-1",
+    operation: "find_local_arxiv",
+    profileId: "profile-A",
+    payload: { url: "https://arxiv.org/abs/2401.01234v2", limit: 25 },
+  });
+  let executions = 0;
+  const execute = async () => {
+    executions += 1;
+    return {
+      kind: "completed",
+      data: {
+        source: { arxivId: "2401.01234", version: 2 },
+        matches: [],
+        truncated: false,
+      },
+      verification: { storage: "not_applicable", viewer: "not_applicable" },
+    };
+  };
+
+  const first = await coordinator.submit(request, "profile-A", execute);
+  const replay = await coordinator.submit(request, "profile-A", execute);
+
+  assert.equal(first.state, "succeeded");
+  assert.deepEqual(replay, first);
+  assert.equal(executions, 1);
+  assert.deepEqual(serializer.calls, []);
+});
+
 test("submit snapshots request content before the digest await", async () => {
   const store = new MemoryOperationStore();
   const coordinator = new OperationCoordinator({
@@ -571,4 +609,185 @@ test("note conflict preserves human content and requires re-read, revision, and 
   );
   assert.equal(finalRead.data.revision, "rev:3");
   assert.equal(finalRead.data.content, updated.data.content);
+});
+
+function ensureArxivRequest(operationId = "op.ensure-core-1") {
+  return validateProtocolRequest({
+    protocolVersion: 1,
+    operationId,
+    operation: "ensure_arxiv_pdf",
+    profileId: "profile-A",
+    authorization: {
+      kind: "explicit_request",
+      scope: "Create the inspected arXiv parent and retain it if PDF acquisition fails.",
+    },
+    payload: {
+      source: { arxivId: "2401.01234", version: 2 },
+      inspectionToken: "inspection:2401.01234:v2:snapshot-1",
+      selection: { kind: "create" },
+    },
+  });
+}
+
+const retainedArxivItem = {
+  source: { arxivId: "2401.01234", version: 2 },
+  libraryId: "1",
+  completion: "item_only",
+  itemKey: "ITEM1234",
+  itemAction: "created",
+  attachmentKey: null,
+  attachmentFingerprint: null,
+  pdfAction: "none",
+  deepLink: "zotero://select/library/items/ITEM1234",
+};
+
+test("ensure_arxiv_pdf retains only a confirmed item-only storage failure", async () => {
+  const coordinator = new OperationCoordinator({
+    store: new MemoryOperationStore(),
+    digest: new StableDigest(),
+    serializer: new InlineMutationSerializer(),
+  });
+  const response = await coordinator.submit(
+    ensureArxivRequest(),
+    "profile-A",
+    async () => ({
+      kind: "failed",
+      data: retainedArxivItem,
+      error: {
+        code: "storage_error",
+        message: "The parent item was confirmed, but PDF acquisition failed.",
+        retryable: false,
+      },
+      verification: { storage: "confirmed", viewer: "not_checked" },
+    }),
+  );
+
+  assert.equal(response.state, "failed");
+  assert.deepEqual(response.data, retainedArxivItem);
+  assert.equal(response.error.code, "storage_error");
+});
+
+test("failed outcomes cannot propagate arbitrary or malformed retained data", async () => {
+  const submit = async (request, data) => {
+    const coordinator = new OperationCoordinator({
+      store: new MemoryOperationStore(),
+      digest: new StableDigest(),
+      serializer: new InlineMutationSerializer(),
+    });
+    return coordinator.submit(request, "profile-A", async () => ({
+      kind: "failed",
+      data,
+      error: { code: "storage_error", message: "Write failed.", retryable: false },
+      verification: { storage: "confirmed", viewer: "not_checked" },
+    }));
+  };
+
+  const ordinaryMutation = await submit(
+    validateProtocolRequest({
+      protocolVersion: 1,
+      operationId: "op.no-arbitrary-data",
+      operation: "create_note",
+      profileId: "profile-A",
+      authorization: { kind: "explicit_request", scope: "Create the requested note." },
+      payload: { libraryId: "1", itemKey: "ITEM1234", content: "Study note" },
+    }),
+    { noteKey: "FAKE" },
+  );
+  assert.equal(ordinaryMutation.state, "failed");
+  assert.equal(ordinaryMutation.data, null);
+
+  const malformedEnsure = await submit(
+    ensureArxivRequest("op.malformed-retained-data"),
+    { ...retainedArxivItem, attachmentKey: "ATTACH01" },
+  );
+  assert.equal(malformedEnsure.state, "failed");
+  assert.equal(malformedEnsure.data, null);
+});
+
+test("ensure_arxiv_pdf succeeds only with ready data, confirmed storage, and unchecked viewer", async () => {
+  const submit = async (
+    operationId,
+    data,
+    verification = { storage: "confirmed", viewer: "not_checked" },
+  ) => {
+    const coordinator = new OperationCoordinator({
+      store: new MemoryOperationStore(),
+      digest: new StableDigest(),
+      serializer: new InlineMutationSerializer(),
+    });
+    return coordinator.submit(ensureArxivRequest(operationId), "profile-A", async () => ({
+      kind: "completed",
+      data,
+      verification,
+    }));
+  };
+  const ready = {
+    ...retainedArxivItem,
+    completion: "ready",
+    attachmentKey: "ATTACH01",
+    attachmentFingerprint: "sha256:known-pdf",
+    pdfAction: "downloaded",
+    deepLink: "zotero://open-pdf/library/items/ATTACH01",
+  };
+  const succeeded = await submit("op.ensure-ready", ready);
+  assert.equal(succeeded.state, "succeeded");
+  assert.deepEqual(succeeded.data, ready);
+
+  const invalid = await submit("op.ensure-invalid-completion", retainedArxivItem);
+  assert.equal(invalid.state, "indeterminate");
+  assert.equal(invalid.data, null);
+  assert.equal(invalid.error.code, "unknown_outcome");
+
+  for (const viewer of ["confirmed", "failed", "not_applicable"]) {
+    const mismatchedEvidence = await submit(
+      `op.ensure-invalid-viewer-${viewer}`,
+      ready,
+      { storage: "confirmed", viewer },
+    );
+    assert.equal(mismatchedEvidence.state, "indeterminate");
+    assert.equal(mismatchedEvidence.data, null);
+    assert.equal(mismatchedEvidence.error.code, "unknown_outcome");
+  }
+});
+
+test("old protocol requests and 0.1.0-shaped historical journal responses remain readable", async () => {
+  const oldRequest = validateProtocolRequest({
+    protocolVersion: 1,
+    operationId: "op.legacy-read-1",
+    operation: "search_papers",
+    profileId: "profile-A",
+    payload: { query: "Bayesian inference", limit: 25 },
+  });
+  assert.equal(oldRequest.operation, "search_papers");
+
+  const store = new MemoryOperationStore();
+  const historical = {
+    protocolVersion: 1,
+    operationId: "op.legacy-journal-1",
+    requestDigest: "sha256:legacy-0.1.0",
+    operation: "create_note",
+    profileId: "profile-A",
+    mutation: true,
+    state: "succeeded",
+    response: {
+      protocolVersion: 1,
+      operationId: "op.legacy-journal-1",
+      state: "succeeded",
+      data: {
+        noteKey: "NOTE1234",
+        revision: "rev:1",
+        content: "Historical note",
+        deepLink: "zotero://select/library/items/NOTE1234",
+      },
+      error: null,
+      verification: { storage: "confirmed", viewer: "not_applicable" },
+    },
+  };
+  store.records.set(historical.operationId, structuredClone(historical));
+  const coordinator = new OperationCoordinator({
+    store,
+    digest: new StableDigest(),
+    serializer: new InlineMutationSerializer(),
+  });
+  assert.deepEqual(await coordinator.get(historical.operationId), historical.response);
 });

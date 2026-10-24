@@ -14,7 +14,6 @@ import {
   normalizeVisibleText,
   rectanglesForTextRange,
   renderTextLayer,
-  textInRectangles,
   type NativePageChar,
   type NativeRectTuple,
 } from "./text-layer.js";

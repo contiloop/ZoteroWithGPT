@@ -13,3 +13,7 @@
 - Existing Mac Safe Files is required. Public transport installation, ChatGPT
   Work access, a distribution license, and a public release channel are not
   established.
+- The 0.4.0 Web check reported 2m 18s for a short local-PDF explanation and
+  4m 21s for one highlight/comment save, with per-turn file-write approval
+  prompts. The flow works, but this run does not establish acceptable latency;
+  browser/model orchestration and approval time were not measured separately.

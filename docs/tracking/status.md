@@ -20,10 +20,11 @@ defaults. Old import schemas and read-only reconciliation remain for existing
 journals. Requested organization, summary, or verbatim copying determines the
 saved form; native persistence still preserves the prepared body.
 
-The installed 0.3.1 account plugin and Zotero extension are not automatically
-changed by source/package cleanup. Current-cut checks are recorded in
-[acceptance](../acceptance-results.md); do not attribute baseline native evidence
-to a newly installed build.
+The private account plugin, Zotero extension, and configured client kit are now
+0.4.0. A fresh selected-plugin Web conversation read the owned LayerNorm PDF,
+then saved a requested yellow highlight and two-sentence Korean comment without
+repeating the paper link. Fresh native readback and the active Zotero reader
+confirmed the result; see [acceptance](../acceptance-results.md).
 
 ## Remaining limits
 

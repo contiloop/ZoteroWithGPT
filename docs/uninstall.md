@@ -76,9 +76,12 @@ Before moving or deleting any checkout that contains the active bridge:
 4. Select the migrated root in Zotero, enable it, and require **Ready**. Reinstall
    the owned MCP route with that same canonical root, then start it and require
    `processRunning`, `healthy`, and `ready`.
-5. Confirm the copied inventory again and perform only a read-only historical
-   lookup under the current profile using an original completed operation ID.
-   Do not publish a pending request, create a replacement ID, or replay a write.
+5. Enabling the migrated root creates a new connection descriptor and session,
+   so whole-tree equality is no longer expected. Recheck only the copied
+   historical status, request, and result files against the pre-enable hashes.
+   Then use the original profile, session, and completed operation ID for a
+   read-only historical lookup and require the same stored response. Do not
+   publish a pending request, create a replacement ID, or replay a write.
 
 Only after those checks succeed may the source checkout be removed. Retain the
 separate backup until live acceptance is complete. If the copy or historical

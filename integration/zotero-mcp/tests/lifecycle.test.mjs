@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  lstat,
+  readFile,
+  readlink,
+  realpath,
+  rename,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -10,6 +22,7 @@ import {
   installRuntime,
   removeRuntime,
   rollbackRuntime,
+  runCommand as executeCommand,
   startRuntime,
   statusRuntime,
   stopRuntime,
@@ -383,6 +396,40 @@ test("installation rejects shared dependency links and install roots below symli
   );
 });
 
+test("installation preserves relative npm dependency links inside the owned release", async (t) => {
+  const fixtureRoot = await temporaryDirectory("zotero-mcp-relative-dependency-");
+  const sourceRoot = await packageFixture("0.5.0");
+  const bridgeRoot = path.join(fixtureRoot, "bridge");
+  await mkdir(bridgeRoot);
+  await write(sourceRoot, "node_modules/mime/cli.js", "fixture cli\n");
+  await mkdir(path.join(sourceRoot, "node_modules", ".bin"));
+  await symlink("../mime/cli.js", path.join(sourceRoot, "node_modules", ".bin", "mime"));
+  const credential = await write(fixtureRoot, "runtime-key", "fixture\n", 0o600);
+  const tunnelClient = await write(fixtureRoot, "tunnel-client", "fixture\n", 0o700);
+  const installRoot = path.join(fixtureRoot, "runtime");
+  t.after(async () => {
+    await Promise.all([
+      rm(fixtureRoot, { recursive: true, force: true }),
+      rm(sourceRoot, { recursive: true, force: true }),
+    ]);
+  });
+
+  await installRuntime({
+    sourceRoot,
+    installRoot,
+    bridgeRoot,
+    independentNode: process.execPath,
+    tunnelClient,
+    tunnelId: "private-tunnel-id",
+    runtimeApiKeyReference: `file:${credential}`,
+  }, controlledInstallDependencies(fixtureRoot, tunnelFixture([])));
+
+  assert.equal(
+    await readlink(path.join(installRoot, "releases", "0.5.0", "node_modules", ".bin", "mime")),
+    "../mime/cli.js",
+  );
+});
+
 test("private roots and credentials reject every ancestor symlink", async (t) => {
   const fixtureRoot = await temporaryDirectory("zotero-mcp-ancestor-boundary-");
   const sourceRoot = await packageFixture("0.5.0");
@@ -527,4 +574,61 @@ test("install and bridge roots stay outside the pinned tunnel control root", asy
     }),
     /tunnel control root/u,
   );
+});
+
+test("all lifecycle entries reject a symlinked private-directory ancestor before tunnel calls", async (t) => {
+  const fixtureRoot = await temporaryDirectory("zotero-mcp-private-ancestor-");
+  const sourceRoot = await packageFixture("0.5.0");
+  const bridgeRoot = path.join(fixtureRoot, "bridge");
+  await mkdir(bridgeRoot);
+  const credential = await write(fixtureRoot, "runtime-key", "fixture\n", 0o600);
+  const tunnelClient = await write(fixtureRoot, "tunnel-client", "fixture\n", 0o700);
+  const installRoot = path.join(fixtureRoot, "runtime");
+  const calls = [];
+  const runCommand = tunnelFixture(calls);
+  t.after(async () => {
+    await Promise.all([
+      rm(fixtureRoot, { recursive: true, force: true }),
+      rm(sourceRoot, { recursive: true, force: true }),
+    ]);
+  });
+  await installRuntime({
+    sourceRoot,
+    installRoot,
+    bridgeRoot,
+    independentNode: process.execPath,
+    tunnelClient,
+    tunnelId: "private-tunnel-id",
+    runtimeApiKeyReference: `file:${credential}`,
+  }, controlledInstallDependencies(fixtureRoot, runCommand));
+  const privateRoot = path.join(installRoot, "private");
+  const config = JSON.parse(await readFile(path.join(privateRoot, "config.json"), "utf8"));
+  await write(privateRoot, "rollback.json", `${JSON.stringify({
+    schemaVersion: 1,
+    owner: "zotero-study-save-mcp-runtime",
+    config,
+  }, null, 2)}\n`, 0o600);
+  const outsidePrivateRoot = path.join(fixtureRoot, "moved-private");
+  await rename(privateRoot, outsidePrivateRoot);
+  await symlink(outsidePrivateRoot, privateRoot);
+
+  for (const operation of [startRuntime, statusRuntime, stopRuntime, removeRuntime, rollbackRuntime]) {
+    const callsBefore = calls.length;
+    await assert.rejects(
+      operation({ installRoot }, { runCommand }),
+      /symlink path component|non-symlink/u,
+    );
+    assert.equal(calls.length, callsBefore);
+  }
+  const launcher = path.join(installRoot, "bin", "zotero-mcp-lifecycle.mjs");
+  assert.equal((await lstat(privateRoot)).isSymbolicLink(), true);
+  assert.match(await readFile(launcher, "utf8"), /unsafe installed runtime path/u);
+  const launched = await executeCommand(process.execPath, [
+    launcher,
+    "status",
+    "--install-root",
+    installRoot,
+  ]);
+  assert.equal(launched.code, 1, `${launched.stdout}\n${launched.stderr}`);
+  assert.match(launched.stderr, /failed safely/u);
 });

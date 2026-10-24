@@ -472,17 +472,46 @@ async function writePrivateJson(filename, value) {
 }
 
 const STABLE_LAUNCHER_SOURCE = `#!/usr/bin/env node
-import { readFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+async function requireDirectory(filename) {
+  const info = await lstat(filename);
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("unsafe installed runtime path");
+}
+
+async function requireFile(filename) {
+  const info = await lstat(filename);
+  if (!info.isFile() || info.isSymbolicLink()) throw new Error("unsafe installed runtime path");
+}
+
 try {
   const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
-  const config = JSON.parse(await readFile(path.join(root, "private", "config.json"), "utf8"));
-  if (config.owner !== "zotero-study-save-mcp-runtime" || typeof config.releaseDirectory !== "string") {
+  const privateRoot = path.join(root, "private");
+  const configFile = path.join(privateRoot, "config.json");
+  await requireDirectory(root);
+  await requireDirectory(privateRoot);
+  await requireFile(configFile);
+  const config = JSON.parse(await readFile(configFile, "utf8"));
+  if (
+    config.owner !== "zotero-study-save-mcp-runtime" ||
+    config.installRoot !== root ||
+    typeof config.version !== "string" ||
+    !/^\\d+\\.\\d+\\.\\d+(?:[.-][0-9A-Za-z.-]+)?$/u.test(config.version) ||
+    config.releaseDirectory !== \`releases/\${config.version}\`
+  ) {
     throw new Error("installed Zotero MCP configuration is invalid");
   }
-  const entry = path.join(root, ...config.releaseDirectory.split("/"), "integration", "zotero-mcp", "lifecycle.mjs");
+  const releasesRoot = path.join(root, "releases");
+  const releaseRoot = path.join(releasesRoot, config.version);
+  const integrationRoot = path.join(releaseRoot, "integration");
+  const packageRoot = path.join(integrationRoot, "zotero-mcp");
+  const entry = path.join(packageRoot, "lifecycle.mjs");
+  for (const directory of [releasesRoot, releaseRoot, integrationRoot, packageRoot]) {
+    await requireDirectory(directory);
+  }
+  await requireFile(entry);
   const lifecycle = await import(pathToFileURL(entry).href);
   await lifecycle.main(process.argv.slice(2));
 } catch {
@@ -592,6 +621,7 @@ async function stageRelease(runtimePackage, destination) {
       recursive: true,
       errorOnExist: true,
       preserveTimestamps: true,
+      verbatimSymlinks: true,
     });
     await writeDependencyInventory(temporary);
     return temporary;
@@ -738,6 +768,7 @@ async function loadOwnedState(installRoot) {
   ) {
     throw new Error("installRoot is not owned by this lifecycle");
   }
+  await rejectSymlinkPathComponents(path.join(root, CONFIG_FILE), "private runtime config");
   const config = await readOwnedJson(path.join(root, CONFIG_FILE), "private runtime config");
   validateStoredConfig(config, root, "private runtime config");
   if (

@@ -1,9 +1,21 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readlink,
+  readdir,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
@@ -619,14 +631,89 @@ try {
 }
 `;
 
+async function dependencyCommandLinks(packageRoot) {
+  const binRoot = path.join(packageRoot, "node_modules", ".bin");
+  const links = {};
+  for (const entry of (await readdir(binRoot, { withFileTypes: true }))
+    .sort((left, right) => left.name.localeCompare(right.name, "en"))) {
+    if (!entry.isSymbolicLink()) continue;
+    const target = await readlink(path.join(binRoot, entry.name));
+    if (path.isAbsolute(target)) {
+      throw new Error(`npm dependency command ${entry.name} became an absolute symlink`);
+    }
+    links[entry.name] = target;
+  }
+  if (Object.keys(links).length === 0) {
+    throw new Error("relocated production dependencies lack npm command symlinks");
+  }
+  return links;
+}
+
+async function installRelocatedRuntime(packageRoot, temporaryDirectory, nodeExecutable) {
+  const lifecycleUrl = pathToFileURL(path.join(
+    packageRoot,
+    "integration",
+    "zotero-mcp",
+    "src",
+    "lifecycle.mjs",
+  )).href;
+  const { installRuntime } = await import(lifecycleUrl);
+  const bridgeRoot = path.join(temporaryDirectory, "empty bridge");
+  const installRoot = path.join(temporaryDirectory, "owned runtime");
+  const credential = path.join(temporaryDirectory, "fixture credential");
+  const tunnelClient = path.join(temporaryDirectory, "fixture tunnel-client");
+  await mkdir(bridgeRoot, { recursive: true });
+  await writeFile(credential, "controlled fixture only\n", { mode: 0o600 });
+  await chmod(credential, 0o600);
+  await writeFile(tunnelClient, "controlled fixture only\n", { mode: 0o700 });
+  await chmod(tunnelClient, 0o700);
+  const command = async (executable, args) => {
+    if (args[0] !== "--version") throw new Error("relocated install invoked an unexpected command");
+    if (executable === await realpath(nodeExecutable)) {
+      return { code: 0, stdout: `${process.version}\n`, stderr: "" };
+    }
+    if (executable === tunnelClient) {
+      return {
+        code: 0,
+        stdout: "0.0.14+0f870e50a973fa820d4c409000059e181e8d242b\n",
+        stderr: "",
+      };
+    }
+    throw new Error("relocated install validated an unexpected executable");
+  };
+  const installed = await installRuntime({
+    sourceRoot: packageRoot,
+    installRoot,
+    bridgeRoot,
+    independentNode: nodeExecutable,
+    tunnelClient,
+    tunnelId: "controlled-fixture-tunnel",
+    runtimeApiKeyReference: `file:${credential}`,
+  }, {
+    runCommand: command,
+    environment: {
+      HOME: path.join(temporaryDirectory, "fixture home"),
+      XDG_STATE_HOME: path.join(temporaryDirectory, "fixture state"),
+    },
+  });
+  const installedRoot = path.join(installRoot, "releases", installed.version);
+  const sourceLinks = await dependencyCommandLinks(packageRoot);
+  const installedLinks = await dependencyCommandLinks(installedRoot);
+  if (!sameJson(installedLinks, sourceLinks)) {
+    throw new Error("lifecycle install changed npm dependency command symlinks");
+  }
+  return { bridgeRoot, installedRoot };
+}
+
 export async function verifyRelocatedServer(serverPath, {
   npmExecutable = "npm",
   nodeExecutable = process.execPath,
 } = {}) {
   const archive = path.resolve(serverPath);
-  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "zotero-mcp-relocated-"));
+  const temporaryDirectory = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "zotero-mcp-relocated-")),
+  );
   const packageRoot = path.join(temporaryDirectory, "relocated package");
-  const bridgeRoot = path.join(temporaryDirectory, "empty bridge");
   try {
     await run(UNZIP_PATH, ["-qq", archive, "-d", packageRoot]);
     const npmVersion = (await run(npmExecutable, ["--version"])).trim();
@@ -636,16 +723,20 @@ export async function verifyRelocatedServer(serverPath, {
       throw new Error("relocated verification requires Node.js 24–26");
     }
     await run(npmExecutable, ["ci", "--omit=dev", "--ignore-scripts"], { cwd: packageRoot });
-    await mkdir(bridgeRoot, { recursive: true });
+    const { bridgeRoot, installedRoot } = await installRelocatedRuntime(
+      packageRoot,
+      temporaryDirectory,
+      nodeExecutable,
+    );
     const output = await run(nodeExecutable, ["--input-type=module", "--eval", RELOCATED_SMOKE_SOURCE], {
-      cwd: packageRoot,
+      cwd: installedRoot,
       env: { ...process.env, ZOTERO_MCP_SMOKE_BRIDGE_ROOT: bridgeRoot },
     });
     const result = JSON.parse(output);
     if (result.initialized !== true || result.tools !== EXPECTED_MCP_TOOLS.length) {
       throw new Error("relocated MCP smoke did not initialize all tools");
     }
-    return result;
+    return { ...result, lifecycleInstalled: true };
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }

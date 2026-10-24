@@ -1,9 +1,9 @@
 ---
 name: zotero-study-save
-description: Study a paper already saved in Zotero and save requested discussion as passage-linked highlights or comments. Use after the user selects Zotero Study Save; retain the paper within the accessible conversation for later save requests.
+description: Study a paper already saved in Zotero and save requested discussion as passage-linked highlights or comments. Use after the user selects Zotero; retain the paper within the accessible conversation for later save requests.
 ---
 
-# Zotero study save
+# Zotero
 
 Read `resources/workflow.md` and use only the connected dedicated `zotero_`
 tools. Their closed schemas define every argument and result shape.

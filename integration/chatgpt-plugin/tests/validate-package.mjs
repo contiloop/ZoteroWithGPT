@@ -61,7 +61,7 @@ for (const value of [
 ]) {
   assert.ok(typeof value === "string" && value.trim().length > 0);
 }
-assert.equal(extension.interface.displayName, "Zotero Study Save");
+assert.equal(extension.interface.displayName, "Zotero");
 assert.ok(extension.interface.shortDescription.length <= 30);
 assert.deepEqual(extension.interface.capabilities, []);
 

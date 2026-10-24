@@ -9,7 +9,7 @@
   "extensions": {
     "com.openai": {
       "interface": {
-        "displayName": "Zotero Study Save",
+        "displayName": "Zotero",
         "shortDescription": "Save studies to Zotero",
         "longDescription": "Study an arXiv paper already saved in Zotero, then save requested highlights, questions, explanations, proofs, and references beside the relevant PDF passage.",
         "developerName": "Zotero AI Research Companion Project",

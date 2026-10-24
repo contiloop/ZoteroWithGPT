@@ -105,8 +105,7 @@ state root or its other runtimes.
 After the managed runtime reports ready, create a dedicated custom MCP app in
 ChatGPT through the normal account UI and enter the same existing tunnel ID in
 the form's **Tunnel ID** field. Obtain the created app's real ID from that
-account record; do not invent an ID or endpoint. The 0.5.0 live acceptance must
-still verify this ChatGPT form path and resulting tool discovery.
+account record; do not invent an ID or endpoint. This form path and tool discovery were verified in the maintainer's private account; availability in another account must be checked separately.
 
 Export the current `zotero-study-save` plugin source through the normal account
 plugin management tool. Before any update, keep a private backup of that source,
@@ -153,6 +152,6 @@ exercising the actual account binding belongs to the live acceptance step; the
 portable archive alone is not evidence of connectivity.
 
 After configuration, manually save the paper and PDF in Zotero. Select
-**Zotero Study Save**, provide its official arXiv link, and ask to study it.
+**Zotero**, provide its official arXiv link, and ask to study it.
 Selection and study are read-only; only a later requested save writes native
 annotations.

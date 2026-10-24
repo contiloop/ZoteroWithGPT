@@ -1,33 +1,154 @@
-# Zotero AI Research Companion
+# Zotero
 
-Study a paper in ChatGPT Web, then save the requested explanation, question,
-proof, reference, or highlight into the relevant passage in your local Zotero
-PDF reader. Long comments stay beside the passage.
+Study a paper with ChatGPT, then save the parts you want to remember as
+highlights and comments beside the relevant passage in your local Zotero PDF.
 
-Save the paper and PDF in Zotero first. Select **Zotero Study Save**, provide
-its arXiv link, and study it. Later say “save this explanation beside that
-equation” without repeating the link. Studying alone does not save anything.
+Ask questions, work through equations, and discuss the paper first. When you
+say “highlight this and save your explanation,” Zotero receives the requested
+passage-linked annotation. Studying alone never triggers a save.
 
-[Install](docs/install.md) · [Remove/reinstall](docs/uninstall.md) ·
-[Troubleshoot](docs/troubleshooting.md) · [Verified status](docs/tracking/status.md)
+## Project status
 
-The selected Web route uses a dedicated stdio MCP server through a separately
-owned private Secure MCP tunnel. The server wraps the same local bridge and
-native Zotero executor; it does not add another writer or model API. Public
-hosting, authenticated user/profile routing, and ChatGPT Work access remain
-future distribution work.
+This is a self-hosted project validated on the maintainer's private macOS and
+ChatGPT setup. The repository is public; it is not a hosted service or a
+one-click ChatGPT integration. Setup requires your own compatible ChatGPT MCP
+access, dedicated OpenAI Secure MCP tunnel, runtime credential, and local
+Zotero installation. Account access must be checked before installing.
 
-## Development
+The basic study-to-highlight/comment workflow has been exercised in ChatGPT
+and checked in Zotero. Some exceptional recovery/update scenarios remain
+unverified on the dedicated route; see [validation status](docs/tracking/status.md).
+Windows, Linux, and ChatGPT Work are not validated deployment targets.
 
-Node.js 24–26 and npm 11.4.2 are required. A clean checkout needs both locked
-installs: `npm ci` and `npm ci --prefix integration/zotero-mcp --ignore-scripts`.
-Then run `npm run verify`.
+## What you can do
 
-`npm run package` creates four matching 0.5.0 artifacts: the XPI, a generic
-local-file client kit, an explicitly unconfigured ChatGPT plugin ZIP, and a
-relocatable locked MCP server ZIP. Private account binding is a separate 0600
-archive. Configured archives, bridge history, and operation journals are never
-portable release content.
+- Read and discuss a PDF you have already saved in Zotero.
+- Save requested explanations, questions, proofs, and references beside a passage.
+- Choose a highlight color yourself, or let ChatGPT apply the study convention below.
+- Keep long explanations attached to their passage instead of moving them to
+  an unrelated note. Separate notes require an explicit request.
+
+The integration does not acquire papers, edit PDF bytes, or write Zotero's
+SQLite database directly. The Zotero extension creates native annotations.
+
+## How it works
+
+```text
+ChatGPT: Zotero plugin (study and save instructions)
+    ↓ typed tool calls
+Zotero Local (your connected MCP app)
+    ↓ dedicated Secure MCP tunnel
+Local Node.js MCP server
+    ↓ local request/result files
+Zotero extension → native highlights and comments
+```
+
+The plugin has one skill, `skills/zotero/`. Its `SKILL.md` loads
+`resources/workflow.md`, which describes paper selection, requested saves,
+color selection, and result checking. ChatGPT interprets these instructions;
+the MCP server handles transport and validation. The native Zotero extension
+owns persistence and operation history.
+
+## Study workflow
+
+1. Save the paper and its PDF in Zotero yourself, and keep Zotero running.
+2. After completing setup, select **Zotero** in ChatGPT.
+3. Provide the paper's arXiv link and ask to study a section.
+4. Ask follow-up questions in the same conversation.
+5. Request a save, for example:
+
+   > Highlight that definition and attach the explanation you just gave, verbatim.
+
+The established paper can be reused within the accessible conversation. If the
+paper or passage is ambiguous, ChatGPT asks for the missing information.
+
+### Highlight colors
+
+These are study conventions, not meanings prescribed by Zotero. Explicit user
+colors take priority. For a requested new highlight without a color, ChatGPT
+selects one based on the passage's role and passes its hex value to the tool.
+This is model guidance, not a deterministic classifier; existing highlights
+are not automatically recolored.
+
+| Color | Hex | Purpose |
+| --- | --- | --- |
+| Yellow | `#FFD400` | Core concepts and definitions |
+| Red | `#FF6666` | Important problems and limitations |
+| Green | `#5FB236` | Research results and advantages |
+| Blue | `#2EA8E5` | Methods and equations |
+| Purple | `#A28AE5` | Concepts to study further |
+| Pink | `#E56EEE` | Striking claims and insights |
+| Orange | `#F19837` | Key experiments and supporting evidence |
+| Gray | `#AAAAAA` | Supporting explanations and references |
+
+## Build and install
+
+The currently supported setup uses macOS, Zotero **10.0.6–10.0.x**,
+Node.js **24–26**, npm **11.4.2**, and the pinned tunnel-client build documented
+in the [installation guide](docs/install.md).
+
+Build from source:
+
+```sh
+git clone https://github.com/contiloop/ZoteroWithGPT.git
+cd ZoteroWithGPT
+npm ci
+npm ci --prefix integration/zotero-mcp --ignore-scripts
+npm run verify
+```
+
+`npm run verify` builds, tests, packages, and validates the artifacts.
+`npm run package` rebuilds packages when dependencies are already installed.
+Generated files are placed in `artifacts/`:
+
+| Artifact | Purpose |
+| --- | --- |
+| `zotero-ai-research-companion-<version>.xpi` | Install in Zotero |
+| `zotero-mcp-server-<version>.zip` | Install the local MCP server and lifecycle tools |
+| `zotero-study-save-<version>.zip` | Portable ChatGPT plugin, initially unconfigured |
+| `zotero-ai-research-companion-<version>-client/` | Optional generic-file client fallback |
+
+The historical `zotero-study-save` package identifier is retained; its display
+name is **Zotero**. Account plugin releases can have a different version from
+the server/extension packages.
+
+Follow [Install on macOS](docs/install.md) to configure the extension, server,
+tunnel, and your own ChatGPT app binding. The current private configuration
+helper expects an existing owned plugin's exported manifests; first-time
+account onboarding is not yet automated. The portable ZIP contains no working
+account binding or credentials. Never distribute a configured private ZIP,
+credential file, bridge history, or operation journal.
+
+[Remove or reinstall](docs/uninstall.md) ·
+[Troubleshooting](docs/troubleshooting.md)
+
+## Repository and tests
+
+```text
+addon/                    Zotero extension manifest and assets
+src/                      Protocol, core logic, and native adapters
+integration/chatgpt-plugin/ ChatGPT skill and portable plugin source
+integration/zotero-mcp/    MCP server and its tests
+scripts/                  Build, packaging, and verification tools
+tests/                    Extension and integration tests with owned fixtures
+docs/                     Installation, architecture, protocol, and evidence
+```
+
+Tests belong in the public source repository so contributors can reproduce
+checks. The installable XPI, plugin ZIP, and MCP server ZIP exclude test suites
+and private acceptance evidence. Tests also live beside the MCP and plugin
+modules, so the root `tests/` directory is not the entire suite.
+
+Run `npm run verify` before proposing a change. Automated tests do not replace
+real ChatGPT/Zotero checks for changes to native saving or reader behavior.
+Do not commit personal papers, credentials, runtime configuration, or study
+history. Local artifacts and private validation directories are ignored by Git.
 
 [Architecture](docs/architecture.md) · [Study rules](docs/business-rules.md) ·
-[Protocol](docs/protocol/v1.md) · [Host pitfalls](docs/engineering-notes.md)
+[Protocol](docs/protocol/v1.md) · [Host notes](docs/engineering-notes.md)
+
+## Licensing
+
+A project-wide license has not yet been selected. Public repository visibility
+alone does not grant an open-source license. Third-party dependency notices are
+provided in `THIRD_PARTY_NOTICES/` and the generated packages.

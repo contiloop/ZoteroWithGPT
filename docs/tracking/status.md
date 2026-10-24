@@ -20,37 +20,53 @@ defaults. Old import schemas and read-only reconciliation remain for existing
 journals. Requested organization, summary, or verbatim copying determines the
 saved form; native persistence still preserves the prepared body.
 
-The private account plugin, Zotero extension, and configured client kit are now
-0.4.0. A fresh selected-plugin Web conversation read the owned LayerNorm PDF,
-then saved a requested yellow highlight and two-sentence Korean comment without
-repeating the paper link. Fresh native readback and the active Zotero reader
-confirmed the result; see [acceptance](../acceptance-results.md).
+At that cut, the private account plugin, Zotero extension, and configured client
+kit were 0.4.0. A fresh selected-plugin Web conversation read the owned
+LayerNorm PDF, then saved a requested yellow highlight and two-sentence Korean
+comment without repeating the paper link. Fresh native readback and the active
+Zotero reader confirmed the result; see
+[acceptance](../acceptance-results.md).
 
-## 0.5.0 packaging cut: built, pending live acceptance
+## Dedicated 0.5 route: partially live-accepted
 
 Version 0.5.0 adds a dedicated 14-tool stdio MCP adapter, a separately owned
 managed tunnel lifecycle, a relocatable locked server package, and an
-unconfigured five-file portable plugin. The generic file client remains a
-separate artifact. Automated checks cover deterministic inventories and hashes,
-relocated production dependency installation, official-SDK initialization/tool
-discovery, private binding preservation, exact obsolete-file derivation,
-redaction, ownership-fenced install/remove/reinstall, and stopped rollback.
+unconfigured five-file portable plugin. Package verification passed 271 tests,
+reproduced the archives in two clean exports, initialized the relocated server
+with the official MCP SDK, and discovered the exact 14-tool inventory.
 
-T1 setup work observed creation of a separate private tunnel identity and use of
-its existing protected `file:` credential reference while the older shared Mac
-tunnel/profile/account route remained intact. The sanitized record retains no
-credential value or reference path. That observation did not verify sustained
-production control-plane polling, managed-runtime readiness, ChatGPT custom MCP
-app binding, or 14-tool discovery.
+The private tunnel preflight created a separate Zotero tunnel in the same
+account and workspace and confirmed reuse of the existing protected `file:`
+credential without changing the shared Mac connection. Live acceptance then
+installed the 0.5 server in its private runtime root, installed the 0.5 Zotero
+extension, and connected a separately named ChatGPT custom MCP app. Three
+selected-plugin study/save pairs used visible dedicated `zotero_` tool cards.
+Each study made no write; each save created one requested passage-linked native
+annotation. Native readback, the active reader, content coverage, and unchanged
+PDF hashes were checked. Missing, ambiguous, and failed-switch behavior also
+stopped without a fallback write.
 
-T4 itself used source, packages, and controlled temporary fixtures and made no
-live account, tunnel, credential, Zotero, bridge-history, or native-paper
-change. Production polling, ChatGPT Web behavior, and native Zotero
-read/write/display for 0.5.0 remain pending the separate T5 live acceptance.
+The dedicated server, Zotero extension, and account plugin each passed their
+ordinary remove/reinstall lifecycle. The original successful operation remained
+readable through its original connection afterward, and the existing journal
+history retained its canonical digests. One separate owned-fixture create has an
+unresolved outcome because its raw tool arguments and raw error were not
+available and no retained bridge request was found. It was not retried.
+Original-ID result recovery remains unresolved; the fixture-dependent append,
+manual-edit conflict, deletion, and historical replay tests remain unaccepted.
+
+The three-pair latency comparison was mixed and too small to establish a
+speedup. The selected account plugin was consequently restored to the prior
+shared Mac route as version 0.5.1 with its identity and presentation preserved.
+A fresh selected-plugin chat successfully used the shared Mac file tools. The
+dedicated Zotero connection, tunnel, healthy 0.5 runtime, and installed 0.5
+extension remain available separately.
 
 ## Remaining limits
 
 Reader acquisition has stalled once with an unresolved cause. Stored-content
 success and actual reader visibility remain separate. Distribution is manual;
 public licensing, stable authenticated HTTPS/user-profile routing, end-user
-tunnel lifecycle, and Work validation remain open.
+tunnel lifecycle, and Work validation remain open. The unresolved fixture write
+and the acceptance scenarios that depend on it must be resolved without
+reissuing an uncertain operation.

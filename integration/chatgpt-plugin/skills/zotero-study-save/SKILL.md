@@ -5,16 +5,17 @@ description: Study a paper already saved in Zotero and save requested discussion
 
 # Zotero study save
 
-Read `resources/personal-config.json` and `resources/workflow.md`. Use
-`resources/client-v1/protocol/v1.md` and its schemas for wire shapes.
+Read `resources/workflow.md` and use only the connected dedicated `zotero_`
+tools. Their closed schemas define every argument and result shape.
 
-The researcher supplies one arXiv link after saving the paper and PDF in Zotero.
-Read the local PDF to study it. A later “save this explanation” or “highlight
-that sentence” uses the established paper and passage without asking for the
-link or internal keys again. Studying alone never authorizes a write.
+The researcher supplies an official arXiv link after manually saving the paper
+and PDF in Zotero. Study the actual local PDF. Retain its verified target only
+in this accessible conversation so a later “save this explanation” or
+“highlight that sentence” can reuse it without asking for inferable details.
+Studying alone never authorizes a write.
 
-Save only the requested material. Organize or summarize when requested; copy
-wording when requested. Preserve the intended meaning, proof steps, conditions,
-equations, and supported references. Routine saves do not include the whole conversation, tool status, plugin
-labels, or unrelated turns unless requested. Long content remains
-beside its passage rather than moving into a separate note.
+Save only the requested material and form. Organize or summarize when asked;
+preserve wording when asked to copy it. Preserve the intended meaning, proof
+steps, conditions, equations, comparison outcomes, and supported references.
+Long content remains beside its passage. Create a separate note only when the
+researcher explicitly requests one.

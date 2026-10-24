@@ -57,6 +57,13 @@ owns one fixed alias/profile and its fenced local root; the bridge sessions,
 native journal, credential file, and remote tunnel are separate persistence
 domains.
 
+The reviewed 0.0.14 client writes exactly one `<profile>.yaml` below the supplied
+private `--profile-dir`. Alias, process, health, and log state use its separately
+resolved global control root. The lifecycle stores that resolved root and passes
+it through `TUNNEL_CLIENT_STATE_DIR` for every child command so validation and
+execution cannot select different stores. The global root and other aliases are
+not part of recursive lifecycle removal.
+
 ## Stalled reader acquisition
 
 A read-only `list_annotations` once held the scanner while acquiring a reader.

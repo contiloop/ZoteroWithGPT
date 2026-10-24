@@ -28,8 +28,12 @@ checkout. It still requires the unconfigured portable ZIP plus preserved private
 account manifests; release artifacts cannot reconstruct deleted account state.
 
 `lifecycle.mjs` installs that clean extracted package under one fenced stable
-root. It canonicalizes executable targets, stores only a protected credential
-file reference, and delegates process supervision to `tunnel-client runtimes`.
-The fixed alias/profile is `zotero-study-save-mcp`. See
+root. It accepts command symlinks but stores their canonical executable targets;
+private data paths reject symlink ancestors. It stores only a protected
+credential file reference, inventories the installed dependency tree, pins the
+global tunnel-client state root without owning it, and delegates process
+supervision to `tunnel-client runtimes`. Its private profile directory admits
+only the fixed managed YAML. The fixed alias/profile is
+`zotero-study-save-mcp`. See
 [installation](../../docs/install.md) and [removal](../../docs/uninstall.md) for
 operator commands and ownership boundaries.

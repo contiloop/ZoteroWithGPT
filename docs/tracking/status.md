@@ -36,10 +36,17 @@ relocated production dependency installation, official-SDK initialization/tool
 discovery, private binding preservation, exact obsolete-file derivation,
 redaction, ownership-fenced install/remove/reinstall, and stopped rollback.
 
-These are source, package, and controlled temporary-fixture results. No live
-account plugin, tunnel, credential, Zotero installation, bridge history, or
-native paper was changed for this cut. ChatGPT Web behavior and native Zotero
-read/write/display for 0.5.0 remain pending the separate live acceptance step.
+T1 setup work observed creation of a separate private tunnel identity and use of
+its existing protected `file:` credential reference while the older shared Mac
+tunnel/profile/account route remained intact. The sanitized record retains no
+credential value or reference path. That observation did not verify sustained
+production control-plane polling, managed-runtime readiness, ChatGPT custom MCP
+app binding, or 14-tool discovery.
+
+T4 itself used source, packages, and controlled temporary fixtures and made no
+live account, tunnel, credential, Zotero, bridge-history, or native-paper
+change. Production polling, ChatGPT Web behavior, and native Zotero
+read/write/display for 0.5.0 remain pending the separate T5 live acceptance.
 
 ## Remaining limits
 

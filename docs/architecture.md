@@ -35,12 +35,14 @@ previews are disposable and preserve editable Markdown/LaTeX source.
 ## Runtime ownership
 
 The server package installs under one owned stable root with versioned releases,
-a stable lifecycle launcher, and private tunnel metadata. The fixed alias and
-profile are `zotero-study-save-mcp`. `tunnel-client runtimes connect` supervises
-the process and uses an existing tunnel ID read-only; its loopback health port
-is ephemeral. Removal stops and removes only that alias and owned local tree.
-Bridge sessions and the Zotero `operations-v1.json` journal live outside the
-runtime root and survive ordinary reinstall.
+a stable lifecycle launcher, and one private managed-profile YAML. The fixed
+alias and profile are `zotero-study-save-mcp`. `tunnel-client runtimes connect`
+supervises the process and uses an existing tunnel ID read-only; its loopback
+health port is ephemeral. The client's global control root is pinned and passed
+to every invocation but stays outside lifecycle ownership. Removal stops and
+removes only that alias and the exact-inventory owned local tree. Bridge sessions
+and the Zotero `operations-v1.json` journal live outside the runtime root and
+survive ordinary reinstall.
 
 Rollback selects the prior installed route and leaves it stopped. It never
 replays a request. Account-plugin routing rollback is a separate operation: the

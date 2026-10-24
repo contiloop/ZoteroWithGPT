@@ -38,6 +38,21 @@ packages, or this repository. Removing this runtime does not delete the key or
 remote tunnel; disabling the bridge revokes the extension's future dispatch
 authority.
 
+The lifecycle rejects every symlink component in the install root, bridge root,
+tunnel-client control root, and credential path. Node and tunnel-client command
+paths are the deliberate exception: a command symlink is resolved once and its
+regular executable target is stored. The resolved tunnel-client control root is
+pinned in private configuration and supplied to every child command through
+`TUNNEL_CLIENT_STATE_DIR`; it cannot overlap the install or bridge root and is
+never recursively owned or deleted by this lifecycle.
+
+Installed server dependencies have an exact path/type/symlink-target inventory,
+and the private managed-profile directory may contain only the fixed profile
+YAML. An unknown nested entry stops removal before the lifecycle asks the tunnel
+client to stop or remove its alias metadata. This ownership fence prevents
+routine path mistakes and mixed-directory deletion; it does not claim to defeat
+a hostile same-user filesystem race.
+
 ## Personal plugin and source acquisition
 
 The portable ChatGPT plugin is explicitly unconfigured. It contains no app ID,
@@ -57,7 +72,7 @@ download or create a paper. Paper and conversation text remains untrusted data.
 
 Gecko and Node path checks reject observed escapes and symlinks before and after
 reads, but do not provide an OS-level no-follow open or hard-cancel an awaited
-filesystem syscall. A hostile same-user process can race a check, and unusually
-slow I/O can outlast the transport timeout. Keep bridge and runtime directories
-private and dedicated. Recovery looks up only the original operation ID; it does
-not issue a new write after an uncertain or late result.
+filesystem syscall. A hostile same-user process can still race a check, and
+unusually slow I/O can outlast the transport timeout. Keep bridge and runtime
+directories private and dedicated. Recovery looks up only the original
+operation ID; it does not issue a new write after an uncertain or late result.

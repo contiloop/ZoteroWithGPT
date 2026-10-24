@@ -8,10 +8,12 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readlink,
   readdir,
   realpath,
   rename,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
@@ -26,6 +28,7 @@ const PRIVATE_DIRECTORY = "private";
 const CONFIG_FILE = path.join(PRIVATE_DIRECTORY, "config.json");
 const ROLLBACK_FILE = path.join(PRIVATE_DIRECTORY, "rollback.json");
 const STABLE_LAUNCHER = path.join("bin", "zotero-mcp-lifecycle.mjs");
+const DEPENDENCY_INVENTORY_FILE = ".zotero-mcp-node-modules.json";
 const TUNNEL_CLIENT_REVISION = "0f870e50a973fa820d4c409000059e181e8d242b";
 const MAX_COMMAND_OUTPUT_BYTES = 1024 * 1024;
 const RUNTIME_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[.-][0-9A-Za-z.-]+)?$/u;
@@ -50,8 +53,33 @@ function requireAbsolutePath(value, label) {
   return value;
 }
 
-async function requireExistingDirectory(value, label) {
+async function rejectSymlinkPathComponents(filename, label, { allowMissing = false } = {}) {
+  const root = path.parse(filename).root;
+  const segments = filename.slice(root.length).split(path.sep).filter(Boolean);
+  let cursor = root;
+  let missing = false;
+  for (const segment of segments) {
+    cursor = path.join(cursor, segment);
+    if (missing) continue;
+    let info;
+    try {
+      info = await lstat(cursor);
+    } catch (error) {
+      if (allowMissing && error?.code === "ENOENT") {
+        missing = true;
+        continue;
+      }
+      throw error;
+    }
+    if (info.isSymbolicLink()) {
+      throw new TypeError(`${label} must not contain a symlink path component`);
+    }
+  }
+}
+
+async function requireExistingDirectory(value, label, { rejectAncestorSymlinks = false } = {}) {
   const filename = requireAbsolutePath(value, label);
+  if (rejectAncestorSymlinks) await rejectSymlinkPathComponents(filename, label);
   const info = await lstat(filename);
   if (!info.isDirectory() || info.isSymbolicLink()) {
     throw new TypeError(`${label} must be an existing non-symlink directory`);
@@ -61,15 +89,16 @@ async function requireExistingDirectory(value, label) {
   return resolved;
 }
 
-async function canonicalInstallRoot(value) {
-  const requested = requireAbsolutePath(value, "installRoot");
+async function canonicalPrivateRoot(value, label) {
+  const requested = requireAbsolutePath(value, label);
+  await rejectSymlinkPathComponents(requested, label, { allowMissing: true });
   let cursor = requested;
   const missing = [];
   while (true) {
     try {
       const info = await lstat(cursor);
       if (!info.isDirectory() || info.isSymbolicLink()) {
-        throw new TypeError("installRoot or its nearest existing parent must be a non-symlink directory");
+        throw new TypeError(`${label} or its nearest existing parent must be a non-symlink directory`);
       }
       break;
     } catch (error) {
@@ -82,9 +111,13 @@ async function canonicalInstallRoot(value) {
   }
   const resolved = path.join(await realpath(cursor), ...missing);
   if (resolved === path.parse(resolved).root || resolved === os.homedir()) {
-    throw new TypeError("installRoot cannot be a filesystem root or the home directory");
+    throw new TypeError(`${label} cannot be a filesystem root or the home directory`);
   }
   return resolved;
+}
+
+async function canonicalInstallRoot(value) {
+  return canonicalPrivateRoot(value, "installRoot");
 }
 
 async function requireExecutable(value, label) {
@@ -102,6 +135,7 @@ async function requireCredentialReference(value) {
     throw new TypeError("runtimeApiKeyReference must be a protected file: reference");
   }
   const filename = requireAbsolutePath(value.slice("file:".length), "runtime API key reference");
+  await rejectSymlinkPathComponents(filename, "runtime API key reference");
   const info = await lstat(filename);
   if (!info.isFile() || info.isSymbolicLink()) {
     throw new TypeError("runtime API key reference must name a non-symlink file");
@@ -109,7 +143,7 @@ async function requireCredentialReference(value) {
   if ((info.mode & 0o077) !== 0) {
     throw new TypeError("runtime API key reference must not be accessible to group or other users");
   }
-  return `file:${filename}`;
+  return `file:${await realpath(filename)}`;
 }
 
 function requireTunnelId(value) {
@@ -117,6 +151,96 @@ function requireTunnelId(value) {
     throw new TypeError("tunnelId must identify one existing tunnel");
   }
   return value;
+}
+
+function environmentPath(value, workingDirectory) {
+  const cleaned = path.normalize(value.trim());
+  return path.isAbsolute(cleaned) ? cleaned : path.resolve(workingDirectory, cleaned);
+}
+
+async function pinnedDirectoryExists(filename) {
+  try {
+    return (await stat(filename)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function resolvePinnedTunnelStateRoot(environment, workingDirectory = process.cwd()) {
+  const explicit = environment.TUNNEL_CLIENT_STATE_DIR;
+  let candidate;
+  if (typeof explicit === "string" && explicit.trim() !== "") {
+    candidate = environmentPath(explicit, workingDirectory);
+  } else {
+    const legacyCandidates = [];
+    const codexHome = environment.CODEX_HOME;
+    if (typeof codexHome === "string" && codexHome.trim() !== "") {
+      legacyCandidates.push(path.join(environmentPath(codexHome, workingDirectory), "tunnel-mcp"));
+    }
+    const configuredHome = environment.HOME;
+    if (typeof configuredHome === "string" && configuredHome.trim() !== "") {
+      const home = environmentPath(configuredHome, workingDirectory);
+      legacyCandidates.push(
+        path.join(home, ".codex", "tunnel-mcp"),
+        path.join(home, ".tunnel-client"),
+      );
+    }
+    for (const legacy of legacyCandidates) {
+      if (await pinnedDirectoryExists(legacy)) {
+        candidate = legacy;
+        break;
+      }
+    }
+    if (candidate === undefined) {
+      const xdgStateHome = environment.XDG_STATE_HOME;
+      if (typeof xdgStateHome === "string" && xdgStateHome.trim() !== "") {
+        candidate = path.join(environmentPath(xdgStateHome, workingDirectory), "tunnel-client");
+      } else {
+        const home = typeof configuredHome === "string" && configuredHome.trim() !== ""
+          ? environmentPath(configuredHome, workingDirectory)
+          : os.homedir();
+        candidate = process.platform === "darwin"
+          ? path.join(home, "Library", "Application Support", "tunnel-client")
+          : path.join(home, ".local", "state", "tunnel-client");
+      }
+    }
+  }
+  return canonicalPrivateRoot(candidate, "tunnel control root");
+}
+
+function pathsOverlap(left, right) {
+  return left === right || left.startsWith(`${right}${path.sep}`) || right.startsWith(`${left}${path.sep}`);
+}
+
+function pathIsInside(filename, directory) {
+  return filename === directory || filename.startsWith(`${directory}${path.sep}`);
+}
+
+function requireSeparatedPrivatePaths({
+  installRoot,
+  bridgeRoot,
+  tunnelStateRoot,
+  credentialReference,
+  independentNode,
+  tunnelClient,
+}) {
+  if (pathsOverlap(installRoot, bridgeRoot)) {
+    throw new TypeError("installRoot and bridgeRoot must be separate directories");
+  }
+  if (pathsOverlap(installRoot, tunnelStateRoot) || pathsOverlap(bridgeRoot, tunnelStateRoot)) {
+    throw new TypeError("installRoot and bridgeRoot must stay outside the tunnel control root");
+  }
+  const credential = credentialReference.slice("file:".length);
+  for (const root of [installRoot, bridgeRoot, tunnelStateRoot]) {
+    if (pathIsInside(credential, root)) {
+      throw new TypeError("runtime API key reference must stay outside owned data and tunnel control roots");
+    }
+  }
+  for (const executable of [independentNode, tunnelClient]) {
+    if (pathIsInside(executable, installRoot) || pathIsInside(executable, bridgeRoot)) {
+      throw new TypeError("runtime executables must stay outside owned data roots");
+    }
+  }
 }
 
 function requireRuntimeVersion(value, label) {
@@ -181,7 +305,64 @@ async function listedFiles(directory, prefix = "", ignoredTopLevel = new Set()) 
   return files;
 }
 
-async function validateReleaseLayout(directory, members, prefix = "") {
+async function dependencyInventory(directory, prefix = "") {
+  const current = path.join(directory, ...prefix.split("/").filter(Boolean));
+  const entries = [];
+  for (const entry of (await readdir(current, { withFileTypes: true }))
+    .sort((left, right) => left.name.localeCompare(right.name, "en"))) {
+    const relative = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+    const filename = path.join(directory, ...relative.split("/"));
+    if (entry.isSymbolicLink()) {
+      const target = await readlink(filename);
+      const resolvedTarget = path.resolve(path.dirname(filename), target);
+      if (
+        path.isAbsolute(target) ||
+        (resolvedTarget !== directory && !resolvedTarget.startsWith(`${directory}${path.sep}`))
+      ) {
+        throw new Error(`owned dependencies contain an escaping symlink at ${relative}`);
+      }
+      entries.push({ path: relative, type: "symlink", target });
+    } else if (entry.isDirectory()) {
+      entries.push({ path: relative, type: "directory" });
+      entries.push(...await dependencyInventory(directory, relative));
+    } else if (entry.isFile()) {
+      entries.push({ path: relative, type: "file" });
+    } else {
+      throw new Error(`owned dependencies contain an unsupported entry at ${relative}`);
+    }
+  }
+  return entries;
+}
+
+async function writeDependencyInventory(releaseRoot) {
+  await writePrivateJson(path.join(releaseRoot, DEPENDENCY_INVENTORY_FILE), {
+    schemaVersion: 1,
+    owner: OWNER,
+    entries: await dependencyInventory(path.join(releaseRoot, "node_modules")),
+  });
+}
+
+async function validateDependencyInventory(releaseRoot) {
+  const inventory = await readOwnedJson(
+    path.join(releaseRoot, DEPENDENCY_INVENTORY_FILE),
+    "installed dependency inventory",
+  );
+  if (
+    JSON.stringify(Object.keys(inventory).sort()) !==
+      JSON.stringify(["entries", "owner", "schemaVersion"]) ||
+    inventory.schemaVersion !== 1 ||
+    inventory.owner !== OWNER ||
+    !Array.isArray(inventory.entries)
+  ) {
+    throw new Error("installed dependency inventory is not owned by this lifecycle");
+  }
+  const actual = await dependencyInventory(path.join(releaseRoot, "node_modules"));
+  if (JSON.stringify(actual) !== JSON.stringify(inventory.entries)) {
+    throw new Error("installed dependency inventory contains an unknown or changed entry");
+  }
+}
+
+async function validateReleaseLayout(directory, members, prefix = "", { installed = false } = {}) {
   const allowedFiles = new Set(members);
   const allowedDirectories = new Set();
   for (const member of members) {
@@ -195,6 +376,10 @@ async function validateReleaseLayout(directory, members, prefix = "") {
   for (const entry of await readdir(current, { withFileTypes: true })) {
     const relative = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
     if (entry.isSymbolicLink()) throw new Error(`owned release contains a symlink at ${relative}`);
+    if (prefix === "" && installed && relative === DEPENDENCY_INVENTORY_FILE) {
+      if (!entry.isFile()) throw new Error("installed dependency inventory must be a regular file");
+      continue;
+    }
     if (relative === "node_modules") {
       if (!entry.isDirectory()) throw new Error("owned release node_modules must be a directory");
       continue;
@@ -203,7 +388,7 @@ async function validateReleaseLayout(directory, members, prefix = "") {
       if (!allowedDirectories.has(relative)) {
         throw new Error(`owned release contains an unknown directory at ${relative}`);
       }
-      await validateReleaseLayout(directory, members, relative);
+      await validateReleaseLayout(directory, members, relative, { installed });
     } else if (!entry.isFile() || !allowedFiles.has(relative)) {
       throw new Error(`owned release contains an unknown entry at ${relative}`);
     }
@@ -243,7 +428,7 @@ function validatePackageMetadata(metadata) {
   return members;
 }
 
-async function validateReleaseFiles(root, metadata, { verifyHashes }) {
+async function validateReleaseFiles(root, metadata, { verifyHashes, installed = false }) {
   const members = validatePackageMetadata(metadata);
   for (const member of members) {
     if (
@@ -263,11 +448,14 @@ async function validateReleaseFiles(root, metadata, { verifyHashes }) {
       }
     }
   }
-  const actual = await listedFiles(root, "", new Set(["node_modules"]));
+  const ignored = new Set(["node_modules"]);
+  if (installed) ignored.add(DEPENDENCY_INVENTORY_FILE);
+  const actual = await listedFiles(root, "", ignored);
   if (JSON.stringify([...actual].sort()) !== JSON.stringify([...members].sort())) {
     throw new Error("server release contains files outside its owned inventory");
   }
-  await validateReleaseLayout(root, members);
+  await validateReleaseLayout(root, members, "", { installed });
+  if (installed) await validateDependencyInventory(root);
   return members;
 }
 
@@ -317,9 +505,9 @@ async function writeStableLauncher(root) {
   return filename;
 }
 
-export async function runCommand(executable, args) {
+export async function runCommand(executable, args, { env = process.env } = {}) {
   const child = spawn(executable, args, {
-    env: process.env,
+    env,
     stdio: ["ignore", "pipe", "pipe"],
   });
   let stdout = "";
@@ -345,12 +533,17 @@ export async function runCommand(executable, args) {
   return { code: overflow ? 1 : code ?? 1, stdout, stderr };
 }
 
-async function validateToolchain(config, command) {
-  const nodeVersion = await command(config.independentNode, ["--version"]);
+function tunnelEnvironment(config, environment = process.env) {
+  return { ...environment, TUNNEL_CLIENT_STATE_DIR: config.tunnelStateRoot };
+}
+
+async function validateToolchain(config, command, environment = process.env) {
+  const commandOptions = { env: tunnelEnvironment(config, environment) };
+  const nodeVersion = await command(config.independentNode, ["--version"], commandOptions);
   if (nodeVersion.code !== 0 || !/^v(?:24|25|26)\./u.test(nodeVersion.stdout.trim())) {
     throw new Error("independent Node must report a supported 24–26 version");
   }
-  const tunnelVersion = await command(config.tunnelClient, ["--version"]);
+  const tunnelVersion = await command(config.tunnelClient, ["--version"], commandOptions);
   if (
     tunnelVersion.code !== 0 ||
     !tunnelVersion.stdout.trim().startsWith(`0.0.14+${TUNNEL_CLIENT_REVISION}`)
@@ -400,6 +593,7 @@ async function stageRelease(runtimePackage, destination) {
       errorOnExist: true,
       preserveTimestamps: true,
     });
+    await writeDependencyInventory(temporary);
     return temporary;
   } catch (error) {
     await rm(temporary, { recursive: true, force: true });
@@ -418,7 +612,10 @@ async function replaceRelease(runtimePackage, destination) {
       path.join(destination, "SERVER_BUILD_METADATA.json"),
       "installed server build metadata",
     );
-    const members = await validateReleaseFiles(destination, metadata, { verifyHashes: false });
+    const members = await validateReleaseFiles(destination, metadata, {
+      verifyHashes: false,
+      installed: true,
+    });
     if (
       metadata.owner !== runtimePackage.metadata.owner ||
       metadata.version !== runtimePackage.metadata.version ||
@@ -470,6 +667,7 @@ function validateStoredConfig(config, root, label) {
     "schemaVersion",
     "tunnelClient",
     "tunnelId",
+    "tunnelStateRoot",
     "version",
   ];
   const optionalKeys = ["controlPlaneBaseUrl", "controlPlaneUrlPath"];
@@ -480,8 +678,9 @@ function validateStoredConfig(config, root, label) {
   ].sort();
   const version = requireRuntimeVersion(config.version, `${label} version`);
   const bridgeRoot = requireAbsolutePath(config.bridgeRoot, `${label} bridgeRoot`);
-  requireAbsolutePath(config.independentNode, `${label} independent Node`);
-  requireAbsolutePath(config.tunnelClient, `${label} tunnel-client`);
+  const independentNode = requireAbsolutePath(config.independentNode, `${label} independent Node`);
+  const tunnelClient = requireAbsolutePath(config.tunnelClient, `${label} tunnel-client`);
+  const tunnelStateRoot = requireAbsolutePath(config.tunnelStateRoot, `${label} tunnel control root`);
   if (
     typeof config.runtimeApiKeyReference !== "string" ||
     !config.runtimeApiKeyReference.startsWith("file:")
@@ -508,13 +707,18 @@ function validateStoredConfig(config, root, label) {
     config.installRoot !== root ||
     config.alias !== OWNED_RUNTIME_ALIAS ||
     config.profile !== OWNED_RUNTIME_PROFILE ||
-    config.releaseDirectory !== releaseRelative(version) ||
-    bridgeRoot === root ||
-    bridgeRoot.startsWith(`${root}${path.sep}`) ||
-    root.startsWith(`${bridgeRoot}${path.sep}`)
+    config.releaseDirectory !== releaseRelative(version)
   ) {
     throw new Error(`${label} is not an owned route`);
   }
+  requireSeparatedPrivatePaths({
+    installRoot: root,
+    bridgeRoot,
+    tunnelStateRoot,
+    credentialReference: config.runtimeApiKeyReference,
+    independentNode,
+    tunnelClient,
+  });
   return config;
 }
 
@@ -536,6 +740,12 @@ async function loadOwnedState(installRoot) {
   }
   const config = await readOwnedJson(path.join(root, CONFIG_FILE), "private runtime config");
   validateStoredConfig(config, root, "private runtime config");
+  if (
+    await canonicalPrivateRoot(config.tunnelStateRoot, "configured tunnel control root") !==
+      config.tunnelStateRoot
+  ) {
+    throw new Error("configured tunnel control root is no longer canonical");
+  }
   return { root, config };
 }
 
@@ -543,6 +753,29 @@ async function requireDirectoryEntry(filename, label) {
   const info = await lstat(filename);
   if (!info.isDirectory() || info.isSymbolicLink()) {
     throw new Error(`${label} must be an owned non-symlink directory`);
+  }
+}
+
+async function validateTunnelProfileDirectory(privateRoot) {
+  const profileRoot = path.join(privateRoot, "tunnel-profiles");
+  let info;
+  try {
+    info = await lstat(profileRoot);
+  } catch (error) {
+    if (error?.code === "ENOENT") return;
+    throw error;
+  }
+  if (!info.isDirectory() || info.isSymbolicLink()) {
+    throw new Error("tunnel profile directory must be an owned non-symlink directory");
+  }
+  const expectedProfile = `${OWNED_RUNTIME_PROFILE}.yaml`;
+  const names = (await readdir(profileRoot)).sort();
+  requireExactOrOptionalNames(names, [], [expectedProfile], "tunnel profile directory");
+  if (names.includes(expectedProfile)) {
+    const profile = await lstat(path.join(profileRoot, expectedProfile));
+    if (!profile.isFile() || profile.isSymbolicLink()) {
+      throw new Error("owned tunnel profile must be a regular file");
+    }
   }
 }
 
@@ -597,7 +830,7 @@ async function validateOwnedTree(root, config) {
     );
   }
   if (privateNames.includes("tunnel-profiles")) {
-    await requireDirectoryEntry(path.join(privateRoot, "tunnel-profiles"), "tunnel profile directory");
+    await validateTunnelProfileDirectory(privateRoot);
   }
 
   const releasesRoot = path.join(root, "releases");
@@ -616,7 +849,7 @@ async function validateOwnedTree(root, config) {
     if (metadata.version !== version || metadata.owner !== OWNER) {
       throw new Error(`runtime release ${version} has mismatched ownership metadata`);
     }
-    await validateReleaseFiles(releaseRoot, metadata, { verifyHashes: false });
+    await validateReleaseFiles(releaseRoot, metadata, { verifyHashes: false, installed: true });
     await requireDirectoryEntry(path.join(releaseRoot, "node_modules"), `runtime release ${version} dependencies`);
   }
 }
@@ -664,7 +897,11 @@ function safeStatus(config, payload) {
 }
 
 async function invokeTunnel(config, args, command, action) {
-  const result = await command(config.tunnelClient, [...args, ...tunnelBaseArgs(config)]);
+  const result = await command(
+    config.tunnelClient,
+    [...args, ...tunnelBaseArgs(config)],
+    { env: tunnelEnvironment(config) },
+  );
   if (result.code !== 0) {
     throw new Error(`owned tunnel runtime ${action} failed (exit ${String(result.code)})`);
   }
@@ -690,16 +927,25 @@ async function readTunnelStatus(config, command) {
 export async function installRuntime(options, dependencies = {}) {
   requirePlainObject(options, "install options");
   const command = dependencies.runCommand ?? runCommand;
+  const environment = dependencies.environment ?? process.env;
+  requirePlainObject(environment, "lifecycle environment");
   const runtimePackage = await loadPackage(options.sourceRoot);
   const installRoot = await canonicalInstallRoot(options.installRoot);
-  const bridgeRoot = await requireExistingDirectory(options.bridgeRoot, "bridgeRoot");
-  if (
-    bridgeRoot === installRoot ||
-    bridgeRoot.startsWith(`${installRoot}${path.sep}`) ||
-    installRoot.startsWith(`${bridgeRoot}${path.sep}`)
-  ) {
-    throw new TypeError("installRoot and bridgeRoot must be separate directories");
-  }
+  const bridgeRoot = await requireExistingDirectory(options.bridgeRoot, "bridgeRoot", {
+    rejectAncestorSymlinks: true,
+  });
+  const independentNode = await requireExecutable(options.independentNode, "independentNode");
+  const tunnelClient = await requireExecutable(options.tunnelClient, "tunnelClient");
+  const runtimeApiKeyReference = await requireCredentialReference(options.runtimeApiKeyReference);
+  const tunnelStateRoot = await resolvePinnedTunnelStateRoot(environment);
+  requireSeparatedPrivatePaths({
+    installRoot,
+    bridgeRoot,
+    tunnelStateRoot,
+    credentialReference: runtimeApiKeyReference,
+    independentNode,
+    tunnelClient,
+  });
   const config = {
     schemaVersion: 1,
     owner: OWNER,
@@ -707,10 +953,11 @@ export async function installRuntime(options, dependencies = {}) {
     version: runtimePackage.metadata.version,
     releaseDirectory: releaseRelative(runtimePackage.metadata.version),
     bridgeRoot,
-    independentNode: await requireExecutable(options.independentNode, "independentNode"),
-    tunnelClient: await requireExecutable(options.tunnelClient, "tunnelClient"),
+    independentNode,
+    tunnelClient,
     tunnelId: requireTunnelId(options.tunnelId),
-    runtimeApiKeyReference: await requireCredentialReference(options.runtimeApiKeyReference),
+    tunnelStateRoot,
+    runtimeApiKeyReference,
     alias: OWNED_RUNTIME_ALIAS,
     profile: OWNED_RUNTIME_PROFILE,
     controlPlaneBaseUrl: optionalControlPlaneBaseUrl(options.controlPlaneBaseUrl),
@@ -719,7 +966,7 @@ export async function installRuntime(options, dependencies = {}) {
   for (const key of Object.keys(config)) {
     if (config[key] === undefined) delete config[key];
   }
-  await validateToolchain(config, command);
+  await validateToolchain(config, command, environment);
 
   let previous;
   let installRootExists = false;
@@ -783,7 +1030,9 @@ export async function startRuntime(options, dependencies = {}) {
   const command = dependencies.runCommand ?? runCommand;
   const { root, config } = await loadOwnedState(options.installRoot);
   await validateStoredToolchainPaths(config);
-  if (await requireExistingDirectory(config.bridgeRoot, "configured bridgeRoot") !== config.bridgeRoot) {
+  if (await requireExistingDirectory(config.bridgeRoot, "configured bridgeRoot", {
+    rejectAncestorSymlinks: true,
+  }) !== config.bridgeRoot) {
     throw new Error("configured bridgeRoot is no longer canonical");
   }
   if (await requireCredentialReference(config.runtimeApiKeyReference) !== config.runtimeApiKeyReference) {
@@ -792,6 +1041,7 @@ export async function startRuntime(options, dependencies = {}) {
   await validateToolchain(config, command);
   const profileDirectory = path.join(root, PRIVATE_DIRECTORY, "tunnel-profiles");
   await mkdir(profileDirectory, { recursive: true, mode: 0o700 });
+  await validateTunnelProfileDirectory(path.join(root, PRIVATE_DIRECTORY));
   await invokeTunnel(config, [
     "runtimes",
     "connect",
@@ -809,6 +1059,7 @@ export async function startRuntime(options, dependencies = {}) {
     config.runtimeApiKeyReference,
     "--json",
   ], command, "connect");
+  await validateTunnelProfileDirectory(path.join(root, PRIVATE_DIRECTORY));
   const status = await readTunnelStatus(config, command);
   if (!status.processRunning || !status.healthy || !status.ready) {
     throw new Error("owned tunnel runtime did not become process-running, healthy, and ready");

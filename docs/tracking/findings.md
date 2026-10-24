@@ -10,11 +10,13 @@
 - Model preparation can omit requested details even when native readback is
   exact. Check the requested content and mathematical meaning before sending;
   whole-conversation byte copying is not the product default.
-- The verified 0.4 Web baseline used existing Mac Safe Files. The 0.5 dedicated
-  private MCP/tunnel route is packaged but not yet live-accepted. Stable public
-  HTTPS/authenticated profile routing, end-user transport lifecycle, ChatGPT
-  Work access, a distribution license, and a public release channel are not
-  established.
+- The verified 0.4 Web baseline used existing Mac Safe Files. T1 observed a
+  separate private tunnel identity using its protected credential reference
+  while preserving that old route, but did not establish production polling,
+  managed-runtime readiness, or ChatGPT tool discovery. The 0.5 dedicated route
+  is packaged but not yet live-accepted. Stable public HTTPS/authenticated
+  profile routing, end-user transport lifecycle, ChatGPT Work access, a
+  distribution license, and a public release channel are not established.
 - The 0.4.0 Web check reported 2m 18s for a short local-PDF explanation and
   4m 21s for one highlight/comment save, with per-turn file-write approval
   prompts. The flow works, but this run does not establish acceptable latency;

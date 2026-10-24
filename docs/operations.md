@@ -28,6 +28,11 @@ config stores a credential file reference, never key contents. Installation,
 status, rollback, and removal belong to [install](install.md) and
 [uninstall](uninstall.md).
 
+The installed release records the exact dependency tree shape, and the private
+profile directory admits only the fixed managed profile YAML. Lifecycle removal
+fails before tunnel changes if either tree contains an unknown entry. The
+tunnel client's pinned global state root remains outside lifecycle ownership.
+
 Keep `<ZOTERO_PROFILE>/zotero-ai-research-companion/operations-v1.json` through
 ordinary reinstall. It contains private study text and historical identities,
 not a disposable cache. Preserve `<BRIDGE_ROOT>/sessions/` as well. New sessions

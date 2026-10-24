@@ -31,7 +31,9 @@ node "<OWNED_RUNTIME_ROOT>/bin/zotero-mcp-lifecycle.mjs" remove \
 ```
 
 Removal fails closed if the root marker/config was copied, is a symlink, points
-to another root, or the tree contains unknown files. It does not delete the
+to another root, or the tree contains an unknown entry. The check includes the
+exact installed dependency inventory and the one managed profile YAML. It does
+not recursively manage or delete the tunnel client's global control root, the
 remote tunnel, credential file, bridge root or sessions, Zotero profile/journal,
 native records, shared runtimes, or another plugin.
 
@@ -52,6 +54,36 @@ In ChatGPT, **Uninstall** removes the personal plugin from active use;
 Neither removes the dedicated tunnel/runtime nor native Zotero records.
 Configured account archives contain a private app binding and must not be
 redistributed.
+
+## Move a checkout-local bridge before deleting source
+
+Stable installations keep the bridge outside a source checkout. One existing
+pre-0.5 installation is an explicit exception at
+`<SOURCE_CHECKOUT>/.local/bridge`. Deleting that checkout without migration
+would destroy its private session history.
+
+Before moving or deleting any checkout that contains the active bridge:
+
+1. Stop the owned MCP runtime, disable the bridge in Zotero, and confirm the
+   settings show **Disabled** so no request can be accepted during the copy.
+2. Create an empty user-only bridge directory and a separate user-only backup,
+   both outside the checkout, owned runtime, Zotero profile, and tunnel-client
+   control root. Copy the complete bridge tree to both locations without
+   changing names, bytes, permissions, or timestamps.
+3. Compare the source, migrated tree, and backup with a local path/type/size and
+   SHA-256 inventory. Keep that comparison private because session names and
+   files can contain sensitive history.
+4. Select the migrated root in Zotero, enable it, and require **Ready**. Reinstall
+   the owned MCP route with that same canonical root, then start it and require
+   `processRunning`, `healthy`, and `ready`.
+5. Confirm the copied inventory again and perform only a read-only historical
+   lookup under the current profile using an original completed operation ID.
+   Do not publish a pending request, create a replacement ID, or replay a write.
+
+Only after those checks succeed may the source checkout be removed. Retain the
+separate backup until live acceptance is complete. If the copy or historical
+lookup is unresolved, leave the original checkout and bridge intact; never
+reconstruct missing history from a new model response.
 
 ## Reinstall
 

@@ -67,6 +67,10 @@ Choose a stable, empty `<OWNED_RUNTIME_ROOT>` outside the bridge and Zotero
 profile. The installer accepts symlinked Node and tunnel-client commands, resolves
 them to canonical executable files, and stores those canonical paths. The
 credential argument must remain a `file:` reference to a regular user-only file.
+Every component of the install, bridge, credential, and resolved tunnel-client
+control paths must be non-symlinked. Supply their canonical paths; on macOS this
+also means resolving aliases such as `/tmp` to `/private/tmp` with `realpath`.
+Executable command paths are the intentional symlink exception.
 
 ```sh
 node integration/zotero-mcp/lifecycle.mjs install \
@@ -88,6 +92,13 @@ when they match the existing private tunnel source. A successful status reports
 `processRunning`, `healthy`, and `ready` as true. The fixed local alias/profile is
 `zotero-study-save-mcp`; the managed client owns its ephemeral loopback health
 port. These commands do not create, change, or delete the remote tunnel.
+
+At install time the lifecycle resolves the reviewed client's global state root
+using its pinned 0.0.14 precedence, stores the canonical result, and passes that
+same root to every child command through `TUNNEL_CLIENT_STATE_DIR`. The install
+and bridge roots must stay outside it. The lifecycle manages only its fixed
+alias and private profile YAML; it never recursively deletes the shared global
+state root or its other runtimes.
 
 ## ChatGPT MCP app and private plugin binding
 

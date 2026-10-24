@@ -1,4 +1,40 @@
-# Zotero
+<a id="readme-top"></a>
+
+<div align="center">
+  <h1>Zotero</h1>
+  <p>Study together in ChatGPT. Keep what matters beside the paper.</p>
+  <p>
+    <a href="docs/install.md"><strong>Explore the installation guide »</strong></a>
+  </p>
+  <p>
+    <a href="#usage">Usage</a> ·
+    <a href="https://github.com/contiloop/ZoteroWithGPT/issues/new">Report a bug</a> ·
+    <a href="https://github.com/contiloop/ZoteroWithGPT/issues/new">Request a feature</a>
+  </p>
+</div>
+
+[![Stars][stars-shield]][stars-url]
+[![Issues][issues-shield]][issues-url]
+
+<details>
+  <summary>Table of contents</summary>
+  <ol>
+    <li><a href="#about-the-project">About the project</a></li>
+    <li><a href="#getting-started">Getting started</a>
+      <ul>
+        <li><a href="#requirements">Requirements</a></li>
+        <li><a href="#installation-and-setup">Installation and setup</a></li>
+      </ul>
+    </li>
+    <li><a href="#usage">Usage</a></li>
+    <li><a href="#how-it-works">How it works</a></li>
+    <li><a href="#development-and-tests">Development and tests</a></li>
+    <li><a href="#licensing">Licensing</a></li>
+    <li><a href="#acknowledgments">Acknowledgments</a></li>
+  </ol>
+</details>
+
+## About the project
 
 Study a paper with ChatGPT, then save the parts you want to remember as
 highlights and comments beside the relevant passage in your local Zotero PDF.
@@ -11,7 +47,7 @@ This self-hosted project has been validated on the maintainer's macOS and
 ChatGPT setup. Account setup is manual; see [validation status](docs/tracking/status.md)
 for tested behavior and remaining limitations.
 
-## What you can do
+### Features
 
 - Read and discuss a PDF you have already saved in Zotero.
 - Save requested explanations, questions, proofs, and references beside a passage.
@@ -19,7 +55,9 @@ for tested behavior and remaining limitations.
 - Keep long explanations attached to their passage instead of moving them to
   an unrelated note. Separate notes require an explicit request.
 
-## Requirements
+## Getting started
+
+### Requirements
 
 | Component | Required environment or access |
 | --- | --- |
@@ -34,10 +72,9 @@ for tested behavior and remaining limitations.
 Confirm account eligibility before installing. ChatGPT Work is not a validated
 host for this setup.
 
-## Installation and setup
+### Installation and setup
 
-### 1. Build the packages
-
+#### 1. Build the packages
 
 ```sh
 git clone https://github.com/contiloop/ZoteroWithGPT.git
@@ -62,7 +99,7 @@ The historical `zotero-study-save` package identifier is retained; its display
 name is **Zotero**. Account plugin releases can have a different version from
 the server/extension packages.
 
-### 2. Connect Zotero and ChatGPT
+#### 2. Connect Zotero and ChatGPT
 
 Follow [Install on macOS](docs/install.md) to:
 
@@ -71,7 +108,7 @@ Follow [Install on macOS](docs/install.md) to:
 3. Register your MCP app as **Zotero Local** in ChatGPT.
 4. Configure and install the **Zotero** plugin with that app binding.
 
- The current private configuration
+The current private configuration
 helper expects an existing owned plugin's exported manifests; first-time
 account onboarding is not yet automated. The portable ZIP contains no working
 account binding or credentials. Never distribute a configured private ZIP,
@@ -93,6 +130,21 @@ credential file, bridge history, or operation journal.
 The established paper can be reused within the accessible conversation. If the
 paper or passage is ambiguous, ChatGPT asks for the missing information.
 
+### Example conversation
+
+A typical flow for a paper already saved in Zotero:
+
+| Step | Your request | What happens |
+| --- | --- | --- |
+| Study | “Read the abstract of https://arxiv.org/abs/1607.06450 with me. What is the central idea?” | ChatGPT reads the local PDF and explains the idea. |
+| Discuss | “Why does it compute statistics within a single training example?” | Continue studying in the same conversation. |
+| Save | “Highlight that key definition and attach your explanation verbatim.” | ChatGPT locates the passage and requests a native highlight with the explanation attached. |
+
+Once storage is confirmed, open the returned Zotero link to review the
+highlight and its comment. A definition uses yellow by default; you can request
+another color. If the target or save outcome is unresolved, the response reports
+that instead of claiming success.
+
 ### Highlight colors
 
 These are study conventions, not meanings prescribed by Zotero. Explicit user
@@ -111,6 +163,8 @@ are not automatically recolored.
 | Pink | `#E56EEE` | Striking claims and insights |
 | Orange | `#F19837` | Key experiments and supporting evidence |
 | Gray | `#AAAAAA` | Supporting explanations and references |
+
+<p align="right"><a href="#readme-top">Back to top</a></p>
 
 ## How it works
 
@@ -160,3 +214,16 @@ history. Local artifacts and private validation directories are ignored by Git.
 A project-wide license has not yet been selected. Public repository visibility
 alone does not grant an open-source license. Third-party dependency notices are
 provided in `THIRD_PARTY_NOTICES/` and the generated packages.
+
+## Acknowledgments
+
+README layout adapted from
+[Best-README-Template](https://github.com/othneildrew/Best-README-Template).
+Badges are provided by [Shields.io](https://shields.io/).
+
+<p align="right"><a href="#readme-top">Back to top</a></p>
+
+[stars-shield]: https://img.shields.io/github/stars/contiloop/ZoteroWithGPT?style=for-the-badge
+[stars-url]: https://github.com/contiloop/ZoteroWithGPT/stargazers
+[issues-shield]: https://img.shields.io/github/issues/contiloop/ZoteroWithGPT?style=for-the-badge
+[issues-url]: https://github.com/contiloop/ZoteroWithGPT/issues

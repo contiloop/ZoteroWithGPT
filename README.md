@@ -13,10 +13,6 @@
   </p>
 </div>
 
-[![Stars][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
-
 <details>
   <summary>Table of contents</summary>
   <ol>
@@ -231,11 +227,5 @@ Paper excerpts shown in screenshots are excluded from the project license.
 
 README layout adapted from
 [Best-README-Template](https://github.com/othneildrew/Best-README-Template).
-Badges are provided by [Shields.io](https://shields.io/).
 
 <p align="right"><a href="#readme-top">Back to top</a></p>
-
-[stars-shield]: https://img.shields.io/github/stars/contiloop/ZoteroWithGPT?style=for-the-badge
-[stars-url]: https://github.com/contiloop/ZoteroWithGPT/stargazers
-[issues-shield]: https://img.shields.io/github/issues/contiloop/ZoteroWithGPT?style=for-the-badge
-[issues-url]: https://github.com/contiloop/ZoteroWithGPT/issues

@@ -15,7 +15,6 @@ const read = name => readFile(path.join(root, name), "utf8");
 const json = async name => JSON.parse(await read(name));
 const [
   manifest,
-  binding,
   metadata,
   skill,
   workflow,
@@ -24,7 +23,6 @@ const [
   scenarios,
 ] = await Promise.all([
   json("plugin.json"),
-  json(".app.json"),
   readFile(new URL("../../../package.json", import.meta.url), "utf8").then(JSON.parse),
   read("skills/zotero-study-save/SKILL.md"),
   read("skills/zotero-study-save/resources/workflow.md"),
@@ -42,8 +40,7 @@ assert.deepEqual(
 );
 assert.deepEqual(Object.keys(manifest.extensions), ["com.openai"]);
 const extension = manifest.extensions["com.openai"];
-assert.deepEqual(Object.keys(extension).sort(), ["apps", "interface"]);
-assert.equal(extension.apps, "./.app.json");
+assert.deepEqual(Object.keys(extension), ["interface"]);
 assert.deepEqual(Object.keys(extension.interface).sort(), [
   "capabilities",
   "category",
@@ -67,20 +64,6 @@ for (const value of [
 assert.equal(extension.interface.displayName, "Zotero Study Save");
 assert.ok(extension.interface.shortDescription.length <= 30);
 assert.deepEqual(extension.interface.capabilities, []);
-
-// Package integration owns the final dedicated app binding. Validate only the
-// portable binding shape here so this workflow change does not invent its ID.
-assert.deepEqual(Object.keys(binding), ["apps"]);
-assert.ok(
-  binding.apps !== null &&
-  typeof binding.apps === "object" &&
-  !Array.isArray(binding.apps),
-);
-for (const [name, app] of Object.entries(binding.apps)) {
-  assert.match(name, /^[a-z0-9][a-z0-9-]*$/u);
-  assert.deepEqual(Object.keys(app), ["id"]);
-  assert.match(app.id, /^(?:asdk_app_|connector_|templated_apps_)[A-Za-z0-9][A-Za-z0-9_-]*$/u);
-}
 
 assert.match(skill, /^---\nname: zotero-study-save\ndescription: [^\n]+\n---\n/u);
 assert.match(agent, /allow_implicit_invocation: true/u);
@@ -210,7 +193,7 @@ assert.equal(
 const resourceFiles = await readdir(
   path.join(root, "skills/zotero-study-save/resources"),
 );
-assert.deepEqual(resourceFiles.sort(), ["personal-config.json", "workflow.md"]);
+assert.deepEqual(resourceFiles, ["workflow.md"]);
 
 async function files(directory, prefix = "") {
   const result = [];
@@ -240,11 +223,16 @@ for (const file of sourceFiles) {
     /(?:-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\bsk-(?:proj-)?[A-Za-z0-9_-]{16,})/u,
     file,
   );
+  assert.doesNotMatch(
+    source,
+    /\b(?:asdk_app_|connector_|templated_apps_)[A-Za-z0-9][A-Za-z0-9_-]{7,}\b/u,
+    `${file} must not embed an account app id`,
+  );
 }
 
 process.stdout.write(
   "Validated dedicated plugin workflow (" + sourceFiles.length +
   " source files, " + ids.size +
-  " static scenario specifications; app binding identity deferred; " +
+  " static scenario specifications; portable package unconfigured; " +
   "no model execution)\n",
 );

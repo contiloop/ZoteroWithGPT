@@ -114,7 +114,7 @@ export function succeeded(request, data, verification = undefined) {
 export function connectionStatusData(fixture, operations = ACTIVE_OPERATIONS) {
   return {
     protocolVersion: 1,
-    pluginVersion: "0.4.0-controlled-fixture",
+    pluginVersion: "0.5.0-controlled-fixture",
     zoteroVersion: "10.0.6-controlled-fixture",
     profile: { id: fixture.profileId, name: "Controlled fixture" },
     enabled: true,

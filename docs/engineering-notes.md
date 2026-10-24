@@ -49,6 +49,14 @@ before removal completed once appeared enabled but vanished after restart.
 ChatGPT **Uninstall** preserves the owned backend; **Delete plugin** destroys it.
 Neither a plugin update nor a skill toggle proves an uninstall/reinstall cycle.
 
+The dedicated MCP runtime uses `tunnel-client runtimes connect`, not a detached
+shell process. Its existing-tunnel path performs read-only tunnel lookup and the
+managed health listener binds an ephemeral loopback port. Status is acceptable
+only when `process_running`, `healthy`, and `ready` are all true. Runtime removal
+owns one fixed alias/profile and its fenced local root; the bridge sessions,
+native journal, credential file, and remote tunnel are separate persistence
+domains.
+
 ## Stalled reader acquisition
 
 A read-only `list_annotations` once held the scanner while acquiring a reader.

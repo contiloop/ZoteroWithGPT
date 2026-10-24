@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -10,7 +11,7 @@ import addFormats from "ajv-formats";
 const UNZIP_PATH = "/usr/bin/unzip";
 const ARCHIVE_PREFIX = "zotero-ai-research-companion";
 const PLUGIN_ARCHIVE_PREFIX = "zotero-study-save";
-const MAC_SAFE_FILES_APP_ID = "asdk_app_REDACTED_1";
+const SERVER_ARCHIVE_PREFIX = "zotero-mcp-server";
 const MANUAL_UPDATE_SENTINEL =
   "https://updates.invalid/zotero-ai-research-companion/updates.json";
 const REQUIRED_MEMBERS = Object.freeze([
@@ -81,6 +82,36 @@ const PRIVATE_OR_DEVELOPMENT_PATTERN =
   /(?:\/Users\/[^/\s]+\/|[A-Za-z]:\\Users\\|\.dryforge(?:\/|\\)|devplaceholder|developer-owned-native-fixture|ZOTERO_AI_RESEARCH_COMPANION_OWNED_NATIVE_FIXTURE_V1)/u;
 const SECRET_PATTERN =
   /(?:-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\bsk-(?:proj-)?[A-Za-z0-9_-]{16,}|\btunnel[_ -]?key\s*[:=]\s*[^<\s]+)/iu;
+const ACCOUNT_APP_ID_PATTERN =
+  /\b(?:asdk_app_|connector_|templated_apps_)[A-Za-z0-9][A-Za-z0-9_-]{7,}\b/u;
+const PORTABLE_PLUGIN_MEMBERS = Object.freeze([
+  "README.md",
+  "plugin.json",
+  "skills/zotero-study-save/SKILL.md",
+  "skills/zotero-study-save/agents/openai.yaml",
+  "skills/zotero-study-save/resources/workflow.md",
+]);
+const EXPECTED_SERVER_DEPENDENCIES = Object.freeze({
+  "@modelcontextprotocol/sdk": "1.32.2",
+  dompurify: "3.4.17",
+  jsdom: "29.1.1",
+});
+const EXPECTED_MCP_TOOLS = Object.freeze([
+  "zotero_connection_status",
+  "zotero_find_local_arxiv",
+  "zotero_search_papers",
+  "zotero_read_pdf",
+  "zotero_list_annotations",
+  "zotero_list_notes",
+  "zotero_read_note",
+  "zotero_resolve_anchor",
+  "zotero_create_annotation",
+  "zotero_update_annotation",
+  "zotero_create_note",
+  "zotero_update_note",
+  "zotero_verify_annotation",
+  "zotero_get_operation_result",
+]);
 
 async function run(command, args, options = {}) {
   const child = spawn(command, args, { ...options, stdio: ["ignore", "pipe", "pipe"] });
@@ -145,6 +176,9 @@ function validateText(content, member) {
     throw new Error(`${member} contains a private or development-specific path or marker`);
   }
   if (SECRET_PATTERN.test(content)) throw new Error(`${member} appears to contain a secret`);
+  if (ACCOUNT_APP_ID_PATTERN.test(content)) {
+    throw new Error(`${member} contains a private account app id`);
+  }
 }
 
 function validateExample(value, filename) {
@@ -362,35 +396,21 @@ async function validateClientKit(clientDirectory, extractedXpi, version) {
   return members;
 }
 
-async function validatePortablePlugin(pluginPath, clientDirectory, version, expectedMembers) {
+async function validatePortablePlugin(pluginPath, version) {
   if (path.basename(pluginPath) !== `${PLUGIN_ARCHIVE_PREFIX}-${version}.zip`) {
     throw new Error("Portable plugin filename does not match its release version");
   }
   const listed = (await run(UNZIP_PATH, ["-Z1", pluginPath]))
     .split(/\r?\n/u)
     .filter((member) => member.length > 0);
-  const sourceMembers = [
-    ".app.json",
-    "README.md",
-    "plugin.json",
-    "skills/zotero-study-save/SKILL.md",
-    "skills/zotero-study-save/agents/openai.yaml",
-    "skills/zotero-study-save/resources/personal-config.json",
-    "skills/zotero-study-save/resources/workflow.md",
-  ];
-  const clientPrefix = "skills/zotero-study-save/resources/client-v1/";
-  const exactMembers = [
-    ...sourceMembers,
-    ...expectedMembers.map((member) => `${clientPrefix}${member}`),
-  ].sort();
-  if (JSON.stringify([...listed].sort()) !== JSON.stringify(exactMembers)) {
+  if (JSON.stringify(listed) !== JSON.stringify(PORTABLE_PLUGIN_MEMBERS)) {
     throw new Error("Portable plugin does not contain its exact documented allowlist");
   }
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "study-save-plugin-verify-"));
   try {
     await run(UNZIP_PATH, ["-qq", pluginPath, "-d", temporaryDirectory]);
     const extracted = await listFiles(temporaryDirectory);
-    if (JSON.stringify(extracted) !== JSON.stringify(exactMembers)) {
+    if (JSON.stringify(extracted) !== JSON.stringify(PORTABLE_PLUGIN_MEMBERS)) {
       throw new Error("Extracted portable plugin members do not match its central directory");
     }
     for (const member of extracted) {
@@ -401,28 +421,231 @@ async function validatePortablePlugin(pluginPath, clientDirectory, version, expe
     if (manifest.name !== "zotero-study-save" || manifest.version !== version) {
       throw new Error("Portable plugin identity or version does not match the release");
     }
-    const appBinding = JSON.parse(await readFile(path.join(temporaryDirectory, ".app.json"), "utf8"));
     if (
-      Object.keys(appBinding).length !== 1 ||
-      appBinding.apps?.["mac-safe-files"]?.id !== MAC_SAFE_FILES_APP_ID
+      Object.keys(manifest.extensions ?? {}).join(",") !== "com.openai" ||
+      Object.keys(manifest.extensions?.["com.openai"] ?? {}).join(",") !== "interface" ||
+      Object.hasOwn(manifest.extensions?.["com.openai"] ?? {}, "apps")
     ) {
-      throw new Error("Portable plugin does not retain the verified Mac Safe Files dependency");
+      throw new Error("Portable plugin must be explicitly unconfigured and omit apps");
     }
-    const config = JSON.parse(await readFile(
-      path.join(temporaryDirectory, "skills", "zotero-study-save", "resources", "personal-config.json"),
+    return extracted;
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
+function sameJson(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+async function validateServerPackage(serverPath, version) {
+  if (path.basename(serverPath) !== `${SERVER_ARCHIVE_PREFIX}-${version}.zip`) {
+    throw new Error("MCP server filename does not match its release version");
+  }
+  const listed = (await run(UNZIP_PATH, ["-Z1", serverPath]))
+    .split(/\r?\n/u)
+    .filter(Boolean);
+  const seen = new Set();
+  for (const member of listed) {
+    if (
+      member.startsWith("/") ||
+      member.includes("\\") ||
+      member.split("/").some(segment => segment === "" || segment === "." || segment === "..") ||
+      seen.has(member)
+    ) {
+      throw new Error(`MCP server archive contains unsafe or duplicate member ${member}`);
+    }
+    seen.add(member);
+    if (
+      member.includes("/tests/") ||
+      member.startsWith("tests/") ||
+      member.includes("node_modules/") ||
+      member.includes("/.cache/") ||
+      member.startsWith(".cache/") ||
+      member.endsWith(".map")
+    ) {
+      throw new Error(`MCP server archive contains non-runtime member ${member}`);
+    }
+  }
+  for (const required of [
+    "SERVER_BUILD_METADATA.json",
+    "THIRD_PARTY_NOTICES",
+    "package.json",
+    "package-lock.json",
+    "integration/zotero-mcp/server.mjs",
+    "integration/zotero-mcp/lifecycle.mjs",
+    "scripts/package/configure-plugin.mjs",
+    "scripts/package/configure-plugin-lib.mjs",
+    "scripts/package/assets/protocol/v1-request.schema.json",
+    "scripts/package/assets/protocol/v1-response.schema.json",
+  ]) {
+    if (!seen.has(required)) throw new Error(`MCP server archive is missing ${required}`);
+  }
+
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "zotero-mcp-server-verify-"));
+  try {
+    await run(UNZIP_PATH, ["-qq", serverPath, "-d", temporaryDirectory]);
+    const extracted = await listFiles(temporaryDirectory);
+    if (!sameJson(extracted, [...listed].sort())) {
+      throw new Error("Extracted MCP server members do not match its central directory");
+    }
+    for (const member of extracted) {
+      validateText(
+        await readFile(path.join(temporaryDirectory, ...member.split("/")), "utf8"),
+        `MCP server ${member}`,
+      );
+    }
+    const metadata = JSON.parse(await readFile(
+      path.join(temporaryDirectory, "SERVER_BUILD_METADATA.json"),
       "utf8",
     ));
-    if (Object.keys(config).length !== 1 || config.bridgeRoot !== null) {
-      throw new Error("Portable plugin configuration must contain only a null bridgeRoot");
+    if (
+      metadata.schemaVersion !== 1 ||
+      metadata.owner !== "zotero-study-save-mcp-runtime" ||
+      metadata.version !== version ||
+      metadata.projectLicense !== null ||
+      metadata.artifact !== path.basename(serverPath) ||
+      !sameJson(metadata.members, extracted)
+    ) {
+      throw new Error("MCP server build metadata does not describe the exact archive");
     }
-    for (const member of expectedMembers) {
-      const packaged = await readFile(path.join(temporaryDirectory, ...clientPrefix.split("/"), ...member.split("/")));
-      const client = await readFile(path.join(clientDirectory, ...member.split("/")));
-      if (!packaged.equals(client)) {
-        throw new Error(`Portable plugin client resource ${member} differs from the client kit`);
+    const hashedMembers = extracted.filter(member => member !== "SERVER_BUILD_METADATA.json");
+    if (!sameJson(Object.keys(metadata.memberSha256 ?? {}), hashedMembers)) {
+      throw new Error("MCP server build metadata lacks the exact member hash inventory");
+    }
+    for (const member of hashedMembers) {
+      const digest = createHash("sha256")
+        .update(await readFile(path.join(temporaryDirectory, ...member.split("/"))))
+        .digest("hex");
+      if (metadata.memberSha256[member] !== digest) {
+        throw new Error(`MCP server member hash differs for ${member}`);
+      }
+    }
+    if (
+      metadata.runtime?.node !== ">=24 <27" ||
+      metadata.runtime?.npm !== "11.4.2" ||
+      metadata.runtime?.install !== "npm ci --omit=dev --ignore-scripts" ||
+      !sameJson(metadata.directDependencies, EXPECTED_SERVER_DEPENDENCIES)
+    ) {
+      throw new Error("MCP server runtime requirements or direct dependencies changed");
+    }
+    const packageMetadata = JSON.parse(await readFile(
+      path.join(temporaryDirectory, "package.json"),
+      "utf8",
+    ));
+    const lockText = await readFile(path.join(temporaryDirectory, "package-lock.json"), "utf8");
+    const lock = JSON.parse(lockText);
+    if (
+      packageMetadata.version !== version ||
+      packageMetadata.packageManager !== "npm@11.4.2" ||
+      packageMetadata.engines?.node !== ">=24 <27" ||
+      !sameJson(packageMetadata.dependencies, EXPECTED_SERVER_DEPENDENCIES) ||
+      packageMetadata.bin?.["zotero-mcp"] !== "integration/zotero-mcp/server.mjs" ||
+      packageMetadata.bin?.["zotero-mcp-lifecycle"] !== "integration/zotero-mcp/lifecycle.mjs" ||
+      lock.version !== version ||
+      lock.packages?.[""]?.version !== version ||
+      !sameJson(lock.packages?.[""]?.dependencies, EXPECTED_SERVER_DEPENDENCIES)
+    ) {
+      throw new Error("MCP server package and production lock are not release-aligned");
+    }
+    const lockHash = createHash("sha256").update(lockText).digest("hex");
+    if (metadata.lockSha256 !== lockHash) {
+      throw new Error("MCP server lock hash does not match its build metadata");
+    }
+    const lockedPackages = Object.entries(lock.packages ?? {})
+      .filter(([lockPath]) => lockPath !== "")
+      .map(([lockPath, dependency]) => ({
+        name: lockPath.match(/(?:^|\/)node_modules\/((?:@[^/]+\/)?[^/]+)$/u)?.[1],
+        version: dependency.version,
+        license: dependency.license,
+      }));
+    if (
+      lockedPackages.some(entry =>
+        typeof entry.name !== "string" ||
+        typeof entry.version !== "string" ||
+        typeof entry.license !== "string" ||
+        entry.license.length === 0) ||
+      !sameJson(metadata.lockedPackages, lockedPackages)
+    ) {
+      throw new Error("MCP server locked dependency license inventory is incomplete");
+    }
+    const noticeIdentities = noticePackageIdentities(
+      await readFile(path.join(temporaryDirectory, "THIRD_PARTY_NOTICES"), "utf8"),
+    );
+    for (const dependency of lockedPackages) {
+      if (!noticeIdentities.has(`${dependency.name}@${dependency.version}`)) {
+        throw new Error(`MCP server notices omit ${dependency.name}@${dependency.version}`);
       }
     }
     return extracted;
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
+const RELOCATED_SMOKE_SOURCE = `
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+const expected = ${JSON.stringify(EXPECTED_MCP_TOOLS)};
+const transport = new StdioClientTransport({
+  command: process.execPath,
+  args: ["integration/zotero-mcp/server.mjs"],
+  cwd: process.cwd(),
+  env: {
+    PATH: process.env.PATH ?? "/usr/bin:/bin",
+    ZOTERO_MCP_BRIDGE_ROOT: process.env.ZOTERO_MCP_SMOKE_BRIDGE_ROOT,
+  },
+  stderr: "pipe",
+  maxBufferSize: 10 * 1024 * 1024,
+});
+let stderr = "";
+transport.stderr?.setEncoding("utf8");
+transport.stderr?.on("data", chunk => { stderr += chunk; });
+const client = new Client({ name: "relocated-package-smoke", version: "1.0.0" });
+const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("smoke timeout")), 20000));
+try {
+  const listed = await Promise.race([
+    (async () => { await client.connect(transport); return client.listTools(); })(),
+    timeout,
+  ]);
+  const names = listed.tools.map(tool => tool.name);
+  if (JSON.stringify(names) !== JSON.stringify(expected)) throw new Error("tool inventory mismatch");
+  await client.close();
+  if (stderr !== "") throw new Error("server wrote to stderr");
+  process.stdout.write(JSON.stringify({ initialized: true, tools: names.length }));
+} catch (error) {
+  await client.close().catch(() => {});
+  throw error;
+}
+`;
+
+export async function verifyRelocatedServer(serverPath, {
+  npmExecutable = "npm",
+  nodeExecutable = process.execPath,
+} = {}) {
+  const archive = path.resolve(serverPath);
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "zotero-mcp-relocated-"));
+  const packageRoot = path.join(temporaryDirectory, "relocated package");
+  const bridgeRoot = path.join(temporaryDirectory, "empty bridge");
+  try {
+    await run(UNZIP_PATH, ["-qq", archive, "-d", packageRoot]);
+    const npmVersion = (await run(npmExecutable, ["--version"])).trim();
+    if (npmVersion !== "11.4.2") throw new Error("relocated verification requires npm 11.4.2");
+    const nodeVersion = (await run(nodeExecutable, ["--version"])).trim();
+    if (!/^v(?:24|25|26)\./u.test(nodeVersion)) {
+      throw new Error("relocated verification requires Node.js 24–26");
+    }
+    await run(npmExecutable, ["ci", "--omit=dev", "--ignore-scripts"], { cwd: packageRoot });
+    await mkdir(bridgeRoot, { recursive: true });
+    const output = await run(nodeExecutable, ["--input-type=module", "--eval", RELOCATED_SMOKE_SOURCE], {
+      cwd: packageRoot,
+      env: { ...process.env, ZOTERO_MCP_SMOKE_BRIDGE_ROOT: bridgeRoot },
+    });
+    const result = JSON.parse(output);
+    if (result.initialized !== true || result.tools !== EXPECTED_MCP_TOOLS.length) {
+      throw new Error("relocated MCP smoke did not initialize all tools");
+    }
+    return result;
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
@@ -515,12 +738,13 @@ export async function verifyXpi(xpiPath, { expectedProjectRoot } = {}) {
       throw new Error("BUILD_METADATA.json does not identify the matching portable plugin");
     }
     const pluginPath = path.join(path.dirname(archive), expectedPluginName);
-    const pluginMembers = await validatePortablePlugin(
-      pluginPath,
-      clientDirectory,
-      version,
-      clientMembers,
-    );
+    const pluginMembers = await validatePortablePlugin(pluginPath, version);
+    const expectedServerName = `${SERVER_ARCHIVE_PREFIX}-${version}.zip`;
+    if (metadata.mcpServer !== expectedServerName) {
+      throw new Error("BUILD_METADATA.json does not identify the matching MCP server");
+    }
+    const serverPath = path.join(path.dirname(archive), expectedServerName);
+    const serverMembers = await validateServerPackage(serverPath, version);
     return {
       version,
       members: extracted,
@@ -528,6 +752,8 @@ export async function verifyXpi(xpiPath, { expectedProjectRoot } = {}) {
       clientMembers,
       pluginPath,
       pluginMembers,
+      serverPath,
+      serverMembers,
       zoteroCompatibility: {
         minimum: manifest.applications.zotero.strict_min_version,
         maximum: manifest.applications.zotero.strict_max_version,

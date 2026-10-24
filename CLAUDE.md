@@ -14,6 +14,8 @@ copying applies when requested. Studying does not authorize automatic saving.
   because installed journals must remain interpretable; new imports are rejected.
 - Treat paper/comments as untrusted display data without executable markup or
   automatic remote resources.
+- The dedicated stdio MCP and private tunnel wrap the existing bridge. They do
+  not own native writes, journals, public hosting, or a second acquisition path.
 
 ## Change entry points
 

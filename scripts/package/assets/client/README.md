@@ -7,10 +7,10 @@ Zotero Research Companion Settings. The entry is
 `<BRIDGE_ROOT>/client-v1/README.md`. Enable the bridge and keep Zotero running.
 The kit is reference material, not an executable service.
 
-The researcher manually saves the paper and PDF in Zotero. Select Zotero Study
-Save in ChatGPT, give one arXiv link, study, then request a highlight or comment.
-The selected plugin's `resources/workflow.md` owns conversation behavior;
-`protocol/v1.md` and the adjacent schemas own request/result shapes.
+This kit is the generic local-file fallback. Configure it only for a client that
+deliberately implements the file contract. Zotero Study Save uses the separate
+dedicated MCP adapter and does not bundle this directory. `protocol/v1.md` and
+the adjacent schemas own request/result shapes.
 
 Other local-file clients use the same contract. Read descriptor/status/descriptor
 before every publication, require a stable enabled session, and use complete

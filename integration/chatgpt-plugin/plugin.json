@@ -1,14 +1,13 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "zotero-study-save",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Save approved ChatGPT study questions, explanations, proofs, and references as passage-linked native Zotero annotations.",
   "author": {
     "name": "Zotero AI Research Companion Project"
   },
   "extensions": {
     "com.openai": {
-      "apps": "./.app.json",
       "interface": {
         "displayName": "Zotero Study Save",
         "shortDescription": "Save studies to Zotero",

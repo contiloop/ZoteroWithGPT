@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Zotero AI Research Companion",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Record passage-linked study comments through an authorized local file connection.",
   "applications": {
     "zotero": {

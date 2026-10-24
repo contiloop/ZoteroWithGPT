@@ -11,7 +11,7 @@ import {
 } from "../../dist/protocol/index.js";
 
 const PROJECT_ROOT = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const RELEASE_VERSION = "0.4.0";
+const RELEASE_VERSION = "0.5.0";
 
 async function readText(relativePath) {
   return readFile(path.join(PROJECT_ROOT, ...relativePath.split("/")), "utf8");
@@ -21,12 +21,14 @@ async function readJson(relativePath) {
   return JSON.parse(await readText(relativePath));
 }
 
-test("0.4.0 release metadata and selected local-study guidance stay aligned", async () => {
+test("0.5.0 release metadata and selected local-study guidance stay aligned", async () => {
   const [
     packageMetadata,
     packageLock,
     addonManifest,
     pluginManifest,
+    mcpPackage,
+    mcpPackageLock,
     connectionExample,
     pluginInstructions,
     agents,
@@ -36,6 +38,8 @@ test("0.4.0 release metadata and selected local-study guidance stay aligned", as
     readJson("package-lock.json"),
     readJson("addon/manifest.json"),
     readJson("integration/chatgpt-plugin/plugin.json"),
+    readJson("integration/zotero-mcp/package.json"),
+    readJson("integration/zotero-mcp/package-lock.json"),
     readJson("scripts/package/assets/protocol/examples/connection-status.response.json"),
     readText("integration/chatgpt-plugin/AGENTS.md"),
     readText("AGENTS.md"),
@@ -49,6 +53,9 @@ test("0.4.0 release metadata and selected local-study guidance stay aligned", as
   assert.equal(packageLock.packages[""].version, RELEASE_VERSION);
   assert.equal(addonManifest.version, RELEASE_VERSION);
   assert.equal(pluginManifest.version, RELEASE_VERSION);
+  assert.equal(mcpPackage.version, RELEASE_VERSION);
+  assert.equal(mcpPackageLock.version, RELEASE_VERSION);
+  assert.equal(mcpPackageLock.packages[""].version, RELEASE_VERSION);
   assert.equal(connectionExample.data.pluginVersion, RELEASE_VERSION);
   assert.deepEqual(connectionExample.data.capabilities.operations, OPERATION_NAMES.filter(name => !ARXIV_OPERATION_NAMES.includes(name)));
   assert.equal(OPERATION_NAMES.length, 15);

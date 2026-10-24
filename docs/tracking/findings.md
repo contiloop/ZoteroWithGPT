@@ -10,7 +10,9 @@
 - Model preparation can omit requested details even when native readback is
   exact. Check the requested content and mathematical meaning before sending;
   whole-conversation byte copying is not the product default.
-- Existing Mac Safe Files is required. Public transport installation, ChatGPT
+- The verified 0.4 Web baseline used existing Mac Safe Files. The 0.5 dedicated
+  private MCP/tunnel route is packaged but not yet live-accepted. Stable public
+  HTTPS/authenticated profile routing, end-user transport lifecycle, ChatGPT
   Work access, a distribution license, and a public release channel are not
   established.
 - The 0.4.0 Web check reported 2m 18s for a short local-PDF explanation and

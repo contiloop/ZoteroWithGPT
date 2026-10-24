@@ -1,12 +1,21 @@
 # Architecture
 
-ChatGPT Web supplies analysis and the user's save intent. Mac Safe Files carries
-JSON through a dedicated local directory. The Zotero extension reads the chosen
-PDF and commits native annotations; it exposes no network listener.
+ChatGPT Web supplies analysis and the user's save intent. A dedicated private
+Secure MCP tunnel supervises one stdio MCP process. That process translates 14
+fixed tools to protocol-v1 files in one configured bridge root. The Zotero
+extension remains the only native executor: it reads the chosen PDF and commits
+native annotations without exposing a network listener.
 
 The core depends on ports; plugin composition binds Zotero, Gecko filesystem,
 geometry, persistence, and rendering adapters. Transport replacement must not
 change save authority, target identity, or retry semantics.
+
+The MCP bridge port is replaceable and owns no native writer, operation journal,
+generic filesystem tool, or paper acquisition path. It publishes create-only
+requests with immutable operation IDs and returns the exact native result. MCP
+text is a concise companion to structured content; it never replaces full-body
+native readback. The generic local-file client kit remains a separate fallback
+artifact and is not bundled into the selected ChatGPT plugin.
 
 ## Pipeline
 
@@ -22,3 +31,18 @@ schemas and read-only reconciliation remain solely to interpret pre-cut history;
 new acquisition operations are unsupported. PDF bytes and SQLite are never
 modified by annotation saves. Native comments are canonical; sanitized formatted
 previews are disposable and preserve editable Markdown/LaTeX source.
+
+## Runtime ownership
+
+The server package installs under one owned stable root with versioned releases,
+a stable lifecycle launcher, and private tunnel metadata. The fixed alias and
+profile are `zotero-study-save-mcp`. `tunnel-client runtimes connect` supervises
+the process and uses an existing tunnel ID read-only; its loopback health port
+is ephemeral. Removal stops and removes only that alias and owned local tree.
+Bridge sessions and the Zotero `operations-v1.json` journal live outside the
+runtime root and survive ordinary reinstall.
+
+Rollback selects the prior installed route and leaves it stopped. It never
+replays a request. Account-plugin routing rollback is a separate operation: the
+account service rejects semantic-version downgrades, so restoring an older route
+requires the preserved private content under a newer guarded release version.

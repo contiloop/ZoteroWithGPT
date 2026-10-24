@@ -1,10 +1,10 @@
 # Mac Safe Files client
 
-Use the packaged `client-v1` kit described in
-[installation](../../docs/install.md). The selected plugin's
-[workflow](../chatgpt-plugin/skills/zotero-study-save/resources/workflow.md)
-is the conversation entry; the [protocol](../../docs/protocol/v1.md) owns wire
-shapes. Do not copy a second workflow into this guide.
+This is the generic local-file fallback, separate from the selected plugin's
+dedicated MCP route. Use the packaged `client-v1` kit described in
+[installation](../../docs/install.md) only when deliberately configuring such a
+client. The [protocol](../../docs/protocol/v1.md) owns wire shapes. Do not bundle
+this client or its source-only fallback workflow into Zotero Study Save.
 
 Mac Safe Files supplies `policy_status`, `fs_read_text`, `fs_write_text`, and
 `fs_stat`. Publish complete requests in create mode; no shell, remote command,

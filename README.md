@@ -11,15 +11,23 @@ equation” without repeating the link. Studying alone does not save anything.
 [Install](docs/install.md) · [Remove/reinstall](docs/uninstall.md) ·
 [Troubleshoot](docs/troubleshooting.md) · [Verified status](docs/tracking/status.md)
 
-The Zotero extension uses an existing Mac Safe Files connection. No model API
-key or hosted service is required. Public Mac connection installation and
-ChatGPT Work access are not supplied.
+The selected Web route uses a dedicated stdio MCP server through a separately
+owned private Secure MCP tunnel. The server wraps the same local bridge and
+native Zotero executor; it does not add another writer or model API. Public
+hosting, authenticated user/profile routing, and ChatGPT Work access remain
+future distribution work.
 
 ## Development
 
-Node.js 24–26, npm 11.4.2: `npm ci`, then `npm run verify`.
-`npm run package` creates matching XPI, local client kit, and portable ChatGPT
-plugin artifacts. Configured account archives and operation journals are private.
+Node.js 24–26 and npm 11.4.2 are required. A clean checkout needs both locked
+installs: `npm ci` and `npm ci --prefix integration/zotero-mcp --ignore-scripts`.
+Then run `npm run verify`.
+
+`npm run package` creates four matching 0.5.0 artifacts: the XPI, a generic
+local-file client kit, an explicitly unconfigured ChatGPT plugin ZIP, and a
+relocatable locked MCP server ZIP. Private account binding is a separate 0600
+archive. Configured archives, bridge history, and operation journals are never
+portable release content.
 
 [Architecture](docs/architecture.md) · [Study rules](docs/business-rules.md) ·
 [Protocol](docs/protocol/v1.md) · [Host pitfalls](docs/engineering-notes.md)

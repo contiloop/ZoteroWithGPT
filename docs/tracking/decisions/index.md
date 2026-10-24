@@ -8,3 +8,5 @@
   interpretation without retaining acquisition execution.
 - [Selected local study](0004-selected-local-arxiv-study.md): manual paper saving,
   conversation-local targets, and requested-content saves.
+- [Dedicated MCP and tunnel](0005-dedicated-mcp-tunnel.md): a fixed typed adapter
+  and separately owned runtime preserve bridge/native authority boundaries.

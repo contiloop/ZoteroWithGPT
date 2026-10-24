@@ -47,3 +47,6 @@ identities, but missing objects never authorize recreation.
 Storage confirmation means a native record was read back. Viewer confirmation means current content was observed in its actual active reader. Neither a deep link nor a background tab establishes visible display. Viewer failure does not authorize repeating a successful save.
 
 Removing the extension stops processing and retains native study records. Reinstall does not authorize old unexecuted requests. A connection's new session is a fresh processing boundary, not a new identity for historical mutations.
+Ordinary reinstall retains both the bridge session tree and the native operation
+journal. Runtime removal and rollback do not erase either history and do not
+replay a request.

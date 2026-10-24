@@ -15,7 +15,7 @@
           "state": "succeeded",
           "data": {
             "protocolVersion": 1,
-            "pluginVersion": "0.4.0",
+            "pluginVersion": "0.5.0",
             "zoteroVersion": "10.0.6",
             "profile": {
               "id": "profile-A",

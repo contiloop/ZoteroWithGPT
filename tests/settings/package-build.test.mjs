@@ -52,6 +52,7 @@ async function fixture() {
     "export function onMainWindowLoad(_window: unknown): void {}",
     "export function onMainWindowUnload(_window: unknown): void {}",
   ].join("\n"));
+  await write(root, "LICENSE", await readFile(path.join(PROJECT_ROOT, "LICENSE"), "utf8"));
   await write(root, "THIRD_PARTY_NOTICES", "Third-party notices\n\nNo third-party runtime code in this fixture.\n");
   await write(root, "docs/install.md", "# Install\n\nChoose one dedicated directory.\n");
   await write(root, "docs/uninstall.md", "# Uninstall\n\nDisable before removal.\n");
@@ -161,9 +162,9 @@ test("build produces a deterministic versioned XPI with a validated release surf
     (await directorySha256(second.clientDirectory)).digest("hex"),
   );
   assert.equal(report.version, "1.2.3");
-  assert.equal(report.members.length, 21);
-  assert.equal(report.clientMembers.length, 15);
-  assert.equal(report.pluginMembers.length, 5);
+  assert.equal(report.members.length, 22);
+  assert.equal(report.clientMembers.length, 16);
+  assert.equal(report.pluginMembers.length, 6);
   assert.ok(report.serverMembers.length > 10);
   assert.deepEqual(report.zoteroCompatibility, { minimum: "10.0.6", maximum: "10.0.*" });
   assert.equal(report.updateURL, MANUAL_UPDATE_SENTINEL);
@@ -208,12 +209,21 @@ test("current release builds the exact 0.5.0 portable inventories", async (t) =>
   const report = await verifyXpi(result.outputPath, { expectedProjectRoot: PROJECT_ROOT });
 
   assert.equal(report.version, "0.5.0");
-  assert.equal(report.members.length, 30);
-  assert.equal(report.clientMembers.length, 15);
-  assert.equal(report.pluginMembers.length, 5);
+  const license = await readFile(path.join(PROJECT_ROOT, "LICENSE"), "utf8");
+  for (const archive of [result.outputPath, result.pluginPath, result.serverPath]) {
+    const extractedLicense = spawnSync("/usr/bin/unzip", ["-p", archive, "LICENSE"], { encoding: "utf8" });
+    assert.equal(extractedLicense.status, 0, extractedLicense.stderr);
+    assert.equal(extractedLicense.stdout, license);
+  }
+  assert.equal(await readFile(path.join(result.clientDirectory, "LICENSE"), "utf8"), license);
+
+  assert.equal(report.members.length, 31);
+  assert.equal(report.clientMembers.length, 16);
+  assert.equal(report.pluginMembers.length, 6);
   assert.ok(report.members.includes("protocol/examples/find-local-arxiv.request.json"));
   assert.ok(report.members.includes("protocol/examples/find-local-arxiv.response.json"));
   assert.deepEqual(report.pluginMembers, [
+    "LICENSE",
     "README.md",
     "plugin.json",
     "skills/zotero/SKILL.md",

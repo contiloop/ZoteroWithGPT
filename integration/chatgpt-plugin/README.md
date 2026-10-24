@@ -6,7 +6,7 @@ question, explanation, proof, reference, or highlight beside its passage.
 ## Portable source
 
 This source and its release ZIP are deliberately **UNCONFIGURED**. They contain
-five allowlisted files: manifest, README, skill, agent metadata, and selected
+six allowlisted files: MIT license, manifest, README, skill, agent metadata, and selected
 workflow. There is no `.app.json`, account/app ID, bridge root,
 `personal-config.json`, or bundled generic `client-v1`. Installing this archive
 alone does not connect ChatGPT to Zotero.

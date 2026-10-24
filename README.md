@@ -15,6 +15,7 @@
 
 [![Stars][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 
 <details>
   <summary>Table of contents</summary>
@@ -145,6 +146,16 @@ highlight and its comment. A definition uses yellow by default; you can request
 another color. If the target or save outcome is unresolved, the response reports
 that instead of claiming success.
 
+### In Zotero
+
+![Actual Zotero reader showing an HRM highlight and its linked Korean explanation](docs/images/hrm-zotero-annotation.jpg)
+
+An actual reader capture with the extension enabled: an existing highlight
+in [Hierarchical Reasoning Model (Wang et al., 2025)](https://arxiv.org/abs/2506.21734)
+appears beside its passage-linked Korean comment. This illustrates the reader
+experience using existing annotations; the conversation above is a separate
+usage example. Paper content belongs to its respective authors.
+
 ### Highlight colors
 
 These are study conventions, not meanings prescribed by Zotero. Explicit user
@@ -211,9 +222,10 @@ history. Local artifacts and private validation directories are ignored by Git.
 
 ## Licensing
 
-A project-wide license has not yet been selected. Public repository visibility
-alone does not grant an open-source license. Third-party dependency notices are
-provided in `THIRD_PARTY_NOTICES/` and the generated packages.
+Project code and documentation are distributed under the [MIT License](LICENSE).
+Third-party dependencies retain their own licenses; see
+[THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES) and the generated packages.
+Paper excerpts shown in screenshots are excluded from the project license.
 
 ## Acknowledgments
 

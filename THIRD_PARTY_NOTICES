@@ -2,8 +2,8 @@ THIRD-PARTY SOFTWARE NOTICES
 
 This distribution bundles the following third-party runtime packages. Their
 license texts are included in the XPI under third-party-licenses/. The project
-itself does not currently declare a public distribution license; that separate
-publication decision remains pending.
+itself is licensed under MIT; see LICENSE. Third-party packages retain their
+own licenses.
 
 DOMPurify 3.4.17
 Package: dompurify@3.4.17

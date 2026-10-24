@@ -31,6 +31,7 @@ const ASSET_DIRECTORY = fileURLToPath(new URL("./assets", import.meta.url));
 const CLIENT_README_TEMPLATE = path.join(ASSET_DIRECTORY, "client", "README.md");
 
 const STATIC_FILES = Object.freeze([
+  ["LICENSE", "LICENSE"],
   ["addon/bootstrap.js", "bootstrap.js"],
   ["addon/manifest.json", "manifest.json"],
   ["THIRD_PARTY_NOTICES", "THIRD_PARTY_NOTICES"],
@@ -54,6 +55,7 @@ const ASSET_FILES = Object.freeze([
 ]);
 
 const PORTABLE_PLUGIN_FILES = Object.freeze([
+  ["LICENSE", "LICENSE"],
   ["integration/chatgpt-plugin/plugin.json", "plugin.json"],
   ["integration/chatgpt-plugin/README.md", "README.md"],
   ["integration/chatgpt-plugin/skills/zotero/SKILL.md", "skills/zotero/SKILL.md"],
@@ -66,6 +68,7 @@ const SERVER_SCHEMA_FILES = Object.freeze([
 ]);
 
 const CLIENT_PROJECT_FILES = Object.freeze([
+  ["LICENSE", "LICENSE"],
   ["docs/install.md", "docs/install.md"],
   ["docs/uninstall.md", "docs/uninstall.md"],
   ["docs/troubleshooting.md", "docs/troubleshooting.md"],
@@ -316,7 +319,7 @@ function serverNotices(lock) {
   const lines = [
     "ZOTERO MCP SERVER THIRD-PARTY SOFTWARE NOTICES",
     "",
-    "The project does not declare a public distribution license. The locked",
+    "This project is licensed under MIT; see LICENSE. The locked",
     "production dependencies below retain their own licenses. `npm ci --omit=dev`",
     "installs their package license files beside the runtime.",
     "",
@@ -393,6 +396,7 @@ async function stageServerPackage(projectRoot, directory, version) {
   }
   const distributionPackage = {
     name: nestedPackage.name,
+    license: "MIT",
     version,
     private: true,
     type: "module",
@@ -410,6 +414,7 @@ async function stageServerPackage(projectRoot, directory, version) {
   const graphMembers = await serverSourceMembers(projectRoot);
   const sourceMembers = [...new Set([
     ...graphMembers,
+    "LICENSE",
     ...SERVER_SCHEMA_FILES,
     "integration/zotero-mcp/package.json",
   ])].sort();
@@ -447,7 +452,7 @@ async function stageServerPackage(projectRoot, directory, version) {
     owner: "zotero-study-save-mcp-runtime",
     artifact: `${SERVER_ARCHIVE_PREFIX}-${version}.zip`,
     version,
-    projectLicense: null,
+    projectLicense: "MIT",
     runtime: {
       node: ">=24 <27",
       npm: "11.4.2",
@@ -607,7 +612,7 @@ export async function buildXpi({
       portablePlugin: `${PLUGIN_ARCHIVE_PREFIX}-${version}.zip`,
       mcpServer: `${SERVER_ARCHIVE_PREFIX}-${version}.zip`,
       version,
-      projectLicense: null,
+      projectLicense: "MIT",
       distribution: "manual",
       updatePolicy: {
         service: false,

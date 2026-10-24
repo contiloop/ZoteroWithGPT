@@ -15,6 +15,7 @@ async function write(root, relative, content) {
 
 async function zipDirectory(directory, archive) {
   const files = [
+    "LICENSE",
     "README.md",
     "plugin.json",
     "skills/zotero/SKILL.md",
@@ -54,6 +55,7 @@ test("private configuration adds only a verified binding and preserves account p
     } } },
   };
   await write(portable, "plugin.json", `${JSON.stringify(sourceManifest, null, 2)}\n`);
+  await write(portable, "LICENSE", "MIT License fixture\n");
   await write(portable, "README.md", "UNCONFIGURED portable package.\n");
   await write(portable, "skills/zotero/SKILL.md", "---\nname: zotero\ndescription: fixture\n---\n");
   await write(portable, "skills/zotero/agents/openai.yaml", "interface:\n  display_name: Zotero Study Save\n");
@@ -103,6 +105,7 @@ test("private configuration adds only a verified binding and preserves account p
   const extracted = path.join(root, "extracted");
   const unzip = spawnSync("/usr/bin/unzip", ["-qq", output, "-d", extracted], { encoding: "utf8" });
   assert.equal(unzip.status, 0, unzip.stderr);
+  assert.equal(await readFile(path.join(extracted, "LICENSE"), "utf8"), "MIT License fixture\n");
   const configured = JSON.parse(await readFile(path.join(extracted, "plugin.json"), "utf8"));
   assert.equal(configured.extensions["com.openai"].apps, "./.app.json");
   assert.equal(

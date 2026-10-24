@@ -27,6 +27,7 @@ const SERVER_ARCHIVE_PREFIX = "zotero-mcp-server";
 const MANUAL_UPDATE_SENTINEL =
   "https://updates.invalid/zotero-ai-research-companion/updates.json";
 const REQUIRED_MEMBERS = Object.freeze([
+  "LICENSE",
   "bootstrap.js",
   "BUILD_METADATA.json",
   "client/README.md",
@@ -50,6 +51,7 @@ const REQUIRED_MEMBERS = Object.freeze([
   "THIRD_PARTY_NOTICES",
 ]);
 const REQUIRED_CLIENT_MEMBERS = Object.freeze([
+  "LICENSE",
   "README.md",
   "docs/install.md",
   "docs/troubleshooting.md",
@@ -97,6 +99,7 @@ const SECRET_PATTERN =
 const ACCOUNT_APP_ID_PATTERN =
   /\b(?:asdk_app_|connector_|templated_apps_)[A-Za-z0-9][A-Za-z0-9_-]{7,}\b/u;
 const PORTABLE_PLUGIN_MEMBERS = Object.freeze([
+  "LICENSE",
   "README.md",
   "plugin.json",
   "skills/zotero/SKILL.md",
@@ -334,8 +337,8 @@ function noticePackageIdentities(notices) {
 }
 
 function validateThirdParty(metadata, notices, members) {
-  if (metadata.projectLicense !== null) {
-    throw new Error("BUILD_METADATA.json invents a project license");
+  if (metadata.projectLicense !== "MIT") {
+    throw new Error("BUILD_METADATA.json must declare the MIT project license");
   }
   if (metadata.distribution !== "manual") {
     throw new Error("BUILD_METADATA.json must identify manual distribution");
@@ -481,6 +484,7 @@ async function validateServerPackage(serverPath, version) {
   }
   for (const required of [
     "SERVER_BUILD_METADATA.json",
+    "LICENSE",
     "THIRD_PARTY_NOTICES",
     "package.json",
     "package-lock.json",
@@ -515,7 +519,7 @@ async function validateServerPackage(serverPath, version) {
       metadata.schemaVersion !== 1 ||
       metadata.owner !== "zotero-study-save-mcp-runtime" ||
       metadata.version !== version ||
-      metadata.projectLicense !== null ||
+      metadata.projectLicense !== "MIT" ||
       metadata.artifact !== path.basename(serverPath) ||
       !sameJson(metadata.members, extracted)
     ) {

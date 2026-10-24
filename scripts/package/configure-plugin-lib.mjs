@@ -18,6 +18,7 @@ const ZIP_PATH = "/usr/bin/zip";
 const UNZIP_PATH = "/usr/bin/unzip";
 const ARCHIVE_TIMESTAMP = new Date("2000-01-01T00:00:00.000Z");
 const PORTABLE_MEMBERS = Object.freeze([
+  "LICENSE",
   "README.md",
   "plugin.json",
   "skills/zotero/SKILL.md",

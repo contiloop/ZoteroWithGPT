@@ -127,6 +127,37 @@ limits and reject over-limit content without silently changing its destination
 or scope. For an explicitly requested child note, prepare its complete content
 and apply the same no-truncation rule after safety encoding.
 
+## Choose highlight colors
+
+For an authorized new highlight, honor the researcher's explicit color or
+conversation-specific classification first. Otherwise choose from this study
+convention based on the passage's primary role in the requested discussion.
+These meanings are the researcher's convention, not rules imposed by Zotero.
+
+| Color | Hex | Study role |
+| --- | --- | --- |
+| Yellow | #FFD400 | Core concepts and definitions |
+| Red | #FF6666 | Important problems and limitations |
+| Green | #5FB236 | Research results and advantages |
+| Blue | #2EA8E5 | Methods and equations |
+| Purple | #A28AE5 | Concepts to study further |
+| Pink | #E56EEE | Striking claims and insights |
+| Orange | #F19837 | Key experiments and supporting evidence |
+| Gray | #AAAAAA | Supporting explanations and references |
+
+Select one color per requested passage. For overlapping roles, use the focus
+of the researcher's request: an experimental setup or evidence is orange,
+whereas a conclusion about results or advantages is green. A definition is
+yellow; an explanation of a method or equation is blue. If no role clearly
+fits, use yellow without asking a color-only clarification. Do not split or
+multiply highlights merely to express multiple categories. Pass the chosen hex
+value as the create tool's `color` before fixing the immutable write payload.
+
+This convention never authorizes saving during study or recoloring existing
+annotations. Appending or replacing a comment preserves its existing color.
+After a successful save, briefly report the chosen color and category without
+adding classification labels to a verbatim comment.
+
 ## Resolve, write, and update
 
 Refresh the selected attachment with a new `zotero_read_pdf` observation before

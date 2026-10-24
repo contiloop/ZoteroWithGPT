@@ -70,3 +70,33 @@ public licensing, stable authenticated HTTPS/user-profile routing, end-user
 tunnel lifecycle, and Work validation remain open. The unresolved fixture write
 and the acceptance scenarios that depend on it must be resolved without
 reissuing an uncertain operation.
+
+## Private-use acceptance and color convention (2026-10-24)
+
+The researcher supplied a fresh ChatGPT conversation using the dedicated app
+and personally confirmed the requested Layer Normalization abstract highlight
+and linked explanation in Zotero. They accepted this study/save route for
+private use and explicitly authorized integration into the existing master branch despite the
+previously disclosed untested exceptional scenarios. Latency improvement is
+not a release requirement for this accepted private workflow. The earlier
+fixture outcome remains unresolved and must not be retried.
+
+A later diagnostic reply quoted an OpenAI safety-check block and an
+`invalid_result` lookup with unconfirmed delivery. This is an attributed
+ChatGPT report, not independently recovered original platform error evidence;
+it does not establish an authentication or native persistence defect.
+
+The selected study workflow now defines the researcher's eight-color convention
+for new requested highlights. Explicit colors override classification; comment
+updates do not recolor existing records. This is model guidance, not a native
+classifier. Source/package checks cannot establish model color selection in
+live use. Selecting the dedicated app alone does not load the plugin's study
+instructions; use the updated study plugin for this convention.
+
+The private account plugin was updated to 0.5.2 with the dedicated Zotero app
+binding and color guidance; source readback confirmed all eight colors, seven
+package files, and unchanged presentation/default prompt. The old Mac app and
+tunnel remain intact. The plugin-only release version is independent of the
+unchanged 0.5.0 server/extension package versions. The color policy has not yet
+been exercised in a fresh ChatGPT save; no test annotation was added for this
+instruction-only update.

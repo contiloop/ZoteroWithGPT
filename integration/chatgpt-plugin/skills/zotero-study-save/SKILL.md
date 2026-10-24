@@ -19,3 +19,6 @@ preserve wording when asked to copy it. Preserve the intended meaning, proof
 steps, conditions, equations, comparison outcomes, and supported references.
 Long content remains beside its passage. Create a separate note only when the
 researcher explicitly requests one.
+
+For requested highlights without an explicit color, apply the eight-color
+study convention in `resources/workflow.md`; explicit user colors take priority.

@@ -79,7 +79,7 @@ unchanged; post-change Web latency has not been measured.
 
 ## 0.5.0 package and lifecycle verification, 2026-10-24
 
-`npm run verify` passed with 266 tests, including all nested MCP tests exactly
+`npm run verify` passed with 269 tests, including all nested MCP tests exactly
 once, plus root and nested type checks, builds, package validation, and the
 unconfigured plugin validator. The release contains 30 XPI files, 15
 generic-client files, five portable-plugin files, and 35 locked server files.
@@ -94,16 +94,24 @@ matched; the two client directories also matched file for file. The resulting
 SHA-256 values were:
 
 ```text
-ed47b680f4f424ce39154c3ef158efb7d6c1f82ca1b2fb78f5ef0bffed68988b  zotero-ai-research-companion-0.5.0.xpi
+ccc74643414a2b19806622cfa4e758e400c5eb1fe3a9134d000dd97747f0e415  zotero-ai-research-companion-0.5.0.xpi
 13fbeb6bf75ed1b35d72bb239a2d525a8932c960be59e0aee0850ba20156bef1  zotero-study-save-0.5.0.zip
-5835e5ccecccfdb6b5b873103e5ab4930e261f6d455761c91373d879542b5ec4  zotero-mcp-server-0.5.0.zip
+8f669470027bcbfe608e035a117a4cc1ef3e32bdf90d1ae06914dc7f8f8b66f9  zotero-mcp-server-0.5.0.zip
 ```
 
 Controlled temporary fixtures verified owned install, start/status/stop/remove,
 same-version repair, reinstall with bridge/native history outside the install
 root, stopped rollback, exact obsolete-account-file derivation, and diagnostic
-redaction. Portable scans found no account app ID, credential pattern, private
-user path, session directory, operation journal, or validation history. These
-are package and fixture results. No 0.5.0 account route, tunnel, credential,
-Zotero installation, bridge session, native write, or reader display was changed
-or live-accepted.
+redaction. Follow-up cases reject symlink ancestors on every private path,
+install/bridge overlap with the pinned tunnel-client control root, and unknown
+dependency or managed-profile entries before any remove command. They also
+confirm every child tunnel command receives that pinned root and unrelated
+shared control-state files survive lifecycle removal. Portable scans found no
+account app ID, credential pattern, private user path, session directory,
+operation journal, or validation history.
+
+These are package and fixture results. T1 had separately observed creation of a
+private tunnel identity and use of its protected credential reference while
+preserving the old Mac route. T4 made no live account, tunnel, credential,
+Zotero, bridge-history, native-write, or reader-display change. Production
+polling and ChatGPT custom MCP discovery remain pending T5 live acceptance.
